@@ -103,6 +103,28 @@ export function FullReport({ data, uuid }: FullReportProps) {
 
   return (
     <div className="w-full">
+      {/* Print-only branded header — screen users see the nav logo instead */}
+      <div className="print-only mb-4 border-b border-border pb-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <svg width="36" height="18" viewBox="0 0 64 32" xmlns="http://www.w3.org/2000/svg">
+              <path d="M0 22 L18 22 M46 22 L64 22" stroke="#18181b" strokeOpacity="0.35" strokeWidth="1.8" strokeLinecap="round" fill="none" />
+              <path d="M18 22 L22 26 L32 6 L42 26 L46 22" stroke="#18181b" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+              <circle cx="32" cy="6" r="2.5" fill="#f97316" />
+            </svg>
+            <span className="font-[family-name:var(--font-playfair)] text-sm font-bold tracking-tight">
+              Deal<span style={{ color: '#f97316' }}>Doctor</span>
+            </span>
+          </div>
+          <div className="text-right text-[9px] text-muted-foreground">
+            <p className="font-semibold uppercase tracking-wider">Investment Report</p>
+            {data.generatedAt && (
+              <p>Generated {new Date(data.generatedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</p>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Top utility bar — all hidden in print */}
       <div className="no-print mb-3 flex flex-wrap items-center justify-end gap-2">
         {uuid && (
@@ -123,7 +145,9 @@ export function FullReport({ data, uuid }: FullReportProps) {
 
         {uuid && (
           <a
-            href={`/api/report/${uuid}/export`}
+            // Preserve the dev debug flag so the export route skips the paid check
+            // in local dev. Never surfaces in prod (NODE_ENV-gated on the server).
+            href={`/api/report/${uuid}/export${searchParams.get('debug') === '1' ? '?debug=1' : ''}`}
             className="inline-flex items-center gap-1.5 rounded-md border bg-card px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <DownloadIcon className="h-3.5 w-3.5" />

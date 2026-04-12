@@ -58,64 +58,124 @@
   }
 }
 
-/* DealDoctor logo: single-stroke draw-in for hero placements */
-@keyframes logo-draw {
-  to {
-    stroke-dashoffset: 0;
-  }
-}
-
-/* Print styles — lets users "File > Print > Save as PDF" and get a clean
-   investor-ready export of the report. Hides UI chrome (nav, paywall,
-   uploaders, debug banners) and keeps only the report content + data
-   sources. Opts into forced light mode because investors print to B&W. */
+/* Print styles — the PDF export is generated via browser File>Print>Save as PDF.
+   Goal: a clean, investor/lender-ready document. Single-column flow, tight
+   typography, stable page breaks, preserved verdict/delta colors, all
+   interactive chrome stripped. */
 @media print {
-  /* Force light backgrounds so ink doesn't burn through a dark theme */
+  @page {
+    size: letter;
+    margin: 0.45in 0.4in 0.5in 0.4in;
+  }
+
+  /* Force light paper even in dark theme */
   html,
   body {
-    background: white !important;
-    color: black !important;
+    background: #ffffff !important;
+    color: #0a0a0a !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
-  /* Hide UI chrome that doesn't belong on a printed report */
-  header,
-  nav,
-  .no-print,
-  [data-no-print='true'] {
-    display: none !important;
-  }
-
-  /* Tighter margins for print */
-  main {
-    max-width: none !important;
-    padding: 0.5in !important;
-  }
-
-  /* Let sections break cleanly between pages */
-  section,
-  .rounded-xl,
-  .rounded-2xl {
-    page-break-inside: avoid;
-    break-inside: avoid;
-  }
-
-  /* Preserve color on verdict badges and hero numbers */
+  /* Preserve colors on every element — verdict badges, accent rules, etc. */
   * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
 
-  /* Suppress interactive-only affordances */
-  button {
+  /* Hide UI chrome that doesn't belong on a printed report */
+  header,
+  nav,
+  button,
+  a[href^='/api/'],
+  .no-print,
+  [data-no-print='true'] {
     display: none !important;
   }
 
-  /* Tables: allow internal page breaks but keep rows together */
+  /* Loosen the max-width constraint; let print fill the page */
+  main {
+    max-width: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Tighter body typography for density */
+  body {
+    font-size: 10pt !important;
+    line-height: 1.35 !important;
+  }
+
+  /* Headings proportionally tighter */
+  h1 { font-size: 18pt !important; line-height: 1.15 !important; }
+  h2 { font-size: 14pt !important; line-height: 1.2 !important; }
+  h3 { font-size: 11pt !important; line-height: 1.25 !important; }
+
+  /* Force only the main 2-col narrative+sidebar into single column.
+     Leaves small grids (hero 3-card strip, pros/cons, risk bars) intact. */
+  .lg\:grid-cols-12 {
+    display: block !important;
+  }
+  .lg\:col-span-8,
+  .lg\:col-span-4 {
+    display: block !important;
+    width: 100% !important;
+    grid-column: unset !important;
+  }
+
+  /* Cards should not split across pages when avoidable */
+  section,
+  .rounded-lg,
+  .rounded-xl,
+  .rounded-2xl {
+    page-break-inside: avoid;
+    break-inside: avoid;
+    margin-bottom: 10pt !important;
+  }
+
+  /* Keep card padding tight */
+  .rounded-lg.p-5,
+  .rounded-xl.p-5,
+  .rounded-lg.p-6,
+  .rounded-xl.p-6,
+  .rounded-xl.p-7,
+  .rounded-xl.p-8 {
+    padding: 10pt 12pt !important;
+  }
+
+  /* Tables: allow internal breaks but protect rows + headers */
   table {
     page-break-inside: auto;
+    width: 100% !important;
+  }
+  thead {
+    display: table-header-group; /* repeat header on each page */
   }
   tr {
     page-break-inside: avoid;
     page-break-after: auto;
+  }
+
+  /* Charts (Recharts ResponsiveContainer) — constrain height for print */
+  .recharts-responsive-container {
+    max-height: 2.5in !important;
+    page-break-inside: avoid;
+  }
+
+  /* Print-only cover band appears in the DOM; hidden on screen, shown on paper */
+  .print-only {
+    display: block !important;
+  }
+}
+
+/* Hidden on screen — exists just for print output */
+.print-only {
+  display: none;
+}
+
+/* DealDoctor logo: single-stroke draw-in for hero placements */
+@keyframes logo-draw {
+  to {
+    stroke-dashoffset: 0;
   }
 }

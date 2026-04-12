@@ -163,8 +163,15 @@ export function DealDoctorSection({ dealDoctor, verdict }: DealDoctorProps) {
                 />
               </button>
 
-              {isExpanded && fix.detailRows.length > 0 && (
-                <div className="bg-muted/20 px-5 pb-3">
+              {fix.detailRows.length > 0 && (
+                <div
+                  className={cn(
+                    'bg-muted/20 px-5 pb-3',
+                    // Expanded on screen, OR always on print so the PDF contains
+                    // all three fixes' details (not just the one the user clicked).
+                    isExpanded ? 'block' : 'hidden print:block'
+                  )}
+                >
                   <div className="ml-10 overflow-hidden rounded-md border bg-card">
                     <table className="w-full text-xs tabular-nums">
                       <tbody>
