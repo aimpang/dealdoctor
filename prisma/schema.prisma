@@ -1,0 +1,32 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dealdoctor.db"
+}
+
+model Report {
+  id              String   @id @default(uuid())
+  address         String
+  city            String
+  state           String
+  zipCode         String
+  country         String   @default("US")
+
+  // Teaser data (generated free)
+  teaserData      String?  // JSON: {estimatedValue, estimatedRent, neighbourhoodScore}
+
+  // Full report (generated on payment)
+  fullReportData  String?  // JSON: full analysis
+
+  // Payment
+  paid            Boolean  @default(false)
+  paymentOrderId  String?  // LemonSqueezy order ID
+  customerEmail   String?
+  paidAt          DateTime?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}

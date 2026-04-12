@@ -1,101 +1,308 @@
-import Image from "next/image";
+'use client'
 
-export default function Home() {
+import { useState } from 'react'
+import { cn } from '@/lib/utils'
+import { AddressInput } from '@/components/AddressInput'
+import { TeaserMetrics } from '@/components/TeaserMetrics'
+import { BlurredReport } from '@/components/BlurredReport'
+import {
+  ArrowRightIcon,
+  ShieldCheckIcon,
+  ZapIcon,
+  BarChart3Icon,
+  BuildingIcon,
+  TrendingUpIcon,
+  ClockIcon,
+  MapPinIcon,
+  CheckCircle2Icon,
+} from 'lucide-react'
+import { Button } from '@/components/ui/button'
+
+export default function LandingPage() {
+  const [result, setResult] = useState<any>(null)
+  const [error, setError] = useState('')
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+    <div className="relative min-h-screen overflow-hidden">
+      {/* Background atmosphere */}
+      <div className="pointer-events-none fixed inset-0 -z-10" aria-hidden="true">
+        <div className="absolute top-0 -left-1/4 h-[600px] w-1/2 rounded-full bg-primary/[0.04] blur-[120px]" />
+        <div className="absolute bottom-0 -right-1/4 h-[500px] w-1/2 rounded-full bg-primary/[0.03] blur-[100px]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_60%_-10%,hsl(var(--primary)/0.06),transparent_50%)]" />
+      </div>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+      {/* Nav */}
+      <header className="sticky top-0 z-40 border-b border-border/50 bg-background/80 backdrop-blur-xl">
+        <nav className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
+              <svg className="h-4 w-4 text-primary-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                <polyline points="9 22 9 12 15 12 15 22" />
+              </svg>
+            </div>
+            <span className="font-[family-name:var(--font-playfair)] text-lg font-bold tracking-tight text-foreground">
+              Deal<span className="text-primary">Doctor</span>
+            </span>
+          </div>
+          <div className="flex items-center gap-3 text-sm">
+            <span className="hidden text-muted-foreground sm:inline">US Properties</span>
+            <div className="flex items-center gap-1.5 rounded-full border bg-card px-3 py-1.5 text-xs font-medium text-foreground">
+              <MapPinIcon className="h-3 w-3 text-primary" />
+              <span>US</span>
+            </div>
+          </div>
+        </nav>
+      </header>
+
+      {/* Hero */}
+      <section className="relative mx-auto max-w-6xl px-4 pt-16 pb-12 sm:pt-24 sm:pb-16">
+        <div className="flex flex-col items-center text-center">
+          {/* Badge */}
+          <div
+            className={cn(
+              "mb-6 flex items-center gap-2.5 rounded-full border bg-card px-4 py-1.5 shadow-sm",
+              "animate-in fade-in slide-in-from-bottom-4 fill-mode-backwards duration-500"
+            )}
           >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+            </span>
+            <span className="text-xs font-medium text-muted-foreground">
+              Live US mortgage rates
+            </span>
+          </div>
+
+          {/* Headline */}
+          <h1
+            className={cn(
+              "max-w-3xl font-[family-name:var(--font-playfair)] text-4xl font-bold leading-[1.1] tracking-tight text-foreground sm:text-5xl md:text-6xl",
+              "animate-in fade-in slide-in-from-bottom-6 fill-mode-backwards duration-700 delay-100"
+            )}
+          >
+            Know if a deal is{' '}
+            <span className="relative inline-block">
+              <span className="relative z-10 text-primary">worth it</span>
+              <span className="absolute bottom-1 left-0 -z-0 h-3 w-full bg-primary/15 sm:bottom-2 sm:h-4" />
+            </span>
+            {' '}before you make an offer
+          </h1>
+
+          {/* Subhead */}
+          <p
+            className={cn(
+              "mt-5 max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg",
+              "animate-in fade-in slide-in-from-bottom-6 fill-mode-backwards duration-700 delay-200"
+            )}
+          >
+            Paste any US property address. Get instant mortgage math, cash flow analysis,
+            DSCR check, and an AI-powered deal diagnosis.
+          </p>
+
+          {/* Address Input */}
+          <div
+            className={cn(
+              "mt-8 w-full max-w-xl",
+              "animate-in fade-in slide-in-from-bottom-6 fill-mode-backwards duration-700 delay-300"
+            )}
+          >
+            <AddressInput
+              onResult={(data) => {
+                setResult(data)
+                setError('')
+                setTimeout(() => {
+                  document.getElementById('results')?.scrollIntoView({ behavior: 'smooth' })
+                }, 100)
+              }}
+              onError={(err) => {
+                setError(err)
+                setResult(null)
+              }}
             />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+          </div>
+
+          {error && (
+            <div className="mt-4 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-2.5 text-sm text-destructive">
+              {error}
+            </div>
+          )}
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
+      </section>
+
+      {/* Results Section */}
+      {result && (
+        <section
+          id="results"
+          className="relative mx-auto max-w-6xl px-4 pb-16"
         >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
+          <div className="flex flex-col items-center gap-8">
+            <TeaserMetrics teaser={result.teaser} property={result.property} />
+            <BlurredReport uuid={result.uuid} address={result.property.address} />
+          </div>
+        </section>
+      )}
+
+      {/* Features Section */}
+      <section className="border-y bg-card/50">
+        <div className="mx-auto max-w-6xl px-4 py-12 sm:py-16">
+          <div className="mb-10 text-center">
+            <h2 className="font-[family-name:var(--font-playfair)] text-2xl font-bold text-foreground sm:text-3xl">
+              What&apos;s in a DealDoctor report?
+            </h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Everything a US investor needs to make a confident decision.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {[
+              {
+                icon: BarChart3Icon,
+                title: 'US Mortgage Math',
+                desc: 'Standard 30-year amortization with accurate monthly compounding. Real math, not napkin estimates.',
+              },
+              {
+                icon: ShieldCheckIcon,
+                title: 'DSCR Analysis',
+                desc: 'Debt Service Coverage Ratio analysis. Lenders want 1.25+. See if your deal qualifies.',
+              },
+              {
+                icon: TrendingUpIcon,
+                title: 'Refi Scenarios',
+                desc: 'What happens when you refi in 5 years? See cash flow at rates from 5% through 8%.',
+              },
+              {
+                icon: ZapIcon,
+                title: 'AI Deal Doctor',
+                desc: 'Claude-powered diagnosis with 3 concrete fixes. Negotiation, value-add, and pivot strategies.',
+              },
+              {
+                icon: BuildingIcon,
+                title: 'Depreciation Benefits',
+                desc: '27.5-year straight-line depreciation on building value. Know your actual after-tax cash flow.',
+              },
+              {
+                icon: ClockIcon,
+                title: 'Live Market Rates',
+                desc: 'Current 30-year and 15-year fixed rates from Freddie Mac surveys. Not stale data from last quarter.',
+              },
+            ].map((f) => (
+              <div
+                key={f.title}
+                className={cn(
+                  "group rounded-xl border bg-card p-6 transition-all duration-300",
+                  "hover:shadow-lg hover:shadow-primary/5 hover:border-primary/20"
+                )}
+              >
+                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 transition-colors group-hover:bg-primary/15">
+                  <f.icon className="h-5 w-5 text-primary" />
+                </div>
+                <h3 className="font-semibold text-foreground">{f.title}</h3>
+                <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{f.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Market Stats Strip */}
+      <section className="mx-auto max-w-6xl px-4 py-12 sm:py-16">
+        <div className="mb-8 text-center">
+          <h2 className="font-[family-name:var(--font-playfair)] text-2xl font-bold text-foreground sm:text-3xl">
+            Austin Market Snapshot
+          </h2>
+          <p className="mt-2 text-sm text-muted-foreground">April 2026 — updated weekly from live feeds</p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {[
+            { label: 'Median Price', value: '$425,000', change: '+3.2%' },
+            { label: 'Avg Cap Rate', value: '5.1%', change: '+0.2%' },
+            { label: 'Days on Market', value: '34', change: '-6' },
+            { label: '30yr Fixed', value: '6.50%', change: '-0.25%' },
+          ].map((stat) => (
+            <div
+              key={stat.label}
+              className="rounded-xl border bg-card p-4 text-center sm:p-6"
+            >
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{stat.label}</p>
+              <p className="mt-1 text-2xl font-bold text-foreground sm:text-3xl">{stat.value}</p>
+              <p className="mt-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">{stat.change} YoY</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Pricing CTA */}
+      <section className="border-t">
+        <div className="mx-auto max-w-6xl px-4 py-16 sm:py-24">
+          <div className="mx-auto max-w-lg text-center">
+            <h2 className="font-[family-name:var(--font-playfair)] text-3xl font-bold text-foreground sm:text-4xl">
+              One report. One price.
+            </h2>
+            <div className="mt-6 rounded-2xl border-2 border-primary/20 bg-card p-8 shadow-lg shadow-primary/5">
+              <div className="flex items-baseline justify-center gap-1">
+                <span className="text-5xl font-bold text-foreground">$14</span>
+                <span className="text-2xl font-bold text-foreground">.99</span>
+                <span className="ml-1 text-sm text-muted-foreground">USD</span>
+              </div>
+              <p className="mt-2 text-sm text-muted-foreground">Per property analysis</p>
+
+              <div className="mt-6 space-y-3 text-left text-sm">
+                {[
+                  'Complete US mortgage math with DSCR analysis',
+                  'AI-powered Deal Doctor diagnosis with 3 fixes',
+                  'Refi scenarios, depreciation benefits, comparables',
+                  'Shareable report URL — access forever',
+                  'Instant delivery after payment',
+                ].map((item) => (
+                  <div key={item} className="flex items-start gap-2.5">
+                    <CheckCircle2Icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                    <span className="text-foreground">{item}</span>
+                  </div>
+                ))}
+              </div>
+
+              <Button
+                size="lg"
+                className="mt-8 w-full gap-2 text-base font-bold shadow-lg shadow-primary/25"
+                onClick={() => {
+                  document.querySelector('input')?.focus()
+                  window.scrollTo({ top: 0, behavior: 'smooth' })
+                }}
+              >
+                Analyze a Property
+                <ArrowRightIcon className="h-4 w-4" />
+              </Button>
+
+              <p className="mt-3 text-xs text-muted-foreground">
+                Secure payment &middot; No subscription, no account needed
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="border-t bg-card/30">
+        <div className="mx-auto max-w-6xl px-4 py-8">
+          <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
+            <div className="flex items-center gap-2">
+              <div className="flex h-6 w-6 items-center justify-center rounded bg-primary">
+                <svg className="h-3 w-3 text-primary-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                  <polyline points="9 22 9 12 15 12 15 22" />
+                </svg>
+              </div>
+              <span className="text-sm font-semibold text-foreground">DealDoctor</span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Not financial advice. Always consult a qualified professional before making investment decisions.
+            </p>
+          </div>
+        </div>
       </footer>
     </div>
-  );
+  )
 }
