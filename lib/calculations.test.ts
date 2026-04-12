@@ -11,6 +11,8 @@ import {
   findIRR,
   calculateHoldPeriodIRR,
   calculateFinancingAlternatives,
+  calculateSensitivity,
+  calculateRecommendedOffers,
   STATE_RULES,
   getStateFromZipCode,
 } from './calculations'
@@ -411,6 +413,130 @@ describe('calculateFinancingAlternatives', () => {
     const fha = alts.find((a) => a.id === 'fha')!
     const conv = alts.find((a) => a.id === 'conventional')!
     expect(fha.cashToClose).toBeLessThan(conv.cashToClose)
+  })
+})
+
+// --- SENSITIVITY ---
+// Guards the "how safe is this deal?" section. If these relationships break,
+// investors looking for stress-test signals will see nonsense.
+describe('calculateSensitivity', () => {
+  const baseInputs = {
+    offerPrice: 400_000,
+    downPaymentPct: 0.20,
+    annualRate: 0.0725,
+    monthlyRent: 3_000,
+    vacancyRate: 0.05,
+    monthlyExpenses: 900,
+    rehabBudget: 0,
+    annualDepreciation: 11_636,
+    cashToClose: 105_000,
+  }
+
+  it('includes all 7 scenarios (base + 6 perturbations)', () => {
+    const rows = calculateSensitivity(baseInputs)
+    expect(rows).toHaveLength(7)
+    const names = rows.map((r) => r.scenario.toLowerCase())
+    expect(names.some((n) => n.includes('base'))).toBe(true)
+    expect(names.some((n) => n.includes('rent −10'))).toBe(true)
+    expect(names.some((n) => n.includes('rent +10'))).toBe(true)
+    expect(names.some((n) => n.includes('rate +1'))).toBe(true)
+    expect(names.some((n) => n.includes('expenses +20'))).toBe(true)
+    expect(names.some((n) => n.includes('appreciation 0'))).toBe(true)
+    expect(names.some((n) => n.includes('appreciation 5'))).toBe(true)
+  })
+
+  it('rent −10% reduces monthly cash flow vs base', () => {
+    const rows = calculateSensitivity(baseInputs)
+    const base = rows.find((r) => r.scenario.toLowerCase().includes('base'))!
+    const rentDown = rows.find((r) => r.scenario.toLowerCase().includes('rent −10'))!
+    expect(rentDown.monthlyCashFlow).toBeLessThan(base.monthlyCashFlow)
+  })
+
+  it('rent +10% increases monthly cash flow vs base', () => {
+    const rows = calculateSensitivity(baseInputs)
+    const base = rows.find((r) => r.scenario.toLowerCase().includes('base'))!
+    const rentUp = rows.find((r) => r.scenario.toLowerCase().includes('rent +10'))!
+    expect(rentUp.monthlyCashFlow).toBeGreaterThan(base.monthlyCashFlow)
+  })
+
+  it('rate +1% reduces both cash flow and 5yr wealth', () => {
+    const rows = calculateSensitivity(baseInputs)
+    const base = rows.find((r) => r.scenario.toLowerCase().includes('base'))!
+    const rateUp = rows.find((r) => r.scenario.toLowerCase().includes('rate +1'))!
+    expect(rateUp.monthlyCashFlow).toBeLessThan(base.monthlyCashFlow)
+    expect(rateUp.fiveYrWealth).toBeLessThan(base.fiveYrWealth)
+  })
+
+  it('expenses +20% reduces cash flow and DSCR', () => {
+    const rows = calculateSensitivity(baseInputs)
+    const base = rows.find((r) => r.scenario.toLowerCase().includes('base'))!
+    const expUp = rows.find((r) => r.scenario.toLowerCase().includes('expenses +20'))!
+    expect(expUp.monthlyCashFlow).toBeLessThan(base.monthlyCashFlow)
+    expect(expUp.dscr).toBeLessThan(base.dscr)
+  })
+
+  it('appreciation 0% reduces 5yr wealth; appreciation 5% increases it', () => {
+    const rows = calculateSensitivity(baseInputs)
+    const base = rows.find((r) => r.scenario.toLowerCase().includes('base'))!
+    const apprZero = rows.find((r) => r.scenario.toLowerCase().includes('appreciation 0'))!
+    const apprFive = rows.find((r) => r.scenario.toLowerCase().includes('appreciation 5'))!
+    expect(apprZero.fiveYrWealth).toBeLessThan(base.fiveYrWealth)
+    expect(apprFive.fiveYrWealth).toBeGreaterThan(base.fiveYrWealth)
+  })
+
+  it('base row has zero delta vs itself', () => {
+    const rows = calculateSensitivity(baseInputs)
+    const base = rows.find((r) => r.scenario.toLowerCase().includes('base'))!
+    expect(base.cashFlowDelta).toBe(0)
+    expect(base.wealthDelta).toBe(0)
+  })
+})
+
+// --- RECOMMENDED OFFERS ---
+// Guards the "max offer for target return" feature — if this breaks, buyers
+// get false confidence offering too much.
+describe('calculateRecommendedOffers', () => {
+  const baseParams = {
+    monthlyRent: 3_000,
+    vacancyRate: 0.05,
+    annualRate: 0.0725,
+    downPaymentPct: 0.20,
+    rehabBudget: 0,
+    propertyTaxRate: 0.018,
+    monthlyInsurance: 400,
+    monthlyMaintenance: 150,
+    monthlyHOA: 0,
+    targetCoC: 0.08,
+    targetIRR: 0.10,
+  }
+
+  it('returns prices for all three targets', () => {
+    const r = calculateRecommendedOffers(baseParams)
+    expect(r.breakevenPrice).toBeGreaterThan(0)
+    // CoC/IRR may be 0 if no price clears the target — but should always be non-negative
+    expect(r.priceForCashOnCash.maxPrice).toBeGreaterThanOrEqual(0)
+    expect(r.priceForIRR.maxPrice).toBeGreaterThanOrEqual(0)
+  })
+
+  it('stricter CoC target yields lower max price (monotonic)', () => {
+    const loose = calculateRecommendedOffers({ ...baseParams, targetCoC: 0.04 })
+    const strict = calculateRecommendedOffers({ ...baseParams, targetCoC: 0.12 })
+    // Only compare when both produced a valid price
+    if (loose.priceForCashOnCash.maxPrice > 0 && strict.priceForCashOnCash.maxPrice > 0) {
+      expect(strict.priceForCashOnCash.maxPrice).toBeLessThan(loose.priceForCashOnCash.maxPrice)
+    }
+  })
+
+  it('breakeven price is positive for any cashflowing rent/rate combo', () => {
+    const r = calculateRecommendedOffers(baseParams)
+    expect(r.breakevenPrice).toBeGreaterThan(50_000)
+    expect(r.breakevenPrice).toBeLessThan(3_000_000)
+  })
+
+  it('higher rate lowers breakeven price (rate stress sensitivity)', () => {
+    const lowRate = calculateRecommendedOffers({ ...baseParams, annualRate: 0.05 })
+    const highRate = calculateRecommendedOffers({ ...baseParams, annualRate: 0.08 })
+    expect(highRate.breakevenPrice).toBeLessThan(lowRate.breakevenPrice)
   })
 })
 

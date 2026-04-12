@@ -13,6 +13,8 @@ import {
   projectWealth,
   calculateHoldPeriodIRR,
   calculateFinancingAlternatives,
+  calculateSensitivity,
+  calculateRecommendedOffers,
   STATE_RULES,
 } from './calculations'
 import { generateDealDoctor } from './dealDoctor'
@@ -124,6 +126,34 @@ export async function generateFullReport(uuid: string): Promise<void> {
     rehabBudget,
   })
 
+  // Sensitivity — rent, rate, expenses, and appreciation swings vs base
+  const sensitivity = calculateSensitivity({
+    offerPrice,
+    downPaymentPct,
+    annualRate: investorRate,
+    monthlyRent,
+    vacancyRate: 0.05,
+    monthlyExpenses,
+    rehabBudget,
+    annualDepreciation: ltrMetrics.annualDepreciation,
+    cashToClose: cashToClose.totalCashToClose,
+  })
+
+  // Recommended max offers for three target outcomes
+  const recommendedOffers = calculateRecommendedOffers({
+    monthlyRent,
+    vacancyRate: 0.05,
+    annualRate: investorRate,
+    downPaymentPct,
+    rehabBudget,
+    propertyTaxRate: stateRules.propertyTaxRate,
+    monthlyInsurance,
+    monthlyMaintenance,
+    monthlyHOA,
+    targetCoC: 0.08,
+    targetIRR: 0.10,
+  })
+
   // Deal Doctor AI narration. If the model fails (rate limit, quota exhausted,
   // network), we still return the rest of the report — the math and climate
   // sections stand on their own. Only the "3 fixes" section goes missing.
@@ -206,6 +236,8 @@ export async function generateFullReport(uuid: string): Promise<void> {
       },
     },
     financingAlternatives,
+    sensitivity,
+    recommendedOffers,
     rentComps,
     climate,
     ltr: ltrMetrics,

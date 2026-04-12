@@ -198,13 +198,20 @@ export async function getComparableSales(city: string, state: string, bedrooms: 
       if (!res.ok) return []
 
       const data = await res.json()
-      return (Array.isArray(data) ? data : []).slice(0, 4).map((p: any) => ({
-        address: p.formattedAddress || p.addressLine1,
-        estimated_value: p.price || p.estimatedValue || 0,
-        bedrooms: p.bedrooms,
-        bathrooms: p.bathrooms,
-        square_feet: p.squareFootage,
-      }))
+      return (Array.isArray(data) ? data : []).slice(0, 4).map((p: any) => {
+        const price = p.price || p.estimatedValue || 0
+        const sqft = p.squareFootage || 0
+        return {
+          address: p.formattedAddress || p.addressLine1,
+          estimated_value: price,
+          bedrooms: p.bedrooms,
+          bathrooms: p.bathrooms,
+          square_feet: sqft,
+          price_per_sqft: sqft > 0 && price > 0 ? Math.round(price / sqft) : null,
+          days_on_market: typeof p.daysOnMarket === 'number' ? p.daysOnMarket : null,
+          sold_date: p.lastSaleDate || p.soldDate || null,
+        }
+      })
     } catch {
       return []
     }

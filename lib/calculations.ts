@@ -426,6 +426,186 @@ export function calculateFinancingAlternatives(params: {
   })
 }
 
+// --- SENSITIVITY ANALYSIS ---
+// Re-runs the core metrics under adverse/favorable scenarios so investors can
+// see "how safe is this deal?" at a glance. Investors paying $8.99 for a report
+// routinely test: what if rent drops 10%? what if the refi rate is +100bps?
+export interface SensitivityRow {
+  scenario: string
+  description: string
+  monthlyCashFlow: number
+  cashFlowDelta: number       // vs base
+  dscr: number
+  fiveYrWealth: number
+  wealthDelta: number         // vs base
+  fiveYrIRR: number
+}
+
+export interface SensitivityInputs {
+  offerPrice: number
+  downPaymentPct: number
+  annualRate: number
+  monthlyRent: number
+  vacancyRate: number
+  monthlyExpenses: number
+  rehabBudget: number
+  annualDepreciation: number
+  cashToClose: number
+}
+
+function runSingleScenario(
+  inputs: SensitivityInputs,
+  mods: { rentMult: number; rateDelta: number; expenseMult: number; appreciation: number }
+): { monthlyCashFlow: number; dscr: number; fiveYrWealth: number; fiveYrIRR: number } {
+  const price = inputs.offerPrice
+  const loan = price * (1 - inputs.downPaymentPct)
+  const rate = inputs.annualRate + mods.rateDelta
+  const rent = inputs.monthlyRent * mods.rentMult
+  const expenses = inputs.monthlyExpenses * mods.expenseMult
+
+  const payment = calculateMortgage(loan, rate, 30)
+  const effectiveRent = rent * (1 - inputs.vacancyRate)
+  const monthlyCashFlow = Math.round(effectiveRent - payment - expenses)
+  const noi = (effectiveRent - expenses) * 12
+  const dscr = calculateDSCR(noi, payment * 12)
+
+  const projections = projectWealth({
+    offerPrice: price,
+    loanAmount: loan,
+    annualRate: rate,
+    amortYears: 30,
+    initialMonthlyRent: rent,
+    vacancyRate: inputs.vacancyRate,
+    initialMonthlyExpenses: expenses,
+    annualDepreciation: inputs.annualDepreciation,
+    appreciationRate: mods.appreciation,
+    years: 5,
+  })
+  const fiveYrWealth = projections[projections.length - 1]?.totalWealthBuilt ?? 0
+  const fiveYrIRR = calculateHoldPeriodIRR(inputs.cashToClose, projections)
+
+  return { monthlyCashFlow, dscr, fiveYrWealth, fiveYrIRR }
+}
+
+export function calculateSensitivity(inputs: SensitivityInputs): SensitivityRow[] {
+  const base = runSingleScenario(inputs, {
+    rentMult: 1, rateDelta: 0, expenseMult: 1, appreciation: 0.03,
+  })
+
+  const scenarios: Array<{
+    scenario: string
+    description: string
+    mods: { rentMult: number; rateDelta: number; expenseMult: number; appreciation: number }
+  }> = [
+    { scenario: 'Base case', description: 'Inputs as reported, 3% appreciation', mods: { rentMult: 1, rateDelta: 0, expenseMult: 1, appreciation: 0.03 } },
+    { scenario: 'Rent −10%', description: 'Softer rental market', mods: { rentMult: 0.9, rateDelta: 0, expenseMult: 1, appreciation: 0.03 } },
+    { scenario: 'Rent +10%', description: 'Rent outperforms', mods: { rentMult: 1.1, rateDelta: 0, expenseMult: 1, appreciation: 0.03 } },
+    { scenario: 'Rate +1%', description: 'Rate spike at refi', mods: { rentMult: 1, rateDelta: 0.01, expenseMult: 1, appreciation: 0.03 } },
+    { scenario: 'Expenses +20%', description: 'Inflation / vacancy spike', mods: { rentMult: 1, rateDelta: 0, expenseMult: 1.2, appreciation: 0.03 } },
+    { scenario: 'Appreciation 0%', description: 'Flat market', mods: { rentMult: 1, rateDelta: 0, expenseMult: 1, appreciation: 0 } },
+    { scenario: 'Appreciation 5%', description: 'Hot market', mods: { rentMult: 1, rateDelta: 0, expenseMult: 1, appreciation: 0.05 } },
+  ]
+
+  return scenarios.map((s) => {
+    const r = runSingleScenario(inputs, s.mods)
+    return {
+      scenario: s.scenario,
+      description: s.description,
+      monthlyCashFlow: r.monthlyCashFlow,
+      cashFlowDelta: r.monthlyCashFlow - base.monthlyCashFlow,
+      dscr: r.dscr,
+      fiveYrWealth: r.fiveYrWealth,
+      wealthDelta: r.fiveYrWealth - base.fiveYrWealth,
+      fiveYrIRR: r.fiveYrIRR,
+    }
+  })
+}
+
+// --- RECOMMENDED MAX OFFER (solve for price given a target metric) ---
+// Takes the deal's rent/rate/expenses as fixed and finds the max purchase price
+// that still clears a target metric. Turns the single breakeven number into
+// three actionable targets: "safe", "good", "great" offers.
+export interface RecommendedOffers {
+  breakevenPrice: number                               // CF ≥ 0
+  priceForCashOnCash: { target: number; maxPrice: number } // CoC ≥ target
+  priceForIRR: { target: number; maxPrice: number }        // 5yr IRR ≥ target
+}
+
+export function calculateRecommendedOffers(params: {
+  monthlyRent: number
+  vacancyRate: number
+  annualRate: number
+  downPaymentPct: number
+  rehabBudget: number
+  propertyTaxRate: number       // fraction of price, e.g. 0.018
+  monthlyInsurance: number      // absolute $
+  monthlyMaintenance: number
+  monthlyHOA: number
+  targetCoC?: number            // default 0.08
+  targetIRR?: number            // default 0.10
+}): RecommendedOffers {
+  const {
+    monthlyRent, vacancyRate, annualRate, downPaymentPct, rehabBudget,
+    propertyTaxRate, monthlyInsurance, monthlyMaintenance, monthlyHOA,
+    targetCoC = 0.08, targetIRR = 0.10,
+  } = params
+
+  const expensesAt = (price: number): number =>
+    Math.round((price * propertyTaxRate) / 12) + monthlyInsurance + monthlyMaintenance + monthlyHOA
+
+  const cocAt = (price: number): number => {
+    const loan = price * (1 - downPaymentPct)
+    const payment = calculateMortgage(loan, annualRate, 30)
+    const effRent = monthlyRent * (1 - vacancyRate)
+    const monthlyCF = effRent - payment - expensesAt(price)
+    const cashIn = price * downPaymentPct + rehabBudget
+    return cashIn > 0 ? (monthlyCF * 12) / cashIn : 0
+  }
+
+  const irrAt = (price: number): number => {
+    const loan = price * (1 - downPaymentPct)
+    const expenses = expensesAt(price)
+    const annualDep = Math.round((price * 0.80) / 27.5)
+    const projections = projectWealth({
+      offerPrice: price, loanAmount: loan, annualRate, amortYears: 30,
+      initialMonthlyRent: monthlyRent, vacancyRate,
+      initialMonthlyExpenses: expenses, annualDepreciation: annualDep,
+      years: 5,
+    })
+    // Simplified cash-to-close for the IRR denominator (2.5% closing, 6mo PITI)
+    const payment = calculateMortgage(loan, annualRate, 30)
+    const piti = payment + (price * propertyTaxRate) / 12 + monthlyInsurance
+    const cashIn = price * downPaymentPct + price * 0.025 + 1500 + piti * 6 + rehabBudget
+    return calculateHoldPeriodIRR(cashIn, projections)
+  }
+
+  // Binary search for max price where metricAt(price) >= target.
+  // Metrics are monotonically decreasing in price → crossover exists.
+  const bisectMaxPrice = (evaluate: (p: number) => number, target: number): number => {
+    let low = 30_000, high = 10_000_000
+    // If even the lowest price doesn't hit the target, return low (no valid offer)
+    if (evaluate(low) < target) return 0
+    for (let i = 0; i < 60; i++) {
+      const mid = (low + high) / 2
+      if (evaluate(mid) >= target) low = mid
+      else high = mid
+    }
+    return Math.round(((low + high) / 2) / 1000) * 1000
+  }
+
+  return {
+    breakevenPrice: calculateBreakEvenPrice(monthlyRent, annualRate),
+    priceForCashOnCash: {
+      target: targetCoC,
+      maxPrice: bisectMaxPrice(cocAt, targetCoC),
+    },
+    priceForIRR: {
+      target: targetIRR,
+      maxPrice: bisectMaxPrice(irrAt, targetIRR),
+    },
+  }
+}
+
 // --- STATE RULES ---
 export const STATE_RULES: Record<string, {
   name: string

@@ -2,6 +2,7 @@
 
 import { cn } from '@/lib/utils'
 import { DealDoctorSection } from './DealDoctor'
+import { WealthAreaChart, WealthCompositionPie, SensitivityTornado } from './ReportCharts'
 import {
   CheckCircle2Icon,
   XCircleIcon,
@@ -9,6 +10,8 @@ import {
   TrendingUpIcon,
   AlertTriangleIcon,
   PrinterIcon,
+  TargetIcon,
+  ActivityIcon,
 } from 'lucide-react'
 
 interface FullReportProps {
@@ -64,6 +67,8 @@ export function FullReport({ data }: FullReportProps) {
     cashToClose,
     wealthProjection,
     financingAlternatives,
+    sensitivity,
+    recommendedOffers,
     rentComps,
   } = data
 
@@ -164,6 +169,40 @@ export function FullReport({ data }: FullReportProps) {
         )}
       </section>
 
+      {/* Recommended Offer Prices — three actionable target prices */}
+      {recommendedOffers && (
+        <section className="mb-5 rounded-lg border border-border/70 bg-card p-5">
+          <div className="mb-3 flex items-center gap-2">
+            <TargetIcon className="h-4 w-4 text-primary" />
+            <Eyebrow>Recommended Max Offer</Eyebrow>
+          </div>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <OfferTile
+              label="Breakeven (CF ≥ $0)"
+              price={recommendedOffers.breakevenPrice}
+              description="Deal doesn't lose money monthly"
+              tone="neutral"
+            />
+            <OfferTile
+              label={`For ${(recommendedOffers.priceForCashOnCash.target * 100).toFixed(0)}% Cash-on-Cash`}
+              price={recommendedOffers.priceForCashOnCash.maxPrice}
+              description="Conventional investor target"
+              tone="good"
+            />
+            <OfferTile
+              label={`For ${(recommendedOffers.priceForIRR.target * 100).toFixed(0)}% IRR (5yr)`}
+              price={recommendedOffers.priceForIRR.maxPrice}
+              description="Strong deal threshold"
+              tone="great"
+            />
+          </div>
+          <p className="mt-3 text-[11px] text-muted-foreground">
+            Below these prices the deal clears each target. Use the lowest (Breakeven) as
+            your walk-away; aim for the tightest (IRR 10%) as your opening offer.
+          </p>
+        </section>
+      )}
+
       {/* Main (narrative) + Sidebar (reference) grid */}
       <div className="grid gap-5 lg:grid-cols-12">
         {/* ───────── MAIN COLUMN ───────── */}
@@ -243,10 +282,86 @@ export function FullReport({ data }: FullReportProps) {
             </Card>
           )}
 
-          {/* 5-Year Wealth — year-by-year */}
+          {/* Sensitivity / What-If Analysis */}
+          {sensitivity && sensitivity.length > 0 && (
+            <Card padded={false}>
+              <CardHeader
+                label="Sensitivity &amp; Stress Test"
+                hint="How safe is this deal if reality surprises you?"
+              />
+              <div className="overflow-x-auto px-5 pb-3">
+                <table className="w-full text-xs tabular-nums sm:text-sm">
+                  <thead>
+                    <tr className="border-b border-border/60 text-muted-foreground">
+                      <th className="pb-2 pr-3 text-left font-medium">Scenario</th>
+                      <th className="pb-2 text-right font-medium">Cash Flow</th>
+                      <th className="pb-2 text-right font-medium">DSCR</th>
+                      <th className="pb-2 text-right font-medium">5yr Wealth</th>
+                      <th className="pb-2 text-right font-medium">5yr IRR</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sensitivity.map((s: any, i: number) => {
+                      const isBase = s.scenario.toLowerCase().includes('base')
+                      return (
+                        <tr
+                          key={i}
+                          className={cn(
+                            'border-b border-border/30 last:border-b-0',
+                            isBase && 'bg-muted/30'
+                          )}
+                        >
+                          <td className="py-2 pr-3">
+                            <p className={cn('font-medium text-foreground', isBase && 'font-bold')}>
+                              {s.scenario}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground">{s.description}</p>
+                          </td>
+                          <td
+                            className={cn(
+                              'py-2 text-right font-medium',
+                              s.monthlyCashFlow >= 0
+                                ? 'text-emerald-700 dark:text-emerald-400'
+                                : 'text-red-700 dark:text-red-400'
+                            )}
+                          >
+                            {s.monthlyCashFlow >= 0 ? '+' : ''}
+                            {fmt(s.monthlyCashFlow)}
+                          </td>
+                          <td
+                            className={cn(
+                              'py-2 text-right',
+                              s.dscr >= 1.25 ? 'text-emerald-700 dark:text-emerald-400' : ''
+                            )}
+                          >
+                            {s.dscr}x
+                          </td>
+                          <td className="py-2 text-right">{fmt(s.fiveYrWealth)}</td>
+                          <td className="py-2 text-right font-medium">
+                            {(s.fiveYrIRR * 100).toFixed(1)}%
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div className="border-t border-border/40 px-5 py-4">
+                <Eyebrow>Δ 5-year wealth vs base</Eyebrow>
+                <div className="mt-2">
+                  <SensitivityTornado rows={sensitivity as any} />
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* 5-Year Wealth — chart + year-by-year table */}
           {wealthProjection && (
             <Card padded={false}>
-              <CardHeader label="5-Year Projection" hint="Year-by-year; numbers drive the hero above" />
+              <CardHeader label="5-Year Wealth Build" hint="Cumulative cash flow + equity + tax shield" />
+              <div className="px-5 pb-3">
+                <WealthAreaChart years={wealthProjection.years} />
+              </div>
               <div className="overflow-x-auto px-5 pb-5">
                 <table className="w-full text-xs tabular-nums sm:text-sm">
                   <thead>
@@ -341,10 +456,20 @@ export function FullReport({ data }: FullReportProps) {
                       <span className="text-sm font-bold text-foreground">
                         {fmt(comp.estimated_value)}
                       </span>
+                      {comp.price_per_sqft != null && (
+                        <span className="rounded bg-muted/60 px-1 font-semibold text-foreground">
+                          ${comp.price_per_sqft}/sqft
+                        </span>
+                      )}
                       <span>
                         {comp.bedrooms}bd/{comp.bathrooms}ba
                       </span>
                       {comp.square_feet && <span>{comp.square_feet.toLocaleString()} sqft</span>}
+                      {typeof comp.days_on_market === 'number' && (
+                        <span>
+                          {comp.days_on_market} DOM
+                        </span>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -373,6 +498,16 @@ export function FullReport({ data }: FullReportProps) {
               <MiniStat label="Cash-on-Cash" value={`${ltr.cashOnCashReturn}%`} />
             </div>
           </Card>
+
+          {/* Wealth composition pie — where the 5yr wealth actually comes from */}
+          {wealthProjection && (
+            <Card>
+              <CardHeader label="Where Wealth Comes From" />
+              <div className="mt-2">
+                <WealthCompositionPie hero={wealthProjection.hero} />
+              </div>
+            </Card>
+          )}
 
           {/* Cash to Close */}
           {cashToClose && (
@@ -747,6 +882,38 @@ function ScoreRow({ label, score }: { label: string; score: number }) {
       <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
         <div className={cn('h-full', color)} style={{ width: `${pct}%` }} />
       </div>
+    </div>
+  )
+}
+
+function OfferTile({
+  label,
+  price,
+  description,
+  tone,
+}: {
+  label: string
+  price: number
+  description: string
+  tone: 'neutral' | 'good' | 'great'
+}) {
+  const borderTone =
+    tone === 'great' ? 'border-primary/50 bg-primary/5'
+    : tone === 'good' ? 'border-emerald-500/40 bg-emerald-500/5'
+    : 'border-border/70 bg-background/40'
+  const priceTone =
+    tone === 'great' ? 'text-primary'
+    : tone === 'good' ? 'text-emerald-700 dark:text-emerald-400'
+    : 'text-foreground'
+  return (
+    <div className={cn('rounded-lg border px-4 py-3', borderTone)}>
+      <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+        {label}
+      </p>
+      <p className={cn('mt-1 font-[family-name:var(--font-playfair)] text-2xl font-bold tabular-nums', priceTone)}>
+        {price > 0 ? fmt(price) : '—'}
+      </p>
+      <p className="mt-0.5 text-[11px] text-muted-foreground">{description}</p>
     </div>
   )
 }

@@ -12,6 +12,10 @@ export interface DealDoctorOutput {
   fixes: DealFix[]
   bottomLine: string
   tonePositive: boolean
+  pros: string[]
+  cons: string[]
+  negotiationLevers: { lever: string; script: string }[]
+  inspectionRedFlags: { area: string; why: string }[]
 }
 
 export interface DealFix {
@@ -90,9 +94,25 @@ ${stateRules.rentControl ? `- Rent control state: ${stateRules.name}` : ''}
 - Approx property tax rate: ${(stateRules.propertyTaxRate * 100).toFixed(1)}%
 ${climateBlock}
 
-WRITE exactly this structure (no markdown, plain text only):
+WRITE exactly this structure (no markdown, plain text only, ONE value per line):
 
 DIAGNOSIS: [2-3 sentences. Plain English. Name the specific problem. Use the exact numbers above. No jargon. Tone: honest friend who knows real estate.]
+
+PROS: [comma-separated list of 3-5 genuine positives about this specific deal. Reference actual numbers or location facts. No fluff.]
+
+CONS: [comma-separated list of 3-5 specific concerns. Reference actual numbers or location facts. No generic advice.]
+
+NEG_1_LEVER: [Short concession to ask the seller for — e.g. "Closing costs credit", "Inspection repairs credit", "Price reduction for rehab"]
+NEG_1_SCRIPT: [One sentence the buyer can actually say — specific dollar amount tied to a real issue]
+NEG_2_LEVER: [Different negotiation angle]
+NEG_2_SCRIPT: [Specific script]
+NEG_3_LEVER: [Third angle]
+NEG_3_SCRIPT: [Specific script]
+
+INSPECT_1_AREA: [Short area name — e.g. "Foundation", "Roof", "HVAC", "Plumbing", "Windows", "Electrical"]
+INSPECT_1_WHY: [One sentence on WHY this property specifically is at risk — tie to year built, location climate, or property type]
+INSPECT_2_AREA: [Different area]
+INSPECT_2_WHY: [Property-specific reason]
 
 FIX_1_TITLE: [Short action title]
 FIX_1_SUBTITLE: [Effort level and one-line context]
@@ -119,6 +139,9 @@ BOTTOM_LINE: [Single sentence starting with "Bottom line:" — what should they 
 
 Rules:
 - Never invent numbers. Use only the values provided above.
+- PROS and CONS must reference the actual provided data (cash flow, DSCR, rate, climate, state rules). Do NOT list generic "good property" or "be careful" items.
+- Negotiation scripts must name a SPECIFIC dollar amount when possible (tied to a real issue). Generic "negotiate hard" is worthless.
+- Inspection red flags must be property-specific. A 1950s home in FL has different risks than a 2015 home in AZ. Tie to year built + climate + property type.
 - Fix 1: lowest effort path to a working deal
 - Fix 2: value-add or structural change
 - Fix 3: strategic pivot (different strategy or market redirect)
@@ -156,10 +179,27 @@ function parseDealDoctorResponse(text: string): DealDoctorOutput {
     }).filter(d => d.label && d.value)
   }
 
+  const splitCommaList = (raw: string): string[] =>
+    raw.split(',').map((s) => s.trim()).filter(Boolean)
+
   return {
     diagnosis: get('DIAGNOSIS'),
     tonePositive: text.includes('STRONG_DEAL') || get('DIAGNOSIS').toLowerCase().includes('strong'),
     bottomLine: get('BOTTOM_LINE'),
+    pros: splitCommaList(get('PROS')),
+    cons: splitCommaList(get('CONS')),
+    negotiationLevers: [1, 2, 3]
+      .map((n) => ({
+        lever: get(`NEG_${n}_LEVER`),
+        script: get(`NEG_${n}_SCRIPT`),
+      }))
+      .filter((x) => x.lever && x.script),
+    inspectionRedFlags: [1, 2]
+      .map((n) => ({
+        area: get(`INSPECT_${n}_AREA`),
+        why: get(`INSPECT_${n}_WHY`),
+      }))
+      .filter((x) => x.area && x.why),
     fixes: [1, 2, 3].map(n => ({
       title: get(`FIX_${n}_TITLE`),
       subtitle: get(`FIX_${n}_SUBTITLE`),
