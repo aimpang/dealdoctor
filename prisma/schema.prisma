@@ -7,6 +7,30 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Buyers of single/5-pack/unlimited tiers. Email-keyed, no auth required.
+// An opaque accessToken (random 32 bytes hex) is the "session" identifier —
+// we set it as a cookie so subsequent /api/preview calls on the same browser
+// can auto-pay reports against the customer's remaining quota. The same token
+// also backs the magic-link recovery flow: users lose their URL, enter their
+// email, we email them a link that re-sets the cookie on any device.
+model Customer {
+  id                      String    @id @default(cuid())
+  email                   String    @unique
+  accessToken             String    @unique
+  entitlementType         String?   // 'single' | '5pack' | 'unlimited'
+  reportsRemaining        Int       @default(0)    // for 5-pack
+  unlimitedUntil          DateTime?                  // for unlimited subscription
+  lemonSqueezyCustomerId  String?
+  lemonSqueezySubscriptionId String?
+  subscriptionStatus      String?   // 'active' | 'cancelled' | 'expired'
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  reports                 Report[]
+
+  @@index([accessToken])
+}
+
 model Report {
   id              String   @id @default(uuid())
   address         String
@@ -14,6 +38,12 @@ model Report {
   state           String
   zipCode         String
   country         String   @default("US")
+
+  // Link back to the customer whose entitlement paid for this report.
+  // Null for reports that haven't been paid yet (or were paid before the
+  // customer system existed, pre-2026-04-13 migration).
+  customerId      String?
+  customer        Customer? @relation(fields: [customerId], references: [id])
 
   // Teaser data (generated free)
   teaserData      String?  // JSON: {estimatedValue, estimatedRent, neighbourhoodScore}

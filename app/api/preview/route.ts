@@ -5,6 +5,12 @@ import { getStateFromZipCode, calculateBreakEvenPrice } from '@/lib/calculations
 import { prisma } from '@/lib/db'
 import { randomUUID } from 'crypto'
 import { rateLimit } from '@/lib/rateLimit'
+import {
+  getCurrentCustomer,
+  hasActiveEntitlement,
+  debitForNewReport,
+} from '@/lib/entitlements'
+import { generateFullReport } from '@/lib/reportGenerator'
 
 export async function POST(req: NextRequest) {
   // Rate limit: 3 previews per IP per day
@@ -70,6 +76,12 @@ export async function POST(req: NextRequest) {
       pmmsRate: rates.mortgage30yr, // reference: owner-occupied PMMS
     }
 
+    // If the user has an active customer cookie with remaining quota, auto-pay
+    // this new report. Solves the "I bought a 5-pack; why am I hitting the paywall
+    // on my second search?" bug. Fires the full-report generator in the background.
+    const customer = await getCurrentCustomer()
+    const entitlement = customer ? hasActiveEntitlement(customer) : { active: false }
+
     await prisma.report.create({
       data: {
         id: uuid,
@@ -77,9 +89,36 @@ export async function POST(req: NextRequest) {
         city: property.city,
         state,
         zipCode: property.zip_code,
-        teaserData: JSON.stringify(teaserData)
-      }
+        teaserData: JSON.stringify(teaserData),
+        ...(entitlement.active && customer
+          ? {
+              paid: true,
+              customerId: customer.id,
+              customerEmail: customer.email,
+              paidAt: new Date(),
+            }
+          : {}),
+      },
     })
+
+    let autopaid: null | {
+      entitlement: 'unlimited' | '5pack'
+      remaining?: number
+      until?: string
+    } = null
+
+    if (entitlement.active && customer) {
+      const debit = await debitForNewReport(customer)
+      autopaid = {
+        entitlement: entitlement.type!,
+        remaining: debit.newRemaining,
+        until: entitlement.until?.toISOString(),
+      }
+      // Generate full report async — don't block preview response
+      generateFullReport(uuid).catch((err) =>
+        console.error('[preview] auto-pay report generation failed for', uuid, err)
+      )
+    }
 
     return NextResponse.json({
       uuid,
@@ -90,8 +129,9 @@ export async function POST(req: NextRequest) {
         state,
         type: property.property_type,
         bedrooms: property.bedrooms,
-        bathrooms: property.bathrooms
-      }
+        bathrooms: property.bathrooms,
+      },
+      autopaid, // null when no entitlement; present when auto-unlocked
     })
   } catch (err: any) {
     console.error('Preview error:', err)

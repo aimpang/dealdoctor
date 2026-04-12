@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { generateFullReport } from '@/lib/reportGenerator'
+import { CUSTOMER_COOKIE, setCustomerCookie } from '@/lib/entitlements'
 
 export async function GET(
   req: NextRequest,
@@ -32,7 +33,7 @@ export async function GET(
     }
 
     const r = report as any
-    return NextResponse.json({
+    const response = NextResponse.json({
       id: report.id,
       address: report.address,
       city: report.city,
@@ -44,6 +45,26 @@ export async function GET(
       photoFindings: r.photoFindings ?? null,
       createdAt: report.createdAt,
     })
+
+    // When the buyer lands on /report/[uuid]?success=true after LemonSqueezy
+    // checkout, set the customer cookie so subsequent reports flow through the
+    // entitlement system. Only fires if: (a) success=true param is present,
+    // (b) report is paid, (c) report is linked to a customer, (d) no cookie
+    // already set. Once set, the user's 5-pack / Unlimited quota applies
+    // automatically on their next preview search.
+    const success = searchParams.get('success') === 'true'
+    const existingCookie = req.cookies.get(CUSTOMER_COOKIE)?.value
+    if (success && report.paid && r.customerId && !existingCookie) {
+      const customer = await prisma.customer.findUnique({
+        where: { id: r.customerId },
+        select: { accessToken: true },
+      })
+      if (customer?.accessToken) {
+        setCustomerCookie(response, customer.accessToken)
+      }
+    }
+
+    return response
   } catch (err: any) {
     // The outer catch covers anything — DB, AI, network, climate lookup, etc.
     // "DB error" as a label was misleading; upstream bubbles up the real message.
