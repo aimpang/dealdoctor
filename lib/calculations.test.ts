@@ -14,6 +14,7 @@ import {
   calculateSensitivity,
   calculateRecommendedOffers,
   calculateSTRProjection,
+  getStatePropertyTaxGrowth,
   STATE_RULES,
   getStateFromZipCode,
 } from './calculations'
@@ -538,6 +539,34 @@ describe('calculateRecommendedOffers', () => {
     const lowRate = calculateRecommendedOffers({ ...baseParams, annualRate: 0.05 })
     const highRate = calculateRecommendedOffers({ ...baseParams, annualRate: 0.08 })
     expect(highRate.breakevenPrice).toBeLessThan(lowRate.breakevenPrice)
+  })
+})
+
+// --- STATE PROPERTY TAX GROWTH ---
+describe('getStatePropertyTaxGrowth', () => {
+  it('CA Prop 13 caps at 2%', () => {
+    expect(getStatePropertyTaxGrowth('CA')).toBe(0.02)
+  })
+  it('TX has no cap on investor properties — higher than default', () => {
+    expect(getStatePropertyTaxGrowth('TX')).toBeGreaterThan(0.03)
+  })
+  it('FL non-homestead sees materially higher growth than default', () => {
+    expect(getStatePropertyTaxGrowth('FL')).toBeGreaterThan(0.03)
+  })
+  it('states with assessment caps are below default (MI, OR, AZ, CA)', () => {
+    for (const s of ['MI', 'OR', 'AZ', 'CA']) {
+      expect(getStatePropertyTaxGrowth(s)).toBeLessThanOrEqual(0.03)
+    }
+  })
+  it('unknown state falls back to 3%', () => {
+    expect(getStatePropertyTaxGrowth('ZZ')).toBe(0.03)
+  })
+  it('every value is in a sane band (0%-10%)', () => {
+    for (const s of ['CA', 'TX', 'FL', 'NY', 'OH', 'GA', 'CO', 'WA', 'IL', 'AZ']) {
+      const v = getStatePropertyTaxGrowth(s)
+      expect(v).toBeGreaterThanOrEqual(0)
+      expect(v).toBeLessThanOrEqual(0.10)
+    }
   })
 })
 

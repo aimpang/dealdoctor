@@ -685,6 +685,72 @@ export function calculateRecommendedOffers(params: {
   }
 }
 
+// --- STATE PROPERTY TAX GROWTH RATES ---
+// Annual rate at which property tax can realistically grow, reflecting each
+// state's reassessment regime. Matters for 5-year wealth projection because
+// CA (Prop 13, 2% cap) and TX (no cap on investment properties, hot market)
+// produce very different expense trajectories from a generic 3% default.
+//
+// Values are intentionally conservative — tuned to historical averages, not
+// worst-case market spikes. Where a cap exists, we use the cap's effective
+// realistic rate, not the cap ceiling itself.
+const STATE_TAX_GROWTH: Record<string, number> = {
+  CA: 0.02,  // Prop 13: 2% cap on assessment increases
+  AZ: 0.02,  // Prop 117: 5% LPV cap, ~2% real growth
+  OR: 0.03,  // Measure 50: 3% cap on LPV
+  MI: 0.02,  // Headlee + Prop A: min(CPI, 5%)
+  MA: 0.025, // Prop 2½ cap
+  FL: 0.06,  // Non-homestead 10% cap; realistic reassessment ~6%/yr
+  TX: 0.06,  // No cap on investor properties; hot-market reassessments
+  GA: 0.04,
+  CO: 0.04,  // Gallagher amendment repealed; assessments catching up
+  ID: 0.04,
+  NC: 0.03,
+  SC: 0.03,
+  TN: 0.03,
+  NV: 0.03,
+  UT: 0.03,
+  NM: 0.03,
+  WA: 0.04,
+  NY: 0.03,  // Varies by county; NYC has caps, upstate doesn't
+  NJ: 0.04,  // No cap, high taxes already
+  IL: 0.04,  // Full reassessment, high taxes
+  OH: 0.03,
+  IN: 0.03,
+  PA: 0.03,
+  WI: 0.03,
+  MN: 0.03,
+  MD: 0.03,
+  VA: 0.03,
+  DE: 0.03,
+  KY: 0.03,
+  AL: 0.03,
+  MS: 0.03,
+  LA: 0.03,
+  AR: 0.03,
+  OK: 0.03,
+  KS: 0.03,
+  MO: 0.03,
+  IA: 0.03,
+  NE: 0.03,
+  SD: 0.03,
+  ND: 0.03,
+  MT: 0.03,
+  WY: 0.02,
+  HI: 0.03,
+  AK: 0.03,
+  ME: 0.03,
+  NH: 0.03,
+  VT: 0.03,
+  RI: 0.03,
+  CT: 0.03,
+  WV: 0.03,
+  DC: 0.03,
+}
+export function getStatePropertyTaxGrowth(state: string): number {
+  return STATE_TAX_GROWTH[state] ?? 0.03
+}
+
 // --- STATE RULES ---
 export const STATE_RULES: Record<string, {
   name: string

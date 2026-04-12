@@ -96,6 +96,7 @@ export function FullReport({ data, uuid }: FullReportProps) {
     recommendedOffers,
     strProjection,
     marketSnapshot,
+    locationSignals,
     rentComps,
   } = data
 
@@ -515,10 +516,26 @@ export function FullReport({ data, uuid }: FullReportProps) {
                   </tbody>
                 </table>
                 <p className="mt-3 text-[10px] text-muted-foreground">
-                  {pct(wealthProjection.assumptions.rentGrowthRate, 1)} rent growth,{' '}
-                  {pct(wealthProjection.assumptions.appreciationRate, 1)} appreciation,{' '}
-                  {pct(wealthProjection.assumptions.expenseGrowthRate, 1)} expense growth,{' '}
-                  {pct(wealthProjection.assumptions.effectiveTaxRate, 0)} effective tax rate.
+                  {pct(wealthProjection.assumptions.rentGrowthRate, 1)} rent growth
+                  {wealthProjection.assumptions.rentGrowthSource === 'zip-12mo' && (
+                    <span className="ml-1 rounded bg-emerald-500/10 px-1 text-[8px] font-semibold text-emerald-700 dark:text-emerald-400">
+                      zip
+                    </span>
+                  )}
+                  ,{' '}{pct(wealthProjection.assumptions.appreciationRate, 1)} appreciation
+                  {wealthProjection.assumptions.appreciationSource === 'zip-12mo' && (
+                    <span className="ml-1 rounded bg-emerald-500/10 px-1 text-[8px] font-semibold text-emerald-700 dark:text-emerald-400">
+                      zip
+                    </span>
+                  )}
+                  ,{' '}{pct(wealthProjection.assumptions.expenseGrowthRate, 1)} expense growth
+                  {wealthProjection.assumptions.stateTaxGrowth != null &&
+                    wealthProjection.assumptions.stateTaxGrowth !== 0.03 && (
+                      <span className="ml-1 rounded bg-emerald-500/10 px-1 text-[8px] font-semibold text-emerald-700 dark:text-emerald-400">
+                        {property.state} tax modeled
+                      </span>
+                    )}
+                  ,{' '}{pct(wealthProjection.assumptions.effectiveTaxRate, 0)} effective tax rate.
                 </p>
               </div>
             </Card>
@@ -738,6 +755,56 @@ export function FullReport({ data, uuid }: FullReportProps) {
               <MiniStat label="Cash-on-Cash" value={`${ltr.cashOnCashReturn}%`} />
             </div>
           </Card>
+
+          {/* Location Quality — walkability + key amenities nearby */}
+          {locationSignals && (
+            <Card>
+              <CardHeader label="Location Quality" />
+              <div className="mt-2 flex items-baseline justify-between">
+                <div>
+                  <p className="font-[family-name:var(--font-playfair)] text-3xl font-bold tabular-nums text-foreground">
+                    {locationSignals.walkabilityScore}
+                  </p>
+                  <p className="text-[11px] font-medium text-muted-foreground">
+                    {locationSignals.walkabilityLabel}
+                  </p>
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  ~½ mile radius
+                </p>
+              </div>
+
+              <div className="mt-3 space-y-1.5 text-sm">
+                {(
+                  [
+                    ['groceries', 'Grocery'],
+                    ['restaurants', 'Food'],
+                    ['transit', 'Transit stops'],
+                    ['schools', 'Schools'],
+                    ['parks', 'Parks'],
+                  ] as const
+                ).map(([key, label]) => {
+                  const a = locationSignals.amenities[key]
+                  if (a.count === 0) return null
+                  return (
+                    <div key={key} className="flex items-center justify-between text-[12px]">
+                      <span className="text-muted-foreground">{label}</span>
+                      <span className="tabular-nums text-foreground">
+                        <span className="font-semibold">{a.count}</span>
+                        {a.nearestMeters != null && (
+                          <span className="ml-1.5 text-[10px] text-muted-foreground">
+                            nearest {a.nearestMeters < 160
+                              ? `${a.nearestMeters}m`
+                              : `${(a.nearestMeters / 1609.344).toFixed(1)}mi`}
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </Card>
+          )}
 
           {/* Wealth composition pie — where the 5yr wealth actually comes from */}
           {!hideInLenderView('composition') && wealthProjection && (
@@ -1021,8 +1088,11 @@ export function FullReport({ data, uuid }: FullReportProps) {
           Data Sources
         </p>
         <p>
-          Property / rent / value / comps — Rentcast AVM. Flood zone — FEMA NFHL. Rates — Freddie
+          Property / rent / value — Rentcast AVM. Sale comps — Rentcast sold records within ~1 mile
+          of subject property. Zip-level market trends — Rentcast /markets. Flood zone — FEMA NFHL.
+          Location signals (walkability, amenities) — Mapbox Tilequery on Streets v8. Rates — Freddie
           Mac PMMS + strategy-adjusted investor premium. Insurance baseline — NAIC state averages.
+          State property-tax growth modeled per jurisdiction (Prop 13, Save-Our-Homes, TX uncapped).
           Climate scores, STR estimates, breakeven — DealDoctor models. Narrative + photo review —
           Claude Haiku 4.5. Full methodology at{' '}
           <a href="/methodology" className="underline hover:text-foreground">

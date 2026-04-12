@@ -17,6 +17,9 @@ export interface PropertyData {
   year_built: number
   square_feet: number
   lot_size?: number
+  // Coordinates from Rentcast — used for address-adjacent comp search + climate
+  latitude?: number
+  longitude?: number
   // Optional county-record fields — present when Rentcast has them
   annual_property_tax?: number     // actual most-recent-year tax (not state avg × price)
   hoa_fee_monthly?: number         // monthly HOA dues if captured
@@ -103,6 +106,8 @@ async function searchPropertyRentcast(address: string): Promise<PropertyData | n
       year_built: prop.yearBuilt || 2000,
       square_feet: prop.squareFootage || 1800,
       lot_size: prop.lotSize,
+      latitude: typeof prop.latitude === 'number' ? prop.latitude : undefined,
+      longitude: typeof prop.longitude === 'number' ? prop.longitude : undefined,
       annual_property_tax: annualPropertyTax,
       hoa_fee_monthly: hoaMonthly,
     }
@@ -249,15 +254,29 @@ export async function getRentEstimate(address: string, bedrooms: number): Promis
   }
 }
 
-// Get comparable sales in area
-export async function getComparableSales(city: string, state: string, bedrooms: number) {
+// Get comparable sales in area. If lat/lng are provided, we filter by radius
+// around the subject property (much more useful than city-wide bedroom-median).
+// Falls back to city+bedroom when coordinates aren't available.
+export async function getComparableSales(
+  city: string,
+  state: string,
+  bedrooms: number,
+  coords?: { lat: number; lng: number } | null,
+  radiusMiles: number = 1.0
+) {
   if (API_KEY && API_KEY !== 'your_key_here') {
     try {
       const url = new URL('https://api.rentcast.io/v1/properties')
-      url.searchParams.set('city', city)
-      url.searchParams.set('state', state)
+      if (coords) {
+        url.searchParams.set('latitude', String(coords.lat))
+        url.searchParams.set('longitude', String(coords.lng))
+        url.searchParams.set('radius', String(radiusMiles))
+      } else {
+        url.searchParams.set('city', city)
+        url.searchParams.set('state', state)
+      }
       url.searchParams.set('bedrooms', bedrooms.toString())
-      url.searchParams.set('limit', '5')
+      url.searchParams.set('limit', '8')
       url.searchParams.set('status', 'Sold')
 
       const res = await fetch(url.toString(), {

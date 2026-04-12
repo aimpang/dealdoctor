@@ -17,10 +17,12 @@ import {
   calculateSensitivity,
   calculateRecommendedOffers,
   calculateSTRProjection,
+  getStatePropertyTaxGrowth,
   STATE_RULES,
 } from './calculations'
 import { generateDealDoctor, estimateSTRRevenue } from './dealDoctor'
 import { getClimateAndInsurance } from './climateRisk'
+import { getLocationSignals } from './locationSignals'
 
 export async function generateFullReport(uuid: string): Promise<void> {
   const report = await prisma.report.findUnique({ where: { id: uuid } })
@@ -30,12 +32,17 @@ export async function generateFullReport(uuid: string): Promise<void> {
   const property = await searchProperty(report.address)
   if (!property) return
 
+  // Use Rentcast-provided lat/lng for proximity-based comp search — address-
+  // adjacent comps (≤1mi) are far more predictive than city-wide bedroom medians.
+  const coords =
+    typeof property.latitude === 'number' && typeof property.longitude === 'number'
+      ? { lat: property.latitude, lng: property.longitude }
+      : null
+
   // Fetch rent estimate, sale comps, rent comps, and market snapshot in parallel.
-  // Rent comps close the trust gap on rent estimates; market snapshot adds the
-  // zip-level growth/DOM context investors ask for.
   const [rentEstimate, saleComps, rentComps, marketSnapshot] = await Promise.all([
     getRentEstimate(report.address, property.bedrooms),
-    getComparableSales(report.city, report.state, property.bedrooms),
+    getComparableSales(report.city, report.state, property.bedrooms, coords, 1.0),
     getRentComps(report.address, property.bedrooms),
     getMarketSnapshot(report.zipCode),
   ])
@@ -52,10 +59,13 @@ export async function generateFullReport(uuid: string): Promise<void> {
   const monthlyRent = rentEstimate?.estimated_rent || askPrice * 0.005
   const stateRules = STATE_RULES[report.state] || STATE_RULES['TX']
 
-  // Climate + insurance (real estimate based on state + flood zone + dwelling value)
-  const climate = await getClimateAndInsurance(
-    report.address, report.state, report.zipCode, offerPrice
-  )
+  // Climate + insurance (flood zone + state insurance + hazard scores)
+  // + Location quality (walkability from Mapbox Tilequery) — run in parallel
+  // since they're both network-bound on coordinates/address.
+  const [climate, locationSignals] = await Promise.all([
+    getClimateAndInsurance(report.address, report.state, report.zipCode, offerPrice),
+    coords ? getLocationSignals(coords.lat, coords.lng) : Promise.resolve(null),
+  ])
   const monthlyInsurance = Math.round(climate.estimatedAnnualInsurance / 12)
 
   // Property tax: prefer actual county record from Rentcast, fall back to state avg × price.
@@ -105,7 +115,27 @@ export async function generateFullReport(uuid: string): Promise<void> {
   const monthlyPITI = ltrMetrics.monthlyMortgagePayment + monthlyPropertyTax + monthlyInsurance
   const cashToClose = calculateCashToClose(offerPrice, downPaymentPct, rehabBudget, monthlyPITI)
 
-  // 5-year wealth projection — cash flow + paydown + appreciation + tax shield
+  // 5-year wealth projection — cash flow + paydown + appreciation + tax shield.
+  // When we have zip-level market data from Rentcast, use the actual 12-month
+  // rent and price growth instead of hardcoded 3%. Clamped to a sane band so
+  // a single wild data point can't produce an $8M projection.
+  const clampGrowth = (x: number | null | undefined, fallback: number): number => {
+    if (x == null || !Number.isFinite(x)) return fallback
+    return Math.max(-0.05, Math.min(0.15, x))
+  }
+  const rentGrowthRate = clampGrowth(marketSnapshot?.rentGrowth12mo, 0.03)
+  const appreciationRate = clampGrowth(marketSnapshot?.salePriceGrowth12mo, 0.03)
+
+  // Blended expense growth: property tax grows at state-specific rate (Prop 13
+  // in CA, no cap in TX, etc), insurance at ~6%/yr (recent trend), maintenance
+  // at ~2.5%/yr. Weight by each component's share of total monthly expenses.
+  const stateTaxGrowth = getStatePropertyTaxGrowth(report.state)
+  const taxWeight = monthlyPropertyTax / monthlyExpenses
+  const insWeight = monthlyInsurance / monthlyExpenses
+  const otherWeight = 1 - taxWeight - insWeight
+  const blendedExpenseGrowth =
+    stateTaxGrowth * taxWeight + 0.06 * insWeight + 0.025 * otherWeight
+
   const projections = projectWealth({
     offerPrice,
     loanAmount: ltrMetrics.loanAmount,
@@ -115,6 +145,9 @@ export async function generateFullReport(uuid: string): Promise<void> {
     vacancyRate: 0.05,
     initialMonthlyExpenses: monthlyExpenses,
     annualDepreciation: ltrMetrics.annualDepreciation,
+    rentGrowthRate,
+    appreciationRate,
+    expenseGrowthRate: blendedExpenseGrowth,
     years: 5,
   })
   const year5 = projections[projections.length - 1]
@@ -252,11 +285,14 @@ export async function generateFullReport(uuid: string): Promise<void> {
         propertyValue5yr: year5?.propertyValue ?? 0,
       },
       assumptions: {
-        rentGrowthRate: 0.03,
-        appreciationRate: 0.03,
-        expenseGrowthRate: 0.025,
+        rentGrowthRate,
+        appreciationRate,
+        expenseGrowthRate: blendedExpenseGrowth,
+        stateTaxGrowth,
         effectiveTaxRate: 0.28,
         saleCostPct: 0.06,
+        rentGrowthSource: marketSnapshot?.rentGrowth12mo != null ? 'zip-12mo' : 'default-3pct',
+        appreciationSource: marketSnapshot?.salePriceGrowth12mo != null ? 'zip-12mo' : 'default-3pct',
       },
     },
     financingAlternatives,
@@ -264,6 +300,7 @@ export async function generateFullReport(uuid: string): Promise<void> {
     recommendedOffers,
     strProjection,
     marketSnapshot,
+    locationSignals,
     rentComps,
     climate,
     ltr: ltrMetrics,
