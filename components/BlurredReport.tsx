@@ -14,22 +14,22 @@ const plans = [
   {
     id: 'single',
     name: 'Single Report',
-    price: '$14.99',
+    price: '$8.99',
     desc: 'This property',
     popular: false,
   },
   {
     id: '5pack',
-    name: '5 Reports',
-    price: '$44.99',
-    desc: '$9/report',
+    name: 'Bundle 5-Pack',
+    price: '$28.99',
+    desc: '$5.80/report',
     popular: true,
   },
   {
     id: 'unlimited',
-    name: 'Unlimited',
-    price: '$99.99',
-    desc: 'Analyze everything',
+    name: 'Pro Unlimited',
+    price: '$48.99',
+    desc: 'per month',
     popular: false,
   },
 ]
@@ -166,7 +166,7 @@ export function BlurredReport({ uuid, address }: BlurredReportProps) {
             </Button>
 
             <p className="text-[11px] text-muted-foreground/60">
-              One-time payment &middot; Secure checkout &middot; Instant delivery
+              Secure checkout via LemonSqueezy &middot; Instant delivery
             </p>
           </div>
         </div>

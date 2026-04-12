@@ -23,7 +23,7 @@ export default function LandingPage() {
   const [error, setError] = useState('')
 
   return (
-    <div className="relative min-h-screen overflow-hidden">
+    <div className="relative min-h-screen overflow-x-hidden">
       {/* Background atmosphere */}
       <div className="pointer-events-none fixed inset-0 -z-10" aria-hidden="true">
         <div className="absolute top-0 -left-1/4 h-[600px] w-1/2 rounded-full bg-primary/[0.04] blur-[120px]" />
@@ -239,16 +239,16 @@ export default function LandingPage() {
         <div className="mx-auto max-w-6xl px-4 py-16 sm:py-24">
           <div className="text-center">
             <h2 className="font-[family-name:var(--font-playfair)] text-3xl font-bold text-foreground sm:text-4xl">
-              Simple pricing. No subscriptions.
+              Simple pricing for every investor.
             </h2>
-            <p className="mt-2 text-sm text-muted-foreground">Pay once, keep your reports forever.</p>
+            <p className="mt-2 text-sm text-muted-foreground">Pick one report, a 5-pack bundle, or go pro with unlimited monthly access.</p>
           </div>
 
           <div className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-3 max-w-3xl mx-auto">
             {[
-              { name: 'Single Report', price: '$14.99', per: 'one report', features: ['Full deal analysis', 'AI Deal Doctor', 'Shareable URL'] },
-              { name: '5 Reports', price: '$44.99', per: '$9/report', features: ['Everything in Single', '5 property analyses', 'Best per-report value'], popular: true },
-              { name: 'Unlimited', price: '$99.99', per: 'unlimited reports', features: ['Everything in 5-Pack', 'Analyze every deal', 'Serious investors'] },
+              { name: 'Single Report', price: '$8.99', per: 'one report', features: ['Full deal analysis', 'AI Deal Doctor', 'Shareable URL'] },
+              { name: 'Bundle 5-Pack', price: '$28.99', per: '$5.80/report', features: ['Everything in Single', '5 property analyses', 'Best per-report value'], popular: true },
+              { name: 'Pro Unlimited', price: '$48.99', per: 'per month', features: ['Everything in 5-Pack', 'Analyze every deal', 'For active investors'] },
             ].map((tier) => (
               <div
                 key={tier.name}
