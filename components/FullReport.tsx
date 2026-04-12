@@ -13,6 +13,13 @@ import {
   CheckCircle2Icon,
   XCircleIcon,
   MinusCircleIcon,
+  TargetIcon,
+  DropletsIcon,
+  FlameIcon,
+  ThermometerIcon,
+  WindIcon,
+  CloudRainIcon,
+  UmbrellaIcon,
 } from 'lucide-react'
 
 interface FullReportProps {
@@ -20,7 +27,7 @@ interface FullReportProps {
 }
 
 export function FullReport({ data }: FullReportProps) {
-  const { property, rates, ltr, dealDoctor, comparableSales, stateRules } = data
+  const { property, rates, ltr, dealDoctor, comparableSales, stateRules, breakeven, climate, expenses } = data
 
   const formatCurrency = (n: number) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n)
@@ -61,10 +68,65 @@ export function FullReport({ data }: FullReportProps) {
         </div>
       </div>
 
+      {/* Breakeven vs Your Offer — DealDoctor's flagship insight */}
+      {breakeven && (
+        <div
+          className={cn(
+            'rounded-xl border-2 p-6 sm:p-8',
+            breakeven.delta >= 0
+              ? 'border-emerald-500/40 bg-emerald-500/5'
+              : 'border-red-500/40 bg-red-500/5'
+          )}
+        >
+          <div className="mb-3 flex items-center gap-2">
+            <TargetIcon className="h-5 w-5 text-primary" />
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+              Your Offer vs Breakeven
+            </h3>
+          </div>
+          <p className="text-2xl font-bold text-foreground sm:text-4xl">
+            {breakeven.delta >= 0 ? (
+              <>
+                Your offer is{' '}
+                <span className="text-emerald-600 dark:text-emerald-400">
+                  {formatCurrency(breakeven.delta)} below breakeven
+                </span>
+              </>
+            ) : (
+              <>
+                Your offer is{' '}
+                <span className="text-red-600 dark:text-red-400">
+                  {formatCurrency(-breakeven.delta)} above breakeven
+                </span>
+              </>
+            )}
+          </p>
+          <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
+            <div>
+              <p className="text-xs text-muted-foreground">Your offer</p>
+              <p className="text-lg font-bold text-foreground">{formatCurrency(breakeven.yourOffer)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Breakeven price</p>
+              <p className="text-lg font-bold text-foreground">{formatCurrency(breakeven.price)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Listing ask</p>
+              <p className="text-lg font-bold text-foreground">{formatCurrency(property.askPrice)}</p>
+            </div>
+          </div>
+          <p className="mt-4 text-xs text-muted-foreground">
+            Breakeven is the purchase price at which this property cash-flows ~$0/month given
+            current rent ({formatCurrency(ltr.noiAnnual / 12 + (ltr.noiAnnual > 0 ? 0 : 0))}/mo NOI implied)
+            and today&apos;s rate ({(rates.mortgage30yr * 100).toFixed(2)}%). Use it as your walk-away number.
+          </p>
+        </div>
+      )}
+
       {/* Key Metrics Grid */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {[
-          { icon: DollarSignIcon, label: 'Ask Price', value: formatCurrency(property.askPrice) },
+          { icon: DollarSignIcon, label: 'Your Offer', value: formatCurrency(property.offerPrice ?? property.askPrice) },
           { icon: HomeIcon, label: 'Monthly Payment', value: formatCurrency(ltr.monthlyMortgagePayment) },
           { icon: TrendingUpIcon, label: 'Cash Flow', value: `${ltr.monthlyNetCashFlow >= 0 ? '+' : ''}${formatCurrency(ltr.monthlyNetCashFlow)}/mo`, positive: ltr.monthlyNetCashFlow >= 0 },
           { icon: BarChart3Icon, label: 'Cap Rate', value: `${ltr.capRate}%` },
@@ -198,6 +260,86 @@ export function FullReport({ data }: FullReportProps) {
         </div>
       </div>
 
+      {/* Climate & Insurance */}
+      {climate && (
+        <div className="rounded-xl border bg-card p-6">
+          <div className="mb-4 flex items-center gap-2">
+            <UmbrellaIcon className="h-5 w-5 text-primary" />
+            <h3 className="text-sm font-semibold text-foreground">Climate &amp; Insurance</h3>
+          </div>
+
+          {/* Insurance + flood + monthly expense breakdown */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="rounded-lg border bg-background/50 p-4">
+              <p className="text-xs text-muted-foreground">Est. Annual Insurance</p>
+              <p className="mt-1 text-2xl font-bold text-foreground">
+                {formatCurrency(climate.estimatedAnnualInsurance)}
+              </p>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                State base {formatCurrency(climate.insuranceBreakdown.baseStatePremium)}
+                {climate.insuranceBreakdown.floodZoneAddOn > 0 && (
+                  <> · +{formatCurrency(climate.insuranceBreakdown.floodZoneAddOn)} flood</>
+                )}
+              </p>
+            </div>
+
+            <div
+              className={cn(
+                'rounded-lg border p-4',
+                climate.floodRisk === 'high-coastal' || climate.floodRisk === 'high'
+                  ? 'border-red-500/40 bg-red-500/5'
+                  : 'bg-background/50'
+              )}
+            >
+              <div className="flex items-center gap-1.5">
+                <DropletsIcon className="h-3.5 w-3.5 text-blue-500" />
+                <p className="text-xs text-muted-foreground">Flood Zone</p>
+              </div>
+              <p className="mt-1 text-2xl font-bold text-foreground">
+                {climate.floodZone || 'Unknown'}
+              </p>
+              <p className={cn(
+                'mt-1 text-[11px] font-medium',
+                climate.floodInsuranceRequired ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'
+              )}>
+                {climate.floodRisk === 'high-coastal' && 'Coastal high-risk · NFIP required'}
+                {climate.floodRisk === 'high' && 'High-risk · NFIP required'}
+                {climate.floodRisk === 'moderate' && 'Moderate risk'}
+                {climate.floodRisk === 'minimal' && 'Minimal risk'}
+                {climate.floodRisk === 'unknown' && 'Not mapped / unknown'}
+              </p>
+            </div>
+
+            {expenses && (
+              <div className="rounded-lg border bg-background/50 p-4">
+                <p className="text-xs text-muted-foreground">Monthly Expenses</p>
+                <p className="mt-1 text-2xl font-bold text-foreground">
+                  {formatCurrency(expenses.monthlyTotal)}
+                </p>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Tax {formatCurrency(expenses.monthlyPropertyTax)} · Ins {formatCurrency(expenses.monthlyInsurance)} · Maint {formatCurrency(expenses.monthlyMaintenance)}
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Climate risk bars */}
+          {climate.climateScores && (
+            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-5">
+              <RiskBar icon={WindIcon} label="Hurricane" score={climate.climateScores.hurricane} />
+              <RiskBar icon={FlameIcon} label="Wildfire" score={climate.climateScores.wildfire} />
+              <RiskBar icon={ThermometerIcon} label="Heat" score={climate.climateScores.heat} />
+              <RiskBar icon={CloudRainIcon} label="Drought" score={climate.climateScores.drought} />
+              <RiskBar icon={WindIcon} label="Tornado" score={climate.climateScores.tornado} />
+            </div>
+          )}
+
+          {climate.summary && (
+            <p className="mt-4 text-xs leading-relaxed text-muted-foreground">{climate.summary}</p>
+          )}
+        </div>
+      )}
+
       {/* State Rules */}
       {stateRules && (
         <div className="rounded-xl border bg-card p-6">
@@ -232,6 +374,7 @@ export function FullReport({ data }: FullReportProps) {
       )}
 
       {/* Comparable Sales */}
+      {/* (see RiskBar helper at end of file) */}
       {comparableSales && comparableSales.length > 0 && (
         <div className="rounded-xl border bg-card p-6">
           <h3 className="mb-4 text-sm font-semibold text-foreground">Comparable Properties</h3>
@@ -249,6 +392,45 @@ export function FullReport({ data }: FullReportProps) {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function RiskBar({
+  icon: Icon,
+  label,
+  score,
+}: {
+  icon: React.ComponentType<{ className?: string }>
+  label: string
+  score: number
+}) {
+  const pct = Math.min(100, Math.max(0, (score / 5) * 100))
+  const tone =
+    score >= 4 ? 'bg-red-500' :
+    score >= 3 ? 'bg-amber-500' :
+    score >= 1 ? 'bg-emerald-500' :
+    'bg-muted-foreground/30'
+  const toneText =
+    score >= 4 ? 'text-red-600 dark:text-red-400' :
+    score >= 3 ? 'text-amber-600 dark:text-amber-400' :
+    score >= 1 ? 'text-emerald-600 dark:text-emerald-400' :
+    'text-muted-foreground'
+  const label2 =
+    score >= 4 ? 'High' :
+    score >= 3 ? 'Elevated' :
+    score >= 1 ? 'Low' :
+    'None'
+  return (
+    <div className="rounded-lg border bg-background/50 p-3">
+      <div className="flex items-center gap-1.5 text-muted-foreground">
+        <Icon className="h-3.5 w-3.5" />
+        <span className="text-[10px] font-medium uppercase tracking-wider">{label}</span>
+      </div>
+      <p className={cn('mt-1 text-sm font-bold', toneText)}>{label2}</p>
+      <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-muted">
+        <div className={cn('h-full', tone)} style={{ width: `${pct}%` }} />
+      </div>
     </div>
   )
 }

@@ -5,6 +5,8 @@ import { cn } from '@/lib/utils'
 import { AddressInput } from '@/components/AddressInput'
 import { TeaserMetrics } from '@/components/TeaserMetrics'
 import { BlurredReport } from '@/components/BlurredReport'
+import { LiveCounter } from '@/components/LiveCounter'
+import MapPin3D from '@/components/MapPin3D'
 import {
   ArrowRightIcon,
   ShieldCheckIcon,
@@ -97,7 +99,7 @@ export default function LandingPage() {
             )}
           >
             Paste any US property address. Get instant mortgage math, cash flow analysis,
-            DSCR check, and an AI-powered deal diagnosis.
+            DSCR check, the exact breakeven offer price, and an AI-powered deal diagnosis.
           </p>
 
           {/* Address Input */}
@@ -127,6 +129,9 @@ export default function LandingPage() {
               {error}
             </div>
           )}
+
+          {/* Live activity counter — only renders once we have real data */}
+          <LiveCounter />
         </div>
       </section>
 
@@ -137,6 +142,13 @@ export default function LandingPage() {
           className="relative mx-auto max-w-6xl px-4 pb-16"
         >
           <div className="flex flex-col items-center gap-8">
+            <div className="w-full animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <MapPin3D
+                city={result.property.city}
+                state={result.property.state}
+                address={result.property.address}
+              />
+            </div>
             <TeaserMetrics teaser={result.teaser} property={result.property} />
             <BlurredReport uuid={result.uuid} address={result.property.address} />
           </div>
@@ -175,7 +187,7 @@ export default function LandingPage() {
               {
                 icon: ZapIcon,
                 title: 'AI Deal Doctor',
-                desc: 'Claude-powered diagnosis with 3 concrete fixes. Negotiation, value-add, and pivot strategies.',
+                desc: 'AI-powered diagnosis with 3 concrete fixes anchored to real numbers. Negotiation, value-add, and pivot strategies.',
               },
               {
                 icon: BuildingIcon,
@@ -297,7 +309,7 @@ export default function LandingPage() {
           </div>
 
           <p className="mt-6 text-center text-xs text-muted-foreground">
-            Secure payment via LemonSqueezy &middot; No account needed
+            Secure payment via LemonSqueezy &middot; No account needed &middot; 7-day refund if the report isn&apos;t useful
           </p>
         </div>
       </section>
@@ -315,9 +327,17 @@ export default function LandingPage() {
               </div>
               <span className="text-sm font-semibold text-foreground">DealDoctor</span>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Not financial advice. Always consult a qualified professional before making investment decisions.
-            </p>
+            <div className="flex flex-col items-center gap-1 sm:items-end">
+              <a
+                href="/methodology"
+                className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
+              >
+                Methodology &amp; data sources
+              </a>
+              <p className="text-xs text-muted-foreground">
+                Not financial advice. Always consult a qualified professional before making investment decisions.
+              </p>
+            </div>
           </div>
         </div>
       </footer>

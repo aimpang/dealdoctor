@@ -1,13 +1,14 @@
 'use client'
 
 import { cn } from '@/lib/utils'
-import { TrendingUpIcon, HomeIcon, BarChart3Icon } from 'lucide-react'
+import { TrendingUpIcon, HomeIcon, TargetIcon, PercentIcon } from 'lucide-react'
 
 interface TeaserMetricsProps {
   teaser: {
     estimatedValue: number
     estimatedRent: number
-    neighbourhoodScore: number
+    breakevenPrice: number
+    listingVsBreakeven: number // positive = listing below breakeven; negative = above
     city: string
     state: string
     bedrooms: number
@@ -26,68 +27,113 @@ interface TeaserMetricsProps {
   }
 }
 
-export function TeaserMetrics({ teaser, property }: TeaserMetricsProps) {
-  const formatCurrency = (n: number) =>
-    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n)
+const fmt = (n: number) =>
+  new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  }).format(n)
 
-  const metrics = [
-    {
-      icon: HomeIcon,
-      label: 'Estimated Value',
-      value: formatCurrency(teaser.estimatedValue),
-      sub: `${property.bedrooms}bd / ${property.bathrooms}ba / ${teaser.sqft?.toLocaleString() || '—'} sqft`,
-      color: 'text-primary',
-    },
-    {
-      icon: TrendingUpIcon,
-      label: 'Estimated Rent',
-      value: `${formatCurrency(teaser.estimatedRent)}/mo`,
-      sub: `${(teaser.currentRate * 100).toFixed(2)}% 30yr fixed`,
-      color: 'text-emerald-600 dark:text-emerald-400',
-    },
-    {
-      icon: BarChart3Icon,
-      label: 'Area Score',
-      value: `${teaser.neighbourhoodScore}/100`,
-      sub: `${property.city}, ${property.state}`,
-      color: teaser.neighbourhoodScore >= 75 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400',
-    },
-  ]
+export function TeaserMetrics({ teaser, property }: TeaserMetricsProps) {
+  const listingAbove = teaser.listingVsBreakeven < 0
 
   return (
-    <div className="w-full max-w-2xl">
+    <div className="w-full max-w-3xl">
       <div className="mb-4 text-center">
-        <p className="text-sm font-medium text-muted-foreground">Free preview for</p>
+        <p className="text-sm font-medium text-muted-foreground">Instant analysis for</p>
         <h3 className="font-[family-name:var(--font-playfair)] text-lg font-semibold text-foreground">
           {property.address}
         </h3>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        {metrics.map((m, i) => (
-          <div
-            key={m.label}
-            className={cn(
-              "group relative overflow-hidden rounded-xl border bg-card p-5 transition-all duration-300",
-              "hover:shadow-lg hover:shadow-primary/5 hover:-translate-y-0.5",
-              "animate-in fade-in slide-in-from-bottom-4 fill-mode-backwards",
-            )}
-            style={{ animationDelay: `${i * 100 + 100}ms`, animationDuration: '500ms' }}
-          >
-            <div className="absolute inset-0 bg-gradient-to-br from-primary/[0.03] to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
-            <div className="relative">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <m.icon className="h-4 w-4" />
-                <span className="text-xs font-medium uppercase tracking-wider">{m.label}</span>
-              </div>
-              <p className={cn("mt-2 text-2xl font-bold tracking-tight", m.color)}>
-                {m.value}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">{m.sub}</p>
-            </div>
-          </div>
-        ))}
+      {/* Breakeven hero — the hook */}
+      <div
+        className={cn(
+          'rounded-2xl border-2 p-6 sm:p-8 text-center',
+          'animate-in fade-in slide-in-from-bottom-4 duration-500',
+          listingAbove
+            ? 'border-red-500/40 bg-red-500/5'
+            : 'border-emerald-500/40 bg-emerald-500/5'
+        )}
+      >
+        <div className="mb-2 flex items-center justify-center gap-2 text-muted-foreground">
+          <TargetIcon className="h-4 w-4 text-primary" />
+          <span className="text-xs font-medium uppercase tracking-wider">
+            Your walk-away number
+          </span>
+        </div>
+        <p className="font-[family-name:var(--font-playfair)] text-3xl font-bold text-foreground sm:text-4xl">
+          {listingAbove ? (
+            <>
+              Listing is{' '}
+              <span className="text-red-600 dark:text-red-400">
+                {fmt(-teaser.listingVsBreakeven)} above breakeven
+              </span>
+            </>
+          ) : (
+            <>
+              Listing is{' '}
+              <span className="text-emerald-600 dark:text-emerald-400">
+                {fmt(teaser.listingVsBreakeven)} below breakeven
+              </span>
+            </>
+          )}
+        </p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Listing {fmt(teaser.estimatedValue)} · Breakeven {fmt(teaser.breakevenPrice)} · Rate {(teaser.currentRate * 100).toFixed(2)}%
+        </p>
       </div>
+
+      {/* Sub-metrics */}
+      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <SubStat
+          icon={HomeIcon}
+          label="Est. Value"
+          value={fmt(teaser.estimatedValue)}
+          sub={`${property.bedrooms}bd / ${property.bathrooms}ba${teaser.sqft ? ` / ${teaser.sqft.toLocaleString()} sqft` : ''}`}
+        />
+        <SubStat
+          icon={TrendingUpIcon}
+          label="Est. Rent"
+          value={`${fmt(teaser.estimatedRent)}/mo`}
+          sub={teaser.yearBuilt ? `Built ${teaser.yearBuilt}` : `${property.city}, ${property.state}`}
+        />
+        <SubStat
+          icon={TargetIcon}
+          label="Breakeven"
+          value={fmt(teaser.breakevenPrice)}
+          sub="Cash-flows at ~$0/mo"
+        />
+        <SubStat
+          icon={PercentIcon}
+          label="30yr Rate"
+          value={`${(teaser.currentRate * 100).toFixed(2)}%`}
+          sub="Freddie Mac weekly"
+        />
+      </div>
+    </div>
+  )
+}
+
+function SubStat({
+  icon: Icon,
+  label,
+  value,
+  sub,
+}: {
+  icon: React.ComponentType<{ className?: string }>
+  label: string
+  value: string
+  sub?: string
+}) {
+  return (
+    <div className="rounded-xl border bg-card p-4">
+      <div className="flex items-center gap-1.5 text-muted-foreground">
+        <Icon className="h-3.5 w-3.5" />
+        <span className="text-[10px] font-medium uppercase tracking-wider">{label}</span>
+      </div>
+      <p className="mt-1 text-lg font-bold text-foreground">{value}</p>
+      {sub && <p className="mt-0.5 text-[10px] text-muted-foreground">{sub}</p>}
     </div>
   )
 }

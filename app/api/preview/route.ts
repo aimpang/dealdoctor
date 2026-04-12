@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { searchProperty, getRentEstimate } from '@/lib/propertyApi'
 import { getCurrentRates } from '@/lib/rates'
-import { getStateFromZipCode } from '@/lib/calculations'
+import { getStateFromZipCode, calculateBreakEvenPrice } from '@/lib/calculations'
 import { prisma } from '@/lib/db'
 import { randomUUID } from 'crypto'
 import { rateLimit } from '@/lib/rateLimit'
@@ -44,20 +44,27 @@ export async function POST(req: NextRequest) {
 
     const rentEstimate = await getRentEstimate(address, property.bedrooms)
     const state = property.state || getStateFromZipCode(property.zip_code)
+    const estimatedRent = rentEstimate?.estimated_rent || Math.round(property.estimated_value * 0.005)
+
+    // Breakeven price is our flagship hook — compute up front so the teaser can
+    // show "listing is $X above/below breakeven" with zero friction.
+    const breakevenPrice = calculateBreakEvenPrice(estimatedRent, rates.mortgage30yr)
+    const listingVsBreakeven = breakevenPrice - property.estimated_value
 
     // Generate UUID and store in DB
     const uuid = randomUUID()
     const teaserData = {
       estimatedValue: property.estimated_value,
-      estimatedRent: rentEstimate?.estimated_rent || Math.round(property.estimated_value * 0.005),
-      neighbourhoodScore: Math.floor(Math.random() * 20) + 65,
+      estimatedRent,
+      breakevenPrice,
+      listingVsBreakeven, // positive = listing below breakeven (good); negative = above (bad)
       city: property.city,
       state,
       bedrooms: property.bedrooms,
       bathrooms: property.bathrooms,
       sqft: property.square_feet,
       yearBuilt: property.year_built,
-      currentRate: rates.mortgage30yr
+      currentRate: rates.mortgage30yr,
     }
 
     await prisma.report.create({

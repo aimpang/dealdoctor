@@ -16,6 +16,7 @@ export async function GET(
       return NextResponse.json({ error: 'Report not found' }, { status: 404 })
     }
 
+    const r = report as any
     return NextResponse.json({
       id: report.id,
       address: report.address,
@@ -24,6 +25,7 @@ export async function GET(
       paid: report.paid,
       teaserData: report.teaserData,
       fullReportData: report.fullReportData,
+      photoFindings: r.photoFindings ?? null,
       createdAt: report.createdAt,
     })
   } catch (err: any) {

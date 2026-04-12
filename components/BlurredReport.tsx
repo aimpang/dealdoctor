@@ -165,9 +165,13 @@ export function BlurredReport({ uuid, address }: BlurredReportProps) {
               <ArrowRightIcon className="h-4 w-4" />
             </Button>
 
-            <p className="text-[11px] text-muted-foreground/60">
-              Secure checkout via LemonSqueezy &middot; Instant delivery
-            </p>
+            <div className="flex flex-col items-center gap-1.5 text-[11px] text-muted-foreground/70">
+              <p>Secure checkout via LemonSqueezy &middot; Instant delivery</p>
+              <p>
+                <span className="font-semibold text-foreground">Not useful?</span>{' '}
+                Email us within 7 days for a full refund — no questions asked.
+              </p>
+            </div>
           </div>
         </div>
       </div>

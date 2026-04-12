@@ -18,8 +18,19 @@ model Report {
   // Teaser data (generated free)
   teaserData      String?  // JSON: {estimatedValue, estimatedRent, neighbourhoodScore}
 
+  // User-supplied deal inputs (captured before paywall via /api/refine)
+  offerPrice      Int?     // User's actual offer (not listing); defaults to estimatedValue
+  downPaymentPct  Float?   // 0.20 for 20%
+  rehabBudget     Int?     // Upfront rehab/repairs capital
+  strategy        String?  // LTR | STR | FLIP — stored; only LTR processed today
+  refinedAt       DateTime?
+
   // Full report (generated on payment)
   fullReportData  String?  // JSON: full analysis
+
+  // Post-payment photo analysis (Gemini Vision)
+  photoFindings    String?   // JSON: { photos: [{ index, findings: [...] }] }
+  photosAnalyzedAt DateTime?
 
   // Payment
   paid            Boolean  @default(false)

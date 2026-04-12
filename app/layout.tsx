@@ -2,6 +2,7 @@
 
 import { Inter, Playfair_Display } from "next/font/google"
 import "./globals.css"
+import "mapbox-gl/dist/mapbox-gl.css"
 import { useEffect, useState } from "react"
 
 const playfair = Playfair_Display({

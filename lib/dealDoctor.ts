@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
-import { DealMetrics, STATE_RULES } from './calculations'
+import { DealMetrics, STATE_RULES, calculateBreakEvenPrice } from './calculations'
+import type { ClimateAndInsurance } from './climateRisk'
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
 
@@ -27,15 +28,39 @@ export async function generateDealDoctor(
   metrics: DealMetrics,
   askPrice: number,
   estimatedRent: number,
-  currentRate: number
+  currentRate: number,
+  climate?: ClimateAndInsurance,
+  bedrooms?: number,
+  arvEstimate?: number,
+  rehabBudget?: number
 ): Promise<DealDoctorOutput> {
 
   const stateRules = STATE_RULES[state] || STATE_RULES['TX']
 
-  // Calculate fix values before prompting — Claude only narrates, never calculates
+  // Calculate fix values before prompting — the model only narrates, never calculates
   const breakEvenPrice = calculateBreakEvenPrice(estimatedRent, currentRate)
-  const strRevenue = estimateSTRRevenue(city, state)
-  const maxFlipOffer = askPrice * 0.70 - 25000  // 70% rule minus rehab
+  const strRevenue = estimateSTRRevenue(city, state, bedrooms)
+  // 70% rule: max offer = (ARV × 0.70) − rehab. ARV should come from sale comps,
+  // not from listing price (avoids circular "this deal pencils at its own ask").
+  const arv = arvEstimate && arvEstimate > 0 ? arvEstimate : askPrice
+  const rehab = rehabBudget && rehabBudget > 0 ? rehabBudget : 25000
+  const maxFlipOffer = Math.round(arv * 0.70 - rehab)
+
+  // Climate & insurance facts — pass as plain strings to the prompt so the model
+  // can anchor fixes in property-specific reality (e.g. "your $6k/yr FL insurance...")
+  const climateFacts: string[] = []
+  if (climate) {
+    climateFacts.push(`- Estimated annual insurance: $${climate.estimatedAnnualInsurance.toLocaleString()}/yr (~$${Math.round(climate.estimatedAnnualInsurance / 12).toLocaleString()}/mo)`)
+    if (climate.floodZone) {
+      climateFacts.push(`- FEMA flood zone: ${climate.floodZone}${climate.floodInsuranceRequired ? ' — NFIP flood insurance MANDATORY (separate policy)' : ''}`)
+    }
+    if (climate.topConcerns.length > 0) {
+      climateFacts.push(`- Top climate risks: ${climate.topConcerns.join(', ')}`)
+    }
+  }
+  const climateBlock = climateFacts.length > 0
+    ? `\nCLIMATE & INSURANCE (material to this deal — reference specifically if it affects cash flow or risk):\n${climateFacts.join('\n')}`
+    : ''
 
   const prompt = `You are the Deal Doctor for DealDoctor, a US real estate investment analyzer.
 
@@ -53,12 +78,14 @@ PROPERTY (do not change these values — they are pre-calculated):
 - Deal score: ${metrics.dealScore}/100
 - Refi survival rate: up to ${(metrics.renewalSurvivalRate * 100).toFixed(1)}%
 - Breakeven price: $${breakEvenPrice.toLocaleString()} USD
-- Estimated STR revenue: $${strRevenue.toLocaleString()}/mo
-- Max flip offer (70% rule): $${maxFlipOffer.toLocaleString()} USD
+- Estimated STR revenue: $${strRevenue.toLocaleString()}/mo${bedrooms ? ` (${bedrooms}-bed assumption)` : ''}
+- ARV (from sale comps): $${arv.toLocaleString()} USD
+- Max flip offer (70% rule, ARV-based): $${maxFlipOffer.toLocaleString()} USD
 ${stateRules.rentControl ? `- Rent control state: ${stateRules.name}` : ''}
 - Landlord-friendly: ${stateRules.landlordFriendly ? 'Yes' : 'No'}
 - STR rules: ${stateRules.strNotes}
 - Approx property tax rate: ${(stateRules.propertyTaxRate * 100).toFixed(1)}%
+${climateBlock}
 
 WRITE exactly this structure (no markdown, plain text only):
 
@@ -92,6 +119,8 @@ Rules:
 - Fix 1: lowest effort path to a working deal
 - Fix 2: value-add or structural change
 - Fix 3: strategic pivot (different strategy or market redirect)
+- If insurance > $300/mo OR flood insurance is mandatory: one of the fixes MUST address insurance cost directly (shop carriers, raise deductible, appeal flood zone via elevation certificate).
+- If a climate risk is listed as top concern: the diagnosis OR one fix must acknowledge it (e.g. hurricane → windstorm deductible reality, wildfire → defensible-space insurability, heat → HVAC cost, tornado → structural upgrades for insurability).
 - If verdict is DEAL: shift tone to protective — "here's what could go wrong"
 - Keep diagnosis under 60 words
 - Keep each fix detail row under 8 words per cell`
@@ -133,24 +162,11 @@ function parseDealDoctorResponse(text: string): DealDoctorOutput {
   }
 }
 
-function calculateBreakEvenPrice(
-  monthlyRent: number,
-  annualRate: number,
-): number {
-  let low = 50000, high = 3000000
-  for (let i = 0; i < 50; i++) {
-    const mid = (low + high) / 2
-    const loan = mid * 0.80
-    const monthlyRate = annualRate / 12
-    const n = 30 * 12
-    const payment = loan * (monthlyRate * Math.pow(1 + monthlyRate, n)) / (Math.pow(1 + monthlyRate, n) - 1)
-    const cf = monthlyRent * 0.95 - payment - (mid * 0.015 / 12) - 250
-    if (cf > 0) high = mid; else low = mid
-  }
-  return Math.round((low + high) / 2 / 1000) * 1000
-}
-
-function estimateSTRRevenue(city: string, _state: string): number {
+// STR revenue estimate — city baseline is for a 2BR; we scale by bedroom count
+// because a 1BR/studio rents for much less than a 4BR family rental in the same city.
+// Multipliers roughly track AirDNA market medians: ~+30% per bedroom above 2BR,
+// ~-25% per bedroom below 2BR. Not an appraisal — gives the AI a defensible anchor.
+function estimateSTRRevenue(city: string, _state: string, bedrooms?: number): number {
   const cityLower = city.toLowerCase()
   const strMarkets: Record<string, number> = {
     'austin': 3500,
@@ -176,8 +192,23 @@ function estimateSTRRevenue(city: string, _state: string): number {
     'jacksonville': 2600,
     'san antonio': 2500,
   }
+  let baseline = 2500
   for (const [key, val] of Object.entries(strMarkets)) {
-    if (cityLower.includes(key)) return val
+    if (cityLower.includes(key)) { baseline = val; break }
   }
-  return 2500
+  if (!bedrooms || bedrooms <= 0) return baseline
+
+  // Baseline assumes 2BR. Scale from there.
+  const BEDROOM_MULTIPLIERS: Record<number, number> = {
+    0: 0.55, // studio
+    1: 0.75,
+    2: 1.0,
+    3: 1.3,
+    4: 1.6,
+    5: 1.9,
+    6: 2.2,
+  }
+  const clamped = Math.max(0, Math.min(6, bedrooms))
+  const multiplier = BEDROOM_MULTIPLIERS[clamped] ?? 1.0
+  return Math.round(baseline * multiplier)
 }

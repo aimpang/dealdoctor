@@ -25,13 +25,14 @@ export interface RentEstimate {
   rent_high: number
 }
 
-// Search for property by address string
+// Search for property by address string.
+// In production (API key configured) we return null on miss — the caller surfaces
+// a real "property not found" error. Stub data is dev-mode only (no API key set)
+// so we never charge a user for a report synthesized from random numbers.
 export async function searchProperty(address: string): Promise<PropertyData | null> {
-  // Try Rentcast API if key is configured
   if (API_KEY && API_KEY !== 'your_key_here') {
-    return searchPropertyRentcast(address)
+    return await searchPropertyRentcast(address)
   }
-  // Fallback: generate estimated data from address for MVP demo
   return generateStubProperty(address)
 }
 
@@ -85,17 +86,19 @@ export async function getRentEstimate(address: string, bedrooms: number): Promis
       if (!res.ok) return null
 
       const data = await res.json()
+      const rent = data.rent ?? data.rentRangeLow
+      if (!rent) return null
       return {
-        estimated_rent: data.rent || data.rentRangeLow || 1800,
-        rent_low: data.rentRangeLow || 1500,
-        rent_high: data.rentRangeHigh || 2200,
+        estimated_rent: rent,
+        rent_low: data.rentRangeLow ?? rent,
+        rent_high: data.rentRangeHigh ?? rent,
       }
     } catch {
       return null
     }
   }
 
-  // Stub estimate based on bedrooms
+  // Stub estimate based on bedrooms (dev mode only — no API key)
   const baseRent = 1200 + bedrooms * 300
   return {
     estimated_rent: baseRent,

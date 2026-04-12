@@ -6,6 +6,7 @@ export interface MortgageInputs {
   annualRate: number         // e.g. 0.065 for 6.5%
   amortizationYears: number  // typically 30 in US
   state: string
+  rehabBudget?: number       // Upfront rehab capital — counts toward cash-in-deal for CoC
 }
 
 export interface RentalInputs {
@@ -116,6 +117,27 @@ export function calculateRenewalScenarios(
       viable: cashFlow >= -100
     }
   })
+}
+
+// --- BREAKEVEN OFFER PRICE ---
+// Binary-search the purchase price at which monthly cash flow is ~$0 given current
+// rent and rates. This is DealDoctor's flagship metric: "offer $X and it works."
+// Assumes 20% down, 30yr amort, 1.5% annual property tax/insurance, $250/mo ops buffer.
+export function calculateBreakEvenPrice(
+  monthlyRent: number,
+  annualRate: number,
+): number {
+  let low = 50000, high = 3000000
+  for (let i = 0; i < 50; i++) {
+    const mid = (low + high) / 2
+    const loan = mid * 0.80
+    const monthlyRate = annualRate / 12
+    const n = 30 * 12
+    const payment = loan * (monthlyRate * Math.pow(1 + monthlyRate, n)) / (Math.pow(1 + monthlyRate, n) - 1)
+    const cf = monthlyRent * 0.95 - payment - (mid * 0.015 / 12) - 250
+    if (cf > 0) high = mid; else low = mid
+  }
+  return Math.round((low + high) / 2 / 1000) * 1000
 }
 
 // --- DEPRECIATION CALCULATION ---
@@ -230,9 +252,10 @@ export function calculateDealMetrics(
   rental: RentalInputs,
   _state: string
 ): DealMetrics {
-  const { purchasePrice, downPaymentPct, annualRate, amortizationYears } = inputs
+  const { purchasePrice, downPaymentPct, annualRate, amortizationYears, rehabBudget } = inputs
   const loanAmount = purchasePrice * (1 - downPaymentPct)
   const downPayment = purchasePrice * downPaymentPct
+  const totalCashIn = downPayment + (rehabBudget || 0)
 
   // Mortgage payment
   const monthlyMortgagePayment = calculateMortgage(loanAmount, annualRate, amortizationYears)
@@ -245,7 +268,7 @@ export function calculateDealMetrics(
   // Returns
   const noiAnnual = (effectiveMonthlyRent - rental.monthlyExpenses) * 12
   const capRate = noiAnnual / purchasePrice
-  const cashOnCashReturn = downPayment > 0 ? annualNetCashFlow / downPayment : 0
+  const cashOnCashReturn = totalCashIn > 0 ? annualNetCashFlow / totalCashIn : 0
 
   // DSCR
   const annualDebtService = monthlyMortgagePayment * 12

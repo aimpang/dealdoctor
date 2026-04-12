@@ -20,6 +20,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.8.0",
+    "mapbox-gl": "^3.21.0",
     "next": "14.2.35",
     "pg": "^8.20.0",
     "react": "^18",
@@ -29,6 +30,7 @@
     "three": "^0.183.2"
   },
   "devDependencies": {
+    "@types/mapbox-gl": "^3.4.1",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
