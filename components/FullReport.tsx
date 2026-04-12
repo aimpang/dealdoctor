@@ -3,32 +3,51 @@
 import { cn } from '@/lib/utils'
 import { DealDoctorSection } from './DealDoctor'
 import {
-  HomeIcon,
-  TrendingUpIcon,
-  ShieldCheckIcon,
-  AlertTriangleIcon,
-  DollarSignIcon,
-  BarChart3Icon,
-  CalendarIcon,
   CheckCircle2Icon,
   XCircleIcon,
   MinusCircleIcon,
-  TargetIcon,
-  DropletsIcon,
-  FlameIcon,
-  ThermometerIcon,
-  WindIcon,
-  CloudRainIcon,
-  UmbrellaIcon,
-  BanknoteIcon,
-  LineChartIcon,
-  LandmarkIcon,
-  UsersIcon,
+  TrendingUpIcon,
+  AlertTriangleIcon,
+  PrinterIcon,
 } from 'lucide-react'
 
 interface FullReportProps {
   data: any
 }
+
+/* ───── Formatters ───── */
+const fmt = (n: number) =>
+  new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  }).format(n)
+const pct = (n: number, d = 2) => `${(n * 100).toFixed(d)}%`
+
+/* ───── Verdict config ───── */
+const VERDICT = {
+  DEAL: {
+    label: 'Strong Deal',
+    color: 'text-emerald-700 dark:text-emerald-400',
+    bg: 'bg-emerald-500/10',
+    border: 'border-emerald-500/30',
+    Icon: CheckCircle2Icon,
+  },
+  MARGINAL: {
+    label: 'Marginal',
+    color: 'text-amber-700 dark:text-amber-400',
+    bg: 'bg-amber-500/10',
+    border: 'border-amber-500/30',
+    Icon: MinusCircleIcon,
+  },
+  PASS: {
+    label: 'Pass',
+    color: 'text-red-700 dark:text-red-400',
+    bg: 'bg-red-500/10',
+    border: 'border-red-500/30',
+    Icon: XCircleIcon,
+  },
+} as const
 
 export function FullReport({ data }: FullReportProps) {
   const {
@@ -48,729 +67,712 @@ export function FullReport({ data }: FullReportProps) {
     rentComps,
   } = data
 
-  const formatCurrency = (n: number) =>
-    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n)
-
-  const verdictConfig = {
-    DEAL: { label: 'Strong Deal', color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', icon: CheckCircle2Icon },
-    MARGINAL: { label: 'Marginal', color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/30', icon: MinusCircleIcon },
-    PASS: { label: 'Pass', color: 'text-red-600 dark:text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/30', icon: XCircleIcon },
-  }
-
-  const v = verdictConfig[ltr.verdict as keyof typeof verdictConfig] || verdictConfig.PASS
-  const VerdictIcon = v.icon
+  const v = VERDICT[ltr.verdict as keyof typeof VERDICT] || VERDICT.PASS
 
   return (
-    <div className="w-full space-y-6">
-      {/* Print button — hidden in print output itself */}
-      <div className="no-print flex justify-end">
+    <div className="w-full">
+      {/* Top utility bar — print only visible outside print */}
+      <div className="no-print mb-3 flex justify-end">
         <button
-          onClick={() => (typeof window !== 'undefined' ? window.print() : null)}
-          className="inline-flex items-center gap-1.5 rounded-md border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          onClick={() => typeof window !== 'undefined' && window.print()}
+          className="inline-flex items-center gap-1.5 rounded-md border bg-card px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
-          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="6 9 6 2 18 2 18 9" />
-            <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-            <rect x="6" y="14" width="12" height="8" />
-          </svg>
-          Print or save as PDF
+          <PrinterIcon className="h-3.5 w-3.5" />
+          Print / Save PDF
         </button>
       </div>
 
-      {/* Property Header */}
-      <div className="rounded-xl border bg-card p-6 sm:p-8">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h1 className="font-[family-name:var(--font-playfair)] text-2xl font-bold text-foreground sm:text-3xl">
+      {/* Property header strip */}
+      <header className="mb-5 border-b border-border pb-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 flex-1">
+            <Eyebrow>Property Report</Eyebrow>
+            <h1 className="mt-0.5 font-[family-name:var(--font-playfair)] text-2xl font-bold leading-tight text-foreground sm:text-3xl">
               {property.address}
             </h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {property.city}, {property.state} &middot; {property.propertyType} &middot;
-              {property.bedrooms}bd / {property.bathrooms}ba &middot; {property.sqft?.toLocaleString()} sqft &middot;
-              Built {property.yearBuilt}
-            </p>
-          </div>
-
-          {/* Verdict Badge */}
-          <div className={cn("flex items-center gap-2 rounded-lg border px-4 py-2", v.bg, v.border)}>
-            <VerdictIcon className={cn("h-5 w-5", v.color)} />
-            <div>
-              <p className={cn("text-lg font-bold", v.color)}>{v.label}</p>
-              <p className="text-xs text-muted-foreground">Score: {ltr.dealScore}/100</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Breakeven vs Your Offer — DealDoctor's flagship insight */}
-      {breakeven && (
-        <div
-          className={cn(
-            'rounded-xl border-2 p-6 sm:p-8',
-            breakeven.delta >= 0
-              ? 'border-emerald-500/40 bg-emerald-500/5'
-              : 'border-red-500/40 bg-red-500/5'
-          )}
-        >
-          <div className="mb-3 flex items-center gap-2">
-            <TargetIcon className="h-5 w-5 text-primary" />
-            <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-              Your Offer vs Breakeven
-            </h3>
-          </div>
-          <p className="text-2xl font-bold text-foreground sm:text-4xl">
-            {breakeven.delta >= 0 ? (
-              <>
-                Your offer is{' '}
-                <span className="text-emerald-600 dark:text-emerald-400">
-                  {formatCurrency(breakeven.delta)} below breakeven
-                </span>
-              </>
-            ) : (
-              <>
-                Your offer is{' '}
-                <span className="text-red-600 dark:text-red-400">
-                  {formatCurrency(-breakeven.delta)} above breakeven
-                </span>
-              </>
-            )}
-          </p>
-          <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
-            <div>
-              <p className="text-xs text-muted-foreground">Your offer</p>
-              <p className="text-lg font-bold text-foreground">{formatCurrency(breakeven.yourOffer)}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Breakeven price</p>
-              <p className="text-lg font-bold text-foreground">{formatCurrency(breakeven.price)}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Listing ask</p>
-              <p className="text-lg font-bold text-foreground">{formatCurrency(property.askPrice)}</p>
-            </div>
-          </div>
-          <p className="mt-4 text-xs text-muted-foreground">
-            Breakeven is the purchase price at which this property cash-flows ~$0/month given
-            current rent ({formatCurrency(Math.round(ltr.noiAnnual / 12))}/mo NOI)
-            and the investor rate ({((rates.mortgage30yrInvestor ?? rates.mortgage30yr) * 100).toFixed(2)}%). Use it as your walk-away number.
-          </p>
-        </div>
-      )}
-
-      {/* 5-Year Wealth Projection — the "why this deal matters over time" hero */}
-      {wealthProjection && (
-        <div className="rounded-xl border-2 border-primary/40 bg-primary/5 p-6 sm:p-8">
-          <div className="mb-3 flex items-center gap-2">
-            <LineChartIcon className="h-5 w-5 text-primary" />
-            <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-              5-Year Wealth Projection
-            </h3>
-          </div>
-          <p className="text-2xl font-bold text-foreground sm:text-4xl">
-            Builds{' '}
-            <span className="text-primary">
-              {formatCurrency(wealthProjection.hero.totalWealthBuilt5yr)}
-            </span>{' '}
-            of wealth over 5 years
-          </p>
-          <p className="mt-2 text-sm text-muted-foreground">
-            5-year IRR:{' '}
-            <span className="font-bold text-foreground">
-              {(wealthProjection.hero.irr5yr * 100).toFixed(1)}%
-            </span>
-            {' · '}Sum of cash flow + principal paydown + appreciation + depreciation tax shield
-          </p>
-
-          <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <SubMetric label="Cash Flow" value={formatCurrency(wealthProjection.hero.cumulativeCashFlow5yr)} />
-            <SubMetric label="Principal Paydown" value={formatCurrency(wealthProjection.hero.equityFromPaydown5yr)} />
-            <SubMetric label="Appreciation" value={formatCurrency(wealthProjection.hero.equityFromAppreciation5yr)} />
-            <SubMetric label="Tax Shield" value={formatCurrency(wealthProjection.hero.cumulativeTaxShield5yr)} />
-          </div>
-
-          <div className="mt-5 overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-muted-foreground">
-                  <th className="pb-2 text-left font-medium">Year</th>
-                  <th className="pb-2 text-right font-medium">Cash Flow</th>
-                  <th className="pb-2 text-right font-medium">Value</th>
-                  <th className="pb-2 text-right font-medium">Loan Balance</th>
-                  <th className="pb-2 text-right font-medium">Wealth Built</th>
-                </tr>
-              </thead>
-              <tbody>
-                {wealthProjection.years.map((y: any) => (
-                  <tr key={y.year} className="border-b border-border/50">
-                    <td className="py-2 font-medium">Y{y.year}</td>
-                    <td className={cn('py-2 text-right font-medium', y.annualCashFlow >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400')}>
-                      {y.annualCashFlow >= 0 ? '+' : ''}{formatCurrency(y.annualCashFlow)}
-                    </td>
-                    <td className="py-2 text-right">{formatCurrency(y.propertyValue)}</td>
-                    <td className="py-2 text-right">{formatCurrency(y.loanBalance)}</td>
-                    <td className="py-2 text-right font-bold text-primary">
-                      {formatCurrency(y.totalWealthBuilt)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <p className="mt-4 text-[11px] text-muted-foreground">
-            Assumes {(wealthProjection.assumptions.rentGrowthRate * 100).toFixed(1)}% rent growth,{' '}
-            {(wealthProjection.assumptions.appreciationRate * 100).toFixed(1)}% appreciation,{' '}
-            {(wealthProjection.assumptions.expenseGrowthRate * 100).toFixed(1)}% expense growth,
-            {' '}{(wealthProjection.assumptions.effectiveTaxRate * 100).toFixed(0)}% effective tax rate.
-            IRR includes sale at year 5 with {(wealthProjection.assumptions.saleCostPct * 100).toFixed(0)}% selling costs.
-          </p>
-        </div>
-      )}
-
-      {/* Key Metrics Grid */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        {[
-          { icon: DollarSignIcon, label: 'Your Offer', value: formatCurrency(property.offerPrice ?? property.askPrice) },
-          { icon: HomeIcon, label: 'Monthly Payment', value: formatCurrency(ltr.monthlyMortgagePayment) },
-          { icon: TrendingUpIcon, label: 'Cash Flow', value: `${ltr.monthlyNetCashFlow >= 0 ? '+' : ''}${formatCurrency(ltr.monthlyNetCashFlow)}/mo`, positive: ltr.monthlyNetCashFlow >= 0 },
-          { icon: BarChart3Icon, label: 'Cap Rate', value: `${ltr.capRate}%` },
-          { icon: DollarSignIcon, label: 'Cash-on-Cash', value: `${ltr.cashOnCashReturn}%` },
-          { icon: ShieldCheckIcon, label: 'DSCR', value: `${ltr.dscr}x`, positive: ltr.dscr >= 1.25 },
-        ].map((m) => (
-          <div key={m.label} className="rounded-xl border bg-card p-4">
-            <div className="flex items-center gap-1.5 text-muted-foreground">
-              <m.icon className="h-3.5 w-3.5" />
-              <span className="text-[10px] font-medium uppercase tracking-wider">{m.label}</span>
-            </div>
-            <p className={cn(
-              "mt-1.5 text-xl font-bold",
-              m.positive === true ? 'text-emerald-600 dark:text-emerald-400' :
-              m.positive === false ? 'text-red-600 dark:text-red-400' :
-              'text-foreground'
-            )}>
-              {m.value}
-            </p>
-          </div>
-        ))}
-      </div>
-
-      {/* Total Cash to Close — answers "how much do I need in the bank?" */}
-      {cashToClose && (
-        <div className="rounded-xl border bg-card p-6">
-          <div className="mb-3 flex items-center gap-2">
-            <BanknoteIcon className="h-5 w-5 text-primary" />
-            <h3 className="text-sm font-semibold text-foreground">Total Cash to Close</h3>
-          </div>
-          <p className="text-3xl font-bold text-foreground sm:text-4xl">
-            {formatCurrency(cashToClose.totalCashToClose)}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            What you need liquid to walk into closing — includes the 6-month PITI reserve most lenders require.
-          </p>
-          <div className="mt-4 space-y-1.5">
-            <LineItem label="Down payment" value={formatCurrency(cashToClose.downPayment)} />
-            <LineItem label="Closing costs (~2.5%)" value={formatCurrency(cashToClose.closingCosts)} />
-            <LineItem label="Inspection + appraisal" value={formatCurrency(cashToClose.inspectionAndAppraisal)} />
-            <LineItem label="Reserves (6mo PITI)" value={formatCurrency(cashToClose.reserves)} />
-            {cashToClose.rehabBudget > 0 && (
-              <LineItem label="Rehab budget" value={formatCurrency(cashToClose.rehabBudget)} />
-            )}
-            <div className="border-t pt-1.5">
-              <LineItem label="Total" value={formatCurrency(cashToClose.totalCashToClose)} bold />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Rates Used */}
-      <div className="rounded-xl border bg-card p-6">
-        <h3 className="mb-3 text-sm font-semibold text-foreground">Rates Used</h3>
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <div>
-            <p className="text-xs text-muted-foreground">PMMS 30yr (owner-occ)</p>
-            <p className="text-lg font-bold text-muted-foreground line-through decoration-muted-foreground/50">
-              {(rates.mortgage30yr * 100).toFixed(2)}%
-            </p>
-            <p className="text-[10px] text-muted-foreground">Freddie Mac reference</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Investor rate applied</p>
-            <p className="text-lg font-bold text-primary">
-              {rates.mortgage30yrInvestor
-                ? (rates.mortgage30yrInvestor * 100).toFixed(2)
-                : (rates.mortgage30yr * 100).toFixed(2)}%
-            </p>
-            <p className="text-[10px] text-muted-foreground">
-              {rates.investorPremiumBps
-                ? `PMMS +${rates.investorPremiumBps} bps (${property.strategy ?? 'LTR'})`
-                : 'No premium'}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">PMMS 15yr</p>
-            <p className="text-lg font-bold text-foreground">{(rates.mortgage15yr * 100).toFixed(2)}%</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Fed Funds</p>
-            <p className="text-lg font-bold text-foreground">{(rates.fedFunds * 100).toFixed(2)}%</p>
-          </div>
-        </div>
-        <p className="mt-3 text-[11px] text-muted-foreground">
-          PMMS is for owner-occupied mortgages. Investor loans (DSCR / non-owner-occupied) price
-          higher — we apply the premium so all downstream math (cash flow, DSCR, breakeven, refi)
-          reflects what you&apos;ll actually pay.
-        </p>
-      </div>
-
-      {/* DSCR Details */}
-      <div className="rounded-xl border bg-card p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <ShieldCheckIcon className="h-5 w-5 text-primary" />
-          <h3 className="text-sm font-semibold text-foreground">DSCR Analysis</h3>
-        </div>
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <div>
-            <p className="text-xs text-muted-foreground">DSCR</p>
-            <p className={cn("text-lg font-bold", ltr.dscr >= 1.25 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400')}>
-              {ltr.dscr}x
-            </p>
-            <p className="text-[10px] text-muted-foreground">Lenders want 1.25+</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">LTV Ratio</p>
-            <p className="text-lg font-bold text-foreground">{(ltr.ltv * 100).toFixed(0)}%</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Annual NOI</p>
-            <p className="text-lg font-bold text-foreground">{formatCurrency(ltr.noiAnnual)}</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Loan Amount</p>
-            <p className="text-lg font-bold text-foreground">{formatCurrency(ltr.loanAmount)}</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Financing Alternatives — same deal, three capital structures side-by-side */}
-      {financingAlternatives && financingAlternatives.length > 0 && (
-        <div className="rounded-xl border bg-card p-6">
-          <div className="mb-4 flex items-center gap-2">
-            <LandmarkIcon className="h-5 w-5 text-primary" />
-            <h3 className="text-sm font-semibold text-foreground">Financing Alternatives</h3>
-          </div>
-          <p className="mb-4 text-xs text-muted-foreground">
-            Same property, different loan structures. Down payment, rate, and requirements differ.
-          </p>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-muted-foreground">
-                  <th className="pb-2 text-left font-medium">Loan Type</th>
-                  <th className="pb-2 text-right font-medium">Down</th>
-                  <th className="pb-2 text-right font-medium">Rate</th>
-                  <th className="pb-2 text-right font-medium">Monthly P&amp;I</th>
-                  <th className="pb-2 text-right font-medium">Cash Flow</th>
-                  <th className="pb-2 text-right font-medium">DSCR</th>
-                  <th className="pb-2 text-right font-medium">Cash to Close</th>
-                </tr>
-              </thead>
-              <tbody>
-                {financingAlternatives.map((f: any) => (
-                  <tr key={f.id} className="border-b border-border/50 align-top">
-                    <td className="py-3 pr-3">
-                      <p className="font-medium text-foreground">{f.name}</p>
-                      <p className="mt-0.5 text-[10px] leading-snug text-muted-foreground">
-                        {f.eligibilityNote}
-                      </p>
-                    </td>
-                    <td className="py-3 text-right">
-                      <div className="font-medium">{(f.downPaymentPct * 100).toFixed(1)}%</div>
-                      <div className="text-[10px] text-muted-foreground">{formatCurrency(f.downPayment)}</div>
-                    </td>
-                    <td className="py-3 text-right font-medium">{(f.annualRate * 100).toFixed(2)}%</td>
-                    <td className="py-3 text-right">{formatCurrency(f.monthlyPayment)}</td>
-                    <td
-                      className={cn(
-                        'py-3 text-right font-medium',
-                        f.monthlyCashFlow >= 0
-                          ? 'text-emerald-600 dark:text-emerald-400'
-                          : 'text-red-600 dark:text-red-400'
-                      )}
-                    >
-                      {f.monthlyCashFlow >= 0 ? '+' : ''}{formatCurrency(f.monthlyCashFlow)}
-                    </td>
-                    <td
-                      className={cn(
-                        'py-3 text-right',
-                        f.dscr >= 1.25
-                          ? 'text-emerald-600 dark:text-emerald-400 font-medium'
-                          : 'text-foreground'
-                      )}
-                    >
-                      {f.dscr}x
-                    </td>
-                    <td className="py-3 text-right font-bold">{formatCurrency(f.cashToClose)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Refi Scenarios */}
-      <div className="rounded-xl border bg-card p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <CalendarIcon className="h-5 w-5 text-primary" />
-          <h3 className="text-sm font-semibold text-foreground">5-Year Refi Scenarios</h3>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b text-muted-foreground">
-                <th className="pb-2 text-left font-medium">Refi Rate</th>
-                <th className="pb-2 text-right font-medium">Monthly Payment</th>
-                <th className="pb-2 text-right font-medium">Cash Flow</th>
-                <th className="pb-2 text-right font-medium">Viable?</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ltr.renewalScenarios?.map((s: any) => (
-                <tr key={s.rate} className="border-b border-border/50">
-                  <td className="py-2.5 font-medium">{(s.rate * 100).toFixed(1)}%</td>
-                  <td className="py-2.5 text-right">{formatCurrency(s.monthlyPayment)}</td>
-                  <td className={cn("py-2.5 text-right font-medium", s.monthlyCashFlow >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400')}>
-                    {s.monthlyCashFlow >= 0 ? '+' : ''}{formatCurrency(s.monthlyCashFlow)}
-                  </td>
-                  <td className="py-2.5 text-right">
-                    {s.viable ? (
-                      <span className="text-emerald-600 dark:text-emerald-400 font-medium">Yes</span>
-                    ) : (
-                      <span className="text-red-600 dark:text-red-400 font-medium">No</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Depreciation Benefits */}
-      <div className="rounded-xl border bg-card p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <DollarSignIcon className="h-5 w-5 text-primary" />
-          <h3 className="text-sm font-semibold text-foreground">Depreciation Benefits (Year 1)</h3>
-        </div>
-        <div className="grid grid-cols-3 gap-4 text-center">
-          <div>
-            <p className="text-xs text-muted-foreground">Annual Depreciation</p>
-            <p className="text-lg font-bold text-foreground">{formatCurrency(ltr.annualDepreciation)}</p>
-            <p className="text-[10px] text-muted-foreground">27.5-year straight-line</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Est. Tax Saving</p>
-            <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(ltr.estimatedTaxSaving)}</p>
-            <p className="text-[10px] text-muted-foreground">At ~28% effective rate</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">After-Tax Cash Flow</p>
-            <p className="text-lg font-bold text-foreground">{formatCurrency(ltr.afterTaxCashFlow)}/yr</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Rent Comparables — closes the trust gap on the rent estimate */}
-      {rentComps && rentComps.length > 0 && (
-        <div className="rounded-xl border bg-card p-6">
-          <div className="mb-3 flex items-center gap-2">
-            <UsersIcon className="h-5 w-5 text-primary" />
-            <h3 className="text-sm font-semibold text-foreground">Rent Comparables</h3>
-          </div>
-          <p className="mb-4 text-xs text-muted-foreground">
-            Nearby rentals used to estimate this property&apos;s rent. If these don&apos;t look
-            comparable (wrong neighborhood, wildly different unit), the rent estimate may
-            be off — verify with a local property manager before relying on these numbers.
-          </p>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {rentComps.map((c: any, i: number) => (
-              <div key={i} className="rounded-lg border p-4">
-                <p className="text-sm font-medium text-foreground">{c.address}</p>
-                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                  <span className="text-base font-bold text-foreground">
-                    {formatCurrency(c.rent)}/mo
-                  </span>
-                  {c.bedrooms != null && (
-                    <span>
-                      {c.bedrooms}bd{c.bathrooms != null ? ` / ${c.bathrooms}ba` : ''}
-                    </span>
-                  )}
-                  {c.square_feet && <span>{c.square_feet.toLocaleString()} sqft</span>}
-                  {typeof c.distance_miles === 'number' && (
-                    <span>· {c.distance_miles.toFixed(1)}mi</span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Climate & Insurance */}
-      {climate && (
-        <div className="rounded-xl border bg-card p-6">
-          <div className="mb-4 flex items-center gap-2">
-            <UmbrellaIcon className="h-5 w-5 text-primary" />
-            <h3 className="text-sm font-semibold text-foreground">Climate &amp; Insurance</h3>
-          </div>
-
-          {/* Insurance + flood + monthly expense breakdown */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div className="rounded-lg border bg-background/50 p-4">
-              <p className="text-xs text-muted-foreground">Est. Annual Insurance</p>
-              <p className="mt-1 text-2xl font-bold text-foreground">
-                {formatCurrency(climate.estimatedAnnualInsurance)}
-              </p>
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                State base {formatCurrency(climate.insuranceBreakdown.baseStatePremium)}
-                {climate.insuranceBreakdown.floodZoneAddOn > 0 && (
-                  <> · +{formatCurrency(climate.insuranceBreakdown.floodZoneAddOn)} flood</>
-                )}
-              </p>
-            </div>
-
-            <div
-              className={cn(
-                'rounded-lg border p-4',
-                climate.floodRisk === 'high-coastal' || climate.floodRisk === 'high'
-                  ? 'border-red-500/40 bg-red-500/5'
-                  : 'bg-background/50'
+            <p className="mt-1 text-xs text-muted-foreground">
+              {property.city}, {property.state}
+              <Dot />
+              {property.propertyType}
+              <Dot />
+              {property.bedrooms}bd / {property.bathrooms}ba
+              {property.sqft && (
+                <>
+                  <Dot />
+                  {property.sqft.toLocaleString()} sqft
+                </>
               )}
-            >
-              <div className="flex items-center gap-1.5">
-                <DropletsIcon className="h-3.5 w-3.5 text-blue-500" />
-                <p className="text-xs text-muted-foreground">Flood Zone</p>
-              </div>
-              <p className="mt-1 text-2xl font-bold text-foreground">
-                {climate.floodZone || 'Unknown'}
-              </p>
-              <p className={cn(
-                'mt-1 text-[11px] font-medium',
-                climate.floodInsuranceRequired ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'
-              )}>
-                {climate.floodRisk === 'high-coastal' && 'Coastal high-risk · NFIP required'}
-                {climate.floodRisk === 'high' && 'High-risk · NFIP required'}
-                {climate.floodRisk === 'moderate' && 'Moderate risk'}
-                {climate.floodRisk === 'minimal' && 'Minimal risk'}
-                {climate.floodRisk === 'unknown' && 'Not mapped / unknown'}
-              </p>
-            </div>
-
-            {expenses && (
-              <div className="rounded-lg border bg-background/50 p-4">
-                <p className="text-xs text-muted-foreground">Monthly Expenses</p>
-                <p className="mt-1 text-2xl font-bold text-foreground">
-                  {formatCurrency(expenses.monthlyTotal)}
-                </p>
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  Tax {formatCurrency(expenses.monthlyPropertyTax)}
-                  {expenses.propertyTaxSource === 'county-record' && (
-                    <span className="ml-1 rounded bg-emerald-500/10 px-1 text-[9px] font-semibold text-emerald-700 dark:text-emerald-400">
-                      county record
-                    </span>
-                  )}
-                  {' · '}Ins {formatCurrency(expenses.monthlyInsurance)}
-                  {' · '}Maint {formatCurrency(expenses.monthlyMaintenance)}
-                  {expenses.monthlyHOA > 0 && (
-                    <> · HOA {formatCurrency(expenses.monthlyHOA)}</>
-                  )}
-                </p>
-                {expenses.monthlyHOA === 0 &&
-                  (property.propertyType || '').toLowerCase().includes('condo') && (
-                    <p className="mt-2 text-[10px] text-amber-600 dark:text-amber-400">
-                      ⚠ HOA not captured from listing — condos/townhomes often have dues
-                      ($150–$500/mo). Verify and add manually when underwriting.
-                    </p>
-                  )}
-              </div>
-            )}
-          </div>
-
-          {/* Climate risk bars */}
-          {climate.climateScores && (
-            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-5">
-              <RiskBar icon={WindIcon} label="Hurricane" score={climate.climateScores.hurricane} />
-              <RiskBar icon={FlameIcon} label="Wildfire" score={climate.climateScores.wildfire} />
-              <RiskBar icon={ThermometerIcon} label="Heat" score={climate.climateScores.heat} />
-              <RiskBar icon={CloudRainIcon} label="Drought" score={climate.climateScores.drought} />
-              <RiskBar icon={WindIcon} label="Tornado" score={climate.climateScores.tornado} />
-            </div>
-          )}
-
-          {climate.summary && (
-            <p className="mt-4 text-xs leading-relaxed text-muted-foreground">{climate.summary}</p>
-          )}
-        </div>
-      )}
-
-      {/* State Rules */}
-      {stateRules && (
-        <div className="rounded-xl border bg-card p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <AlertTriangleIcon className="h-5 w-5 text-amber-500" />
-            <h3 className="text-sm font-semibold text-foreground">State Rules ({stateRules.state})</h3>
-          </div>
-          <div className="space-y-2 text-sm">
-            {stateRules.rentControl && (
-              <p className="text-muted-foreground">
-                <span className="font-medium text-foreground">Rent Control:</span> This state has rent control laws. Check local ordinances.
-              </p>
-            )}
-            <p className="text-muted-foreground">
-              <span className="font-medium text-foreground">Landlord-Friendly:</span> {stateRules.landlordFriendly ? 'Yes' : 'No'}
+              {property.yearBuilt && (
+                <>
+                  <Dot />
+                  Built {property.yearBuilt}
+                </>
+              )}
             </p>
-            <p className="text-muted-foreground">
-              <span className="font-medium text-foreground">Property Tax Rate:</span> ~{(stateRules.propertyTaxRate * 100).toFixed(1)}%
-            </p>
-            {stateRules.strNotes && (
-              <p className="text-muted-foreground">
-                <span className="font-medium text-foreground">STR Rules:</span> {stateRules.strNotes}
-              </p>
-            )}
           </div>
-        </div>
-      )}
 
-      {/* Deal Doctor — or graceful fallback if the AI step failed */}
-      {dealDoctor ? (
-        <DealDoctorSection dealDoctor={dealDoctor} verdict={ltr.verdict} />
-      ) : dealDoctorError ? (
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-5">
-          <div className="flex items-start gap-2">
-            <AlertTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
-            <div>
-              <p className="text-sm font-semibold text-foreground">AI diagnosis unavailable</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">{dealDoctorError}</p>
+          <div
+            className={cn(
+              'flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2',
+              v.bg,
+              v.border
+            )}
+          >
+            <v.Icon className={cn('h-5 w-5', v.color)} />
+            <div className="leading-tight">
+              <p className={cn('text-sm font-bold uppercase tracking-wide', v.color)}>
+                {v.label}
+              </p>
+              <p className="text-[10px] text-muted-foreground">Score {ltr.dealScore}/100</p>
             </div>
           </div>
         </div>
-      ) : null}
+      </header>
 
-      {/* Comparable Sales */}
-      {comparableSales && comparableSales.length > 0 && (
-        <div className="rounded-xl border bg-card p-6">
-          <h3 className="mb-4 text-sm font-semibold text-foreground">Comparable Properties</h3>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {comparableSales.map((comp: any, i: number) => (
-              <div key={i} className="rounded-lg border p-4">
-                <p className="font-medium text-foreground text-sm">{comp.address}</p>
-                <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
-                  <span className="font-bold text-foreground text-base">{formatCurrency(comp.estimated_value)}</span>
-                  <span>{comp.bedrooms}bd / {comp.bathrooms}ba</span>
-                  {comp.square_feet && <span>{comp.square_feet.toLocaleString()} sqft</span>}
+      {/* Hero 3-card strip — the three numbers that matter most */}
+      <section className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-3">
+        {breakeven && (
+          <HeroCell
+            label="Offer vs Breakeven"
+            value={
+              breakeven.delta < 0 ? (
+                <span className="text-red-700 dark:text-red-400">
+                  +{fmt(-breakeven.delta)}
+                </span>
+              ) : (
+                <span className="text-emerald-700 dark:text-emerald-400">
+                  −{fmt(breakeven.delta)}
+                </span>
+              )
+            }
+            sub={`Offer ${fmt(breakeven.yourOffer)}  ·  BE ${fmt(breakeven.price)}`}
+          />
+        )}
+        {wealthProjection && (
+          <HeroCell
+            label="5-Year Wealth Built"
+            value={<span className="text-primary">{fmt(wealthProjection.hero.totalWealthBuilt5yr)}</span>}
+            sub="Cash flow + paydown + appreciation + tax shield"
+          />
+        )}
+        {wealthProjection && (
+          <HeroCell
+            label="5-Year Hold IRR"
+            value={<span>{(wealthProjection.hero.irr5yr * 100).toFixed(1)}%</span>}
+            sub="Incl. sale at Y5 (6% selling costs)"
+          />
+        )}
+      </section>
+
+      {/* Main (narrative) + Sidebar (reference) grid */}
+      <div className="grid gap-5 lg:grid-cols-12">
+        {/* ───────── MAIN COLUMN ───────── */}
+        <div className="space-y-5 lg:col-span-8">
+          {/* Deal Doctor AI narrative */}
+          {dealDoctor ? (
+            <DealDoctorSection dealDoctor={dealDoctor} verdict={ltr.verdict} />
+          ) : dealDoctorError ? (
+            <Card>
+              <div className="flex items-start gap-2">
+                <AlertTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                <div>
+                  <p className="text-sm font-semibold text-foreground">AI diagnosis unavailable</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{dealDoctorError}</p>
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
-      )}
+            </Card>
+          ) : null}
 
-      {/* Data Sources — transparent provenance */}
-      <div className="rounded-xl border border-dashed bg-background/40 p-5 text-xs leading-relaxed text-muted-foreground">
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-foreground">
+          {/* Financing Alternatives — wide table, fits the main column */}
+          {financingAlternatives && financingAlternatives.length > 0 && (
+            <Card padded={false}>
+              <CardHeader label="Financing Alternatives" hint="Same property, three capital structures" />
+              <div className="overflow-x-auto px-5 pb-5">
+                <table className="w-full text-xs tabular-nums sm:text-sm">
+                  <thead>
+                    <tr className="border-b border-border/60 text-muted-foreground">
+                      <th className="pb-2 pr-3 text-left font-medium">Loan Type</th>
+                      <th className="pb-2 text-right font-medium">Down</th>
+                      <th className="pb-2 text-right font-medium">Rate</th>
+                      <th className="pb-2 text-right font-medium">P&amp;I</th>
+                      <th className="pb-2 text-right font-medium">Cash Flow</th>
+                      <th className="pb-2 text-right font-medium">DSCR</th>
+                      <th className="pb-2 text-right font-medium">Cash In</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {financingAlternatives.map((f: any) => (
+                      <tr key={f.id} className="border-b border-border/30 align-top last:border-b-0">
+                        <td className="py-2.5 pr-3">
+                          <p className="font-medium text-foreground">{f.name}</p>
+                          <p className="mt-0.5 text-[10px] leading-snug text-muted-foreground">
+                            {f.eligibilityNote}
+                          </p>
+                        </td>
+                        <td className="py-2.5 text-right">
+                          <div className="font-medium">{pct(f.downPaymentPct, 1)}</div>
+                          <div className="text-[10px] text-muted-foreground">{fmt(f.downPayment)}</div>
+                        </td>
+                        <td className="py-2.5 text-right font-medium">{pct(f.annualRate)}</td>
+                        <td className="py-2.5 text-right">{fmt(f.monthlyPayment)}</td>
+                        <td
+                          className={cn(
+                            'py-2.5 text-right font-medium',
+                            f.monthlyCashFlow >= 0
+                              ? 'text-emerald-700 dark:text-emerald-400'
+                              : 'text-red-700 dark:text-red-400'
+                          )}
+                        >
+                          {f.monthlyCashFlow >= 0 ? '+' : ''}
+                          {fmt(f.monthlyCashFlow)}
+                        </td>
+                        <td
+                          className={cn(
+                            'py-2.5 text-right',
+                            f.dscr >= 1.25 ? 'text-emerald-700 dark:text-emerald-400 font-medium' : ''
+                          )}
+                        >
+                          {f.dscr}x
+                        </td>
+                        <td className="py-2.5 text-right font-bold">{fmt(f.cashToClose)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
+
+          {/* 5-Year Wealth — year-by-year */}
+          {wealthProjection && (
+            <Card padded={false}>
+              <CardHeader label="5-Year Projection" hint="Year-by-year; numbers drive the hero above" />
+              <div className="overflow-x-auto px-5 pb-5">
+                <table className="w-full text-xs tabular-nums sm:text-sm">
+                  <thead>
+                    <tr className="border-b border-border/60 text-muted-foreground">
+                      <th className="pb-2 text-left font-medium">Year</th>
+                      <th className="pb-2 text-right font-medium">Cash Flow</th>
+                      <th className="pb-2 text-right font-medium">Value</th>
+                      <th className="pb-2 text-right font-medium">Loan Bal</th>
+                      <th className="pb-2 text-right font-medium">Equity Built</th>
+                      <th className="pb-2 text-right font-medium">Wealth</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {wealthProjection.years.map((y: any) => (
+                      <tr key={y.year} className="border-b border-border/30 last:border-b-0">
+                        <td className="py-2 font-medium">Y{y.year}</td>
+                        <td
+                          className={cn(
+                            'py-2 text-right',
+                            y.annualCashFlow >= 0
+                              ? 'text-emerald-700 dark:text-emerald-400'
+                              : 'text-red-700 dark:text-red-400'
+                          )}
+                        >
+                          {y.annualCashFlow >= 0 ? '+' : ''}
+                          {fmt(y.annualCashFlow)}
+                        </td>
+                        <td className="py-2 text-right">{fmt(y.propertyValue)}</td>
+                        <td className="py-2 text-right">{fmt(y.loanBalance)}</td>
+                        <td className="py-2 text-right">
+                          {fmt(y.equityFromPaydown + y.equityFromAppreciation)}
+                        </td>
+                        <td className="py-2 text-right font-bold text-primary">
+                          {fmt(y.totalWealthBuilt)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="mt-3 text-[10px] text-muted-foreground">
+                  {pct(wealthProjection.assumptions.rentGrowthRate, 1)} rent growth,{' '}
+                  {pct(wealthProjection.assumptions.appreciationRate, 1)} appreciation,{' '}
+                  {pct(wealthProjection.assumptions.expenseGrowthRate, 1)} expense growth,{' '}
+                  {pct(wealthProjection.assumptions.effectiveTaxRate, 0)} effective tax rate.
+                </p>
+              </div>
+            </Card>
+          )}
+
+          {/* Rent Comparables */}
+          {rentComps && rentComps.length > 0 && (
+            <Card>
+              <CardHeader label="Rent Comparables" hint="Nearby rentals that priced the rent estimate" />
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {rentComps.map((c: any, i: number) => (
+                  <div
+                    key={i}
+                    className="rounded-md border border-border/60 bg-background/50 p-3"
+                  >
+                    <p className="truncate text-sm font-medium text-foreground">{c.address}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground tabular-nums">
+                      <span className="text-sm font-bold text-foreground">{fmt(c.rent)}/mo</span>
+                      {c.bedrooms != null && (
+                        <span>
+                          {c.bedrooms}bd{c.bathrooms != null ? `/${c.bathrooms}ba` : ''}
+                        </span>
+                      )}
+                      {c.square_feet && <span>{c.square_feet.toLocaleString()} sqft</span>}
+                      {typeof c.distance_miles === 'number' && <span>· {c.distance_miles.toFixed(1)}mi</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2 text-[10px] text-muted-foreground">
+                If these don&apos;t look comparable, verify the rent estimate with a local property manager.
+              </p>
+            </Card>
+          )}
+
+          {/* Sale Comparables */}
+          {comparableSales && comparableSales.length > 0 && (
+            <Card>
+              <CardHeader label="Sale Comparables" hint="Used to derive ARV for the 70%-rule flip offer" />
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {comparableSales.map((comp: any, i: number) => (
+                  <div
+                    key={i}
+                    className="rounded-md border border-border/60 bg-background/50 p-3"
+                  >
+                    <p className="truncate text-sm font-medium text-foreground">{comp.address}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground tabular-nums">
+                      <span className="text-sm font-bold text-foreground">
+                        {fmt(comp.estimated_value)}
+                      </span>
+                      <span>
+                        {comp.bedrooms}bd/{comp.bathrooms}ba
+                      </span>
+                      {comp.square_feet && <span>{comp.square_feet.toLocaleString()} sqft</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+        </div>
+
+        {/* ───────── SIDEBAR (reference data) ───────── */}
+        <aside className="space-y-5 lg:col-span-4">
+          {/* Quick metrics 2×2 */}
+          <Card>
+            <CardHeader label="Year-1 Metrics" />
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <MiniStat
+                label="Cash Flow"
+                value={`${ltr.monthlyNetCashFlow >= 0 ? '+' : ''}${fmt(ltr.monthlyNetCashFlow)}/mo`}
+                tone={ltr.monthlyNetCashFlow >= 0 ? 'pos' : 'neg'}
+              />
+              <MiniStat
+                label="DSCR"
+                value={`${ltr.dscr}x`}
+                tone={ltr.dscr >= 1.25 ? 'pos' : 'neg'}
+              />
+              <MiniStat label="Cap Rate" value={`${ltr.capRate}%`} />
+              <MiniStat label="Cash-on-Cash" value={`${ltr.cashOnCashReturn}%`} />
+            </div>
+          </Card>
+
+          {/* Cash to Close */}
+          {cashToClose && (
+            <Card>
+              <CardHeader label="Total Cash to Close" />
+              <p className="mt-1 text-2xl font-bold tabular-nums text-foreground">
+                {fmt(cashToClose.totalCashToClose)}
+              </p>
+              <p className="text-[10px] text-muted-foreground">What you need liquid at closing</p>
+              <div className="mt-3 space-y-1.5 text-sm">
+                <Line label="Down payment" value={fmt(cashToClose.downPayment)} />
+                <Line label="Closing (~2.5%)" value={fmt(cashToClose.closingCosts)} />
+                <Line label="Inspect + appraise" value={fmt(cashToClose.inspectionAndAppraisal)} />
+                <Line label="6mo PITI reserves" value={fmt(cashToClose.reserves)} />
+                {cashToClose.rehabBudget > 0 && (
+                  <Line label="Rehab budget" value={fmt(cashToClose.rehabBudget)} />
+                )}
+              </div>
+            </Card>
+          )}
+
+          {/* Rates + DSCR combined */}
+          <Card>
+            <CardHeader label="Financing" />
+            <div className="mt-2 space-y-1 text-sm">
+              <Line
+                label="PMMS 30yr (owner-occ)"
+                value={`${(rates.mortgage30yr * 100).toFixed(2)}%`}
+                muted
+              />
+              <Line
+                label="Investor rate applied"
+                value={`${(((rates.mortgage30yrInvestor ?? rates.mortgage30yr) * 100)).toFixed(2)}%`}
+                strong
+              />
+              <div className="my-2 border-t border-border/40" />
+              <Line label="Loan amount" value={fmt(ltr.loanAmount)} />
+              <Line label="LTV" value={`${(ltr.ltv * 100).toFixed(0)}%`} />
+              <Line label="Annual NOI" value={fmt(ltr.noiAnnual)} />
+              <Line label="Monthly P&I" value={fmt(ltr.monthlyMortgagePayment)} />
+            </div>
+            <p className="mt-2 text-[10px] text-muted-foreground">
+              PMMS is owner-occupied; investor rate applied to all math below.
+            </p>
+          </Card>
+
+          {/* Expenses */}
+          {expenses && (
+            <Card>
+              <CardHeader label="Monthly Carrying Costs" />
+              <p className="mt-1 text-2xl font-bold tabular-nums text-foreground">
+                {fmt(expenses.monthlyTotal)}
+              </p>
+              <div className="mt-3 space-y-1.5 text-sm">
+                <Line
+                  label={
+                    <span className="flex items-center gap-1.5">
+                      Property tax
+                      {expenses.propertyTaxSource === 'county-record' && (
+                        <span className="rounded bg-emerald-500/10 px-1 text-[9px] font-semibold text-emerald-700 dark:text-emerald-400">
+                          county
+                        </span>
+                      )}
+                    </span>
+                  }
+                  value={fmt(expenses.monthlyPropertyTax)}
+                />
+                <Line label="Insurance" value={fmt(expenses.monthlyInsurance)} />
+                <Line label="Maintenance" value={fmt(expenses.monthlyMaintenance)} />
+                {expenses.monthlyHOA > 0 && <Line label="HOA" value={fmt(expenses.monthlyHOA)} />}
+              </div>
+              {expenses.monthlyHOA === 0 &&
+                (property.propertyType || '').toLowerCase().includes('condo') && (
+                  <p className="mt-2 text-[10px] text-amber-600 dark:text-amber-400">
+                    HOA not captured — condos often have $150–$500/mo dues. Verify.
+                  </p>
+                )}
+            </Card>
+          )}
+
+          {/* Depreciation */}
+          <Card>
+            <CardHeader label="Year-1 Tax Benefits" />
+            <div className="mt-2 space-y-1.5 text-sm">
+              <Line label="Annual depreciation" value={fmt(ltr.annualDepreciation)} />
+              <Line
+                label="Est. tax saving"
+                value={fmt(ltr.estimatedTaxSaving)}
+                tone="pos"
+              />
+              <Line label="After-tax cash flow" value={`${fmt(ltr.afterTaxCashFlow)}/yr`} />
+            </div>
+            <p className="mt-2 text-[10px] text-muted-foreground">
+              27.5yr straight-line on ~80% building basis; 28% effective rate.
+            </p>
+          </Card>
+
+          {/* Climate & Insurance — condensed */}
+          {climate && (
+            <Card>
+              <CardHeader label="Climate &amp; Insurance" />
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                    Annual ins.
+                  </p>
+                  <p className="text-base font-bold tabular-nums">
+                    {fmt(climate.estimatedAnnualInsurance)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                    Flood zone
+                  </p>
+                  <p
+                    className={cn(
+                      'text-base font-bold',
+                      climate.floodInsuranceRequired && 'text-red-700 dark:text-red-400'
+                    )}
+                  >
+                    {climate.floodZone || '—'}
+                  </p>
+                </div>
+              </div>
+              {climate.topConcerns?.length > 0 && (
+                <div className="mt-3">
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                    Top risks
+                  </p>
+                  <ul className="mt-1 space-y-0.5 text-[11px] text-foreground">
+                    {climate.topConcerns.slice(0, 3).map((c: string) => (
+                      <li key={c}>• {c}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {climate.climateScores && (
+                <div className="mt-3 space-y-1">
+                  <ScoreRow label="Hurricane" score={climate.climateScores.hurricane} />
+                  <ScoreRow label="Wildfire" score={climate.climateScores.wildfire} />
+                  <ScoreRow label="Heat" score={climate.climateScores.heat} />
+                  <ScoreRow label="Drought" score={climate.climateScores.drought} />
+                  <ScoreRow label="Tornado" score={climate.climateScores.tornado} />
+                </div>
+              )}
+            </Card>
+          )}
+
+          {/* Refi scenarios — 3 key rates only */}
+          {ltr.renewalScenarios && ltr.renewalScenarios.length > 0 && (
+            <Card>
+              <CardHeader label="5yr Refi Stress Test" />
+              <table className="mt-2 w-full text-xs tabular-nums">
+                <thead>
+                  <tr className="border-b border-border/40 text-muted-foreground">
+                    <th className="pb-1.5 text-left font-medium">Rate</th>
+                    <th className="pb-1.5 text-right font-medium">Payment</th>
+                    <th className="pb-1.5 text-right font-medium">Cash Flow</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ltr.renewalScenarios
+                    .filter((_: any, i: number) => [0, 2, 4, 6].includes(i)) // 5, 6, 7, 8%
+                    .map((s: any) => (
+                      <tr key={s.rate} className="border-b border-border/20 last:border-b-0">
+                        <td className="py-1.5 font-medium">{pct(s.rate, 1)}</td>
+                        <td className="py-1.5 text-right">{fmt(s.monthlyPayment)}</td>
+                        <td
+                          className={cn(
+                            'py-1.5 text-right font-medium',
+                            s.monthlyCashFlow >= 0
+                              ? 'text-emerald-700 dark:text-emerald-400'
+                              : 'text-red-700 dark:text-red-400'
+                          )}
+                        >
+                          {s.monthlyCashFlow >= 0 ? '+' : ''}
+                          {fmt(s.monthlyCashFlow)}
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </Card>
+          )}
+
+          {/* State rules */}
+          {stateRules && (
+            <Card>
+              <CardHeader label={`${stateRules.state} Regulations`} />
+              <div className="mt-2 space-y-1 text-[11px] text-foreground">
+                <RegLine
+                  positive={!stateRules.rentControl}
+                  label={stateRules.rentControl ? 'Rent control' : 'No rent control'}
+                />
+                <RegLine
+                  positive={stateRules.landlordFriendly}
+                  label={stateRules.landlordFriendly ? 'Landlord-friendly' : 'Tenant-friendly'}
+                />
+                <RegLine
+                  neutral
+                  label={`Property tax ~${(stateRules.propertyTaxRate * 100).toFixed(1)}%`}
+                />
+              </div>
+              {stateRules.strNotes && (
+                <p className="mt-2 text-[10px] leading-snug text-muted-foreground">
+                  <span className="font-medium text-foreground">STR:</span> {stateRules.strNotes}
+                </p>
+              )}
+            </Card>
+          )}
+        </aside>
+      </div>
+
+      {/* Data Sources footer */}
+      <footer className="mt-8 rounded-lg border border-dashed border-border/60 bg-background/40 p-4 text-[11px] leading-relaxed text-muted-foreground">
+        <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-foreground">
           Data Sources
         </p>
-        <ul className="space-y-1">
-          <li>• Property details, rent &amp; value estimates, sale &amp; rent comps — Rentcast AVM</li>
-          <li>• Flood zone — FEMA National Flood Hazard Layer REST API</li>
-          <li>• Geocoding — Mapbox</li>
-          <li>
-            • Mortgage rates — Freddie Mac PMMS (30yr / 15yr); investor premium applied for LTR/STR/FLIP
-          </li>
-          <li>• Insurance baseline — NAIC state averages, scaled by dwelling value</li>
-          <li>• Climate risk scores, STR revenue, breakeven math — DealDoctor&apos;s own models</li>
-          <li>• Deal Doctor narrative and photo review — Anthropic Claude Haiku 4.5</li>
-        </ul>
-        <p className="mt-3">
-          Full methodology at{' '}
-          <a
-            href="/methodology"
-            className="underline underline-offset-2 hover:text-foreground"
-          >
+        <p>
+          Property / rent / value / comps — Rentcast AVM. Flood zone — FEMA NFHL. Rates — Freddie
+          Mac PMMS + strategy-adjusted investor premium. Insurance baseline — NAIC state averages.
+          Climate scores, STR estimates, breakeven — DealDoctor models. Narrative + photo review —
+          Claude Haiku 4.5. Full methodology at{' '}
+          <a href="/methodology" className="underline hover:text-foreground">
             /methodology
           </a>
-          . Not an appraisal or home inspection — always verify with licensed professionals before closing.
+          . Not an appraisal or inspection.
         </p>
-      </div>
+      </footer>
     </div>
   )
 }
 
-function SubMetric({ label, value }: { label: string; value: string }) {
+/* ───── Compositional helpers ───── */
+
+function Eyebrow({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border bg-background/50 p-3">
-      <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
-      <p className="mt-1 text-lg font-bold text-foreground">{value}</p>
+    <p className="text-[10px] font-medium uppercase tracking-[0.15em] text-muted-foreground">
+      {children}
+    </p>
+  )
+}
+
+function Dot() {
+  return <span className="mx-1.5 text-muted-foreground/40">·</span>
+}
+
+function Card({
+  children,
+  padded = true,
+}: {
+  children: React.ReactNode
+  padded?: boolean
+}) {
+  return (
+    <section
+      className={cn(
+        'rounded-lg border border-border/70 bg-card',
+        padded && 'p-5'
+      )}
+    >
+      {children}
+    </section>
+  )
+}
+
+function CardHeader({ label, hint }: { label: React.ReactNode; hint?: string }) {
+  return (
+    <div className={cn(hint ? 'px-5 pt-5' : '')}>
+      <Eyebrow>{label}</Eyebrow>
+      {hint && <p className="mt-0.5 text-[11px] text-muted-foreground">{hint}</p>}
     </div>
   )
 }
 
-function LineItem({
+function HeroCell({
   label,
   value,
-  bold,
+  sub,
+}: {
+  label: string
+  value: React.ReactNode
+  sub?: string
+}) {
+  return (
+    <div className="rounded-lg border border-border/70 bg-card px-4 py-3">
+      <Eyebrow>{label}</Eyebrow>
+      <p className="mt-1 font-[family-name:var(--font-playfair)] text-2xl font-bold leading-tight tabular-nums">
+        {value}
+      </p>
+      {sub && <p className="mt-1 text-[10px] text-muted-foreground">{sub}</p>}
+    </div>
+  )
+}
+
+function MiniStat({
+  label,
+  value,
+  tone,
 }: {
   label: string
   value: string
-  bold?: boolean
+  tone?: 'pos' | 'neg'
 }) {
   return (
-    <div className="flex items-center justify-between text-sm">
-      <span className={cn('text-muted-foreground', bold && 'font-semibold text-foreground')}>
+    <div className="rounded-md border border-border/60 bg-background/40 p-2.5">
+      <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+        {label}
+      </p>
+      <p
+        className={cn(
+          'mt-0.5 text-base font-bold tabular-nums',
+          tone === 'pos' && 'text-emerald-700 dark:text-emerald-400',
+          tone === 'neg' && 'text-red-700 dark:text-red-400'
+        )}
+      >
+        {value}
+      </p>
+    </div>
+  )
+}
+
+function Line({
+  label,
+  value,
+  strong,
+  muted,
+  tone,
+}: {
+  label: React.ReactNode
+  value: string
+  strong?: boolean
+  muted?: boolean
+  tone?: 'pos' | 'neg'
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span
+        className={cn(
+          'text-muted-foreground',
+          strong && 'font-medium text-foreground',
+          muted && 'opacity-70'
+        )}
+      >
         {label}
       </span>
-      <span className={cn('tabular-nums', bold ? 'text-lg font-bold text-foreground' : 'font-medium text-foreground')}>
+      <span
+        className={cn(
+          'tabular-nums font-medium text-foreground',
+          strong && 'font-bold',
+          muted && 'line-through opacity-60',
+          tone === 'pos' && 'text-emerald-700 dark:text-emerald-400',
+          tone === 'neg' && 'text-red-700 dark:text-red-400'
+        )}
+      >
         {value}
       </span>
     </div>
   )
 }
 
-function RiskBar({
-  icon: Icon,
-  label,
-  score,
-}: {
-  icon: React.ComponentType<{ className?: string }>
-  label: string
-  score: number
-}) {
+function ScoreRow({ label, score }: { label: string; score: number }) {
   const pct = Math.min(100, Math.max(0, (score / 5) * 100))
-  const tone =
+  const color =
     score >= 4 ? 'bg-red-500' :
     score >= 3 ? 'bg-amber-500' :
     score >= 1 ? 'bg-emerald-500' :
-    'bg-muted-foreground/30'
-  const toneText =
-    score >= 4 ? 'text-red-600 dark:text-red-400' :
-    score >= 3 ? 'text-amber-600 dark:text-amber-400' :
-    score >= 1 ? 'text-emerald-600 dark:text-emerald-400' :
-    'text-muted-foreground'
-  const label2 =
-    score >= 4 ? 'High' :
-    score >= 3 ? 'Elevated' :
-    score >= 1 ? 'Low' :
-    'None'
+    'bg-muted-foreground/20'
   return (
-    <div className="rounded-lg border bg-background/50 p-3">
-      <div className="flex items-center gap-1.5 text-muted-foreground">
-        <Icon className="h-3.5 w-3.5" />
-        <span className="text-[10px] font-medium uppercase tracking-wider">{label}</span>
+    <div className="flex items-center gap-2">
+      <span className="w-16 text-[10px] text-muted-foreground">{label}</span>
+      <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
+        <div className={cn('h-full', color)} style={{ width: `${pct}%` }} />
       </div>
-      <p className={cn('mt-1 text-sm font-bold', toneText)}>{label2}</p>
-      <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-muted">
-        <div className={cn('h-full', tone)} style={{ width: `${pct}%` }} />
-      </div>
+    </div>
+  )
+}
+
+function RegLine({
+  positive,
+  neutral,
+  label,
+}: {
+  positive?: boolean
+  neutral?: boolean
+  label: string
+}) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <span
+        className={cn(
+          'h-1 w-1 shrink-0 rounded-full',
+          neutral
+            ? 'bg-muted-foreground/40'
+            : positive
+              ? 'bg-emerald-500'
+              : 'bg-amber-500'
+        )}
+      />
+      <span>{label}</span>
     </div>
   )
 }

@@ -149,7 +149,7 @@ export default function ReportPage() {
         </div>
       )}
 
-      <main className="mx-auto max-w-4xl px-4 py-8 sm:py-12">
+      <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
         {report.paid && fullData ? (
           <div className="space-y-6">
             <FullReport data={fullData} />
