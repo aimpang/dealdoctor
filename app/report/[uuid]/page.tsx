@@ -5,6 +5,7 @@ import { useParams, useSearchParams } from 'next/navigation'
 import { FullReport } from '@/components/FullReport'
 import { BlurredReport } from '@/components/BlurredReport'
 import { PhotoAnalysis } from '@/components/PhotoAnalysis'
+import { Logo } from '@/components/Logo'
 import { LoaderIcon, CheckCircle2Icon, MapPinIcon } from 'lucide-react'
 
 export default function ReportPage() {
@@ -105,16 +106,8 @@ export default function ReportPage() {
       {/* Nav */}
       <header className="sticky top-0 z-40 border-b border-border/50 bg-background/80 backdrop-blur-xl">
         <nav className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
-          <a href="/" className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-              <svg className="h-4 w-4 text-primary-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                <polyline points="9 22 9 12 15 12 15 22" />
-              </svg>
-            </div>
-            <span className="font-[family-name:var(--font-playfair)] text-lg font-bold tracking-tight text-foreground">
-              Deal<span className="text-primary">Doctor</span>
-            </span>
+          <a href="/" className="inline-flex">
+            <Logo variant="wordmark" size="md" />
           </a>
           <div className="flex items-center gap-1.5 rounded-full border bg-card px-3 py-1.5 text-xs font-medium text-foreground">
             <MapPinIcon className="h-3 w-3 text-primary" />

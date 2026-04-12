@@ -39,8 +39,15 @@ export default async function OGImage({ params }: { params: { uuid: string } }) 
             fontFamily: 'system-ui',
           }}
         >
-          <div style={{ fontSize: 72, fontWeight: 800 }}>
-            Deal<span style={{ color: '#0ea5e9' }}>Doctor</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
+            <svg width="200" height="100" viewBox="0 0 64 32" xmlns="http://www.w3.org/2000/svg">
+              <path d="M0 22 L18 22 M46 22 L64 22" stroke="#fafafa" strokeOpacity="0.35" strokeWidth="1.8" strokeLinecap="round" fill="none" />
+              <path d="M18 22 L22 26 L32 6 L42 26 L46 22" stroke="#fafafa" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+              <circle cx="32" cy="6" r="3" fill="#f97316" />
+            </svg>
+            <div style={{ fontSize: 72, fontWeight: 800 }}>
+              Deal<span style={{ color: '#f97316' }}>Doctor</span>
+            </div>
           </div>
           <div style={{ fontSize: 28, marginTop: 16, color: '#a1a1aa' }}>
             Instant underwriting for US rental investments
@@ -95,8 +102,15 @@ export default async function OGImage({ params }: { params: { uuid: string } }) 
             background: '#ffffff',
           }}
         >
-          <div style={{ fontSize: 26, fontWeight: 800, color: '#18181b', display: 'flex' }}>
-            Deal<span style={{ color: '#0ea5e9' }}>Doctor</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <svg width="48" height="24" viewBox="0 0 64 32" xmlns="http://www.w3.org/2000/svg">
+              <path d="M0 22 L18 22 M46 22 L64 22" stroke="#18181b" strokeOpacity="0.35" strokeWidth="1.8" strokeLinecap="round" fill="none" />
+              <path d="M18 22 L22 26 L32 6 L42 26 L46 22" stroke="#18181b" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+              <circle cx="32" cy="6" r="2.5" fill="#f97316" />
+            </svg>
+            <div style={{ fontSize: 26, fontWeight: 800, color: '#18181b', display: 'flex' }}>
+              Deal<span style={{ color: '#f97316' }}>Doctor</span>
+            </div>
           </div>
           <div
             style={{
@@ -174,8 +188,8 @@ export default async function OGImage({ params }: { params: { uuid: string } }) 
               style={{
                 marginTop: 20,
                 padding: '20px 28px',
-                background: '#0ea5e910',
-                border: '1px solid #0ea5e940',
+                background: '#fff7ed',
+                border: '1px solid #fed7aa',
                 borderRadius: 16,
                 display: 'flex',
                 justifyContent: 'space-between',
@@ -186,7 +200,7 @@ export default async function OGImage({ params }: { params: { uuid: string } }) 
                 <div style={{ fontSize: 13, fontWeight: 600, color: '#71717a', letterSpacing: 1, display: 'flex' }}>
                   5-YEAR WEALTH BUILT
                 </div>
-                <div style={{ fontSize: 32, fontWeight: 800, color: '#0369a1', marginTop: 2, display: 'flex' }}>
+                <div style={{ fontSize: 32, fontWeight: 800, color: '#c2410c', marginTop: 2, display: 'flex' }}>
                   {fmt(wealth5yr)}
                 </div>
               </div>

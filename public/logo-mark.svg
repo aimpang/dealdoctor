@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 32" width="64" height="32" role="img" aria-label="DealDoctor mark">
+  <path d="M0 22 L18 22 M46 22 L64 22" stroke="currentColor" stroke-opacity="0.35" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+  <path d="M18 22 L22 26 L32 6 L42 26 L46 22" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <circle cx="32" cy="6" r="2.2" fill="#f97316"/>
+</svg>

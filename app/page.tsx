@@ -6,6 +6,7 @@ import { AddressInput } from '@/components/AddressInput'
 import { TeaserMetrics } from '@/components/TeaserMetrics'
 import { BlurredReport } from '@/components/BlurredReport'
 import { LiveCounter } from '@/components/LiveCounter'
+import { Logo } from '@/components/Logo'
 import MapPin3D from '@/components/MapPin3D'
 import {
   ArrowRightIcon,
@@ -36,17 +37,7 @@ export default function LandingPage() {
       {/* Nav */}
       <header className="sticky top-0 z-40 border-b border-border/50 bg-background/80 backdrop-blur-xl">
         <nav className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-              <svg className="h-4 w-4 text-primary-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                <polyline points="9 22 9 12 15 12 15 22" />
-              </svg>
-            </div>
-            <span className="font-[family-name:var(--font-playfair)] text-lg font-bold tracking-tight text-foreground">
-              Deal<span className="text-primary">Doctor</span>
-            </span>
-          </div>
+          <Logo variant="wordmark" size="md" />
           <div className="flex items-center gap-3 text-sm">
             <a
               href="/portfolio"
@@ -323,15 +314,7 @@ export default function LandingPage() {
       <footer className="border-t bg-card/30">
         <div className="mx-auto max-w-6xl px-4 py-8">
           <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
-            <div className="flex items-center gap-2">
-              <div className="flex h-6 w-6 items-center justify-center rounded bg-primary">
-                <svg className="h-3 w-3 text-primary-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                  <polyline points="9 22 9 12 15 12 15 22" />
-                </svg>
-              </div>
-              <span className="text-sm font-semibold text-foreground">DealDoctor</span>
-            </div>
+            <Logo variant="wordmark" size="sm" />
             <div className="flex flex-col items-center gap-1 sm:items-end">
               <a
                 href="/methodology"

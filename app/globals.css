@@ -58,6 +58,13 @@
   }
 }
 
+/* DealDoctor logo: single-stroke draw-in for hero placements */
+@keyframes logo-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
 /* Print styles — lets users "File > Print > Save as PDF" and get a clean
    investor-ready export of the report. Hides UI chrome (nav, paywall,
    uploaders, debug banners) and keeps only the report content + data
