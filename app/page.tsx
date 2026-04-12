@@ -56,11 +56,21 @@ export default function LandingPage() {
       {/* Hero */}
       <section className="relative mx-auto max-w-6xl px-4 pt-16 pb-12 sm:pt-24 sm:pb-16">
         <div className="flex flex-col items-center text-center">
+          {/* Animated brand mark — draws itself on load (see @keyframes logo-draw) */}
+          <div
+            className={cn(
+              'mb-5 text-foreground',
+              'animate-in fade-in fill-mode-backwards duration-500'
+            )}
+          >
+            <Logo variant="mark" size="xl" animated />
+          </div>
+
           {/* Badge */}
           <div
             className={cn(
               "mb-6 flex items-center gap-2.5 rounded-full border bg-card px-4 py-1.5 shadow-sm",
-              "animate-in fade-in slide-in-from-bottom-4 fill-mode-backwards duration-500"
+              "animate-in fade-in slide-in-from-bottom-4 fill-mode-backwards duration-500 delay-75"
             )}
           >
             <span className="relative flex h-2 w-2">
