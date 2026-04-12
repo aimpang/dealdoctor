@@ -1,10 +1,19 @@
 import { prisma } from './db'
-import { searchProperty, getRentEstimate, getComparableSales } from './propertyApi'
+import {
+  searchProperty,
+  getRentEstimate,
+  getComparableSales,
+  getRentComps,
+} from './propertyApi'
 import { getCurrentRates, applyInvestorPremium, INVESTOR_PREMIUM, type Strategy } from './rates'
 import {
   calculateDealMetrics,
   calculateBreakEvenPrice,
-  STATE_RULES
+  calculateCashToClose,
+  projectWealth,
+  calculateHoldPeriodIRR,
+  calculateFinancingAlternatives,
+  STATE_RULES,
 } from './calculations'
 import { generateDealDoctor } from './dealDoctor'
 import { getClimateAndInsurance } from './climateRisk'
@@ -17,8 +26,13 @@ export async function generateFullReport(uuid: string): Promise<void> {
   const property = await searchProperty(report.address)
   if (!property) return
 
-  const rentEstimate = await getRentEstimate(report.address, property.bedrooms)
-  const comps = await getComparableSales(report.city, report.state, property.bedrooms)
+  // Fetch rent estimate, sale comps, and rent comps in parallel.
+  // Rent comps are the #1 trust gap — users want to see the neighbors we priced against.
+  const [rentEstimate, saleComps, rentComps] = await Promise.all([
+    getRentEstimate(report.address, property.bedrooms),
+    getComparableSales(report.city, report.state, property.bedrooms),
+    getRentComps(report.address, property.bedrooms),
+  ])
 
   const askPrice = property.estimated_value
   const offerPrice = report.offerPrice ?? askPrice
@@ -37,9 +51,24 @@ export async function generateFullReport(uuid: string): Promise<void> {
     report.address, report.state, report.zipCode, offerPrice
   )
   const monthlyInsurance = Math.round(climate.estimatedAnnualInsurance / 12)
-  const monthlyPropertyTax = Math.round(offerPrice * stateRules.propertyTaxRate / 12)
+
+  // Property tax: prefer actual county record from Rentcast, fall back to state avg × price.
+  // Source label lets the UI attribute the number honestly.
+  let monthlyPropertyTax: number
+  let propertyTaxSource: 'county-record' | 'state-average'
+  if (property.annual_property_tax && property.annual_property_tax > 0) {
+    monthlyPropertyTax = Math.round(property.annual_property_tax / 12)
+    propertyTaxSource = 'county-record'
+  } else {
+    monthlyPropertyTax = Math.round((offerPrice * stateRules.propertyTaxRate) / 12)
+    propertyTaxSource = 'state-average'
+  }
+
+  // HOA: only included if Rentcast returned it. Condo/townhome without captured HOA
+  // is a known gap — flagged in the UI so the user adds it manually if needed.
+  const monthlyHOA = property.hoa_fee_monthly ?? 0
   const monthlyMaintenance = 150
-  const monthlyExpenses = monthlyPropertyTax + monthlyInsurance + monthlyMaintenance
+  const monthlyExpenses = monthlyPropertyTax + monthlyInsurance + monthlyMaintenance + monthlyHOA
 
   const ltrMetrics = calculateDealMetrics(
     {
@@ -55,8 +84,7 @@ export async function generateFullReport(uuid: string): Promise<void> {
   )
 
   // ARV from sale comps median — used for the 70% flip-rule offer calculation.
-  // Filter out zeros/nulls, take median of remaining values.
-  const compValues = comps
+  const compValues = saleComps
     .map((c: any) => Number(c.estimated_value))
     .filter((v: number) => Number.isFinite(v) && v > 0)
     .sort((a: number, b: number) => a - b)
@@ -64,6 +92,37 @@ export async function generateFullReport(uuid: string): Promise<void> {
     compValues.length > 0
       ? compValues[Math.floor(compValues.length / 2)]
       : undefined
+
+  // Cash-to-close: the full capital required to walk into closing.
+  // monthlyPITI = principal-interest + tax + insurance (ignoring HOA/maint for reserves,
+  // matching standard lender reserve calc which uses PITI not PITIA).
+  const monthlyPITI = ltrMetrics.monthlyMortgagePayment + monthlyPropertyTax + monthlyInsurance
+  const cashToClose = calculateCashToClose(offerPrice, downPaymentPct, rehabBudget, monthlyPITI)
+
+  // 5-year wealth projection — cash flow + paydown + appreciation + tax shield
+  const projections = projectWealth({
+    offerPrice,
+    loanAmount: ltrMetrics.loanAmount,
+    annualRate: investorRate,
+    amortYears: 30,
+    initialMonthlyRent: monthlyRent,
+    vacancyRate: 0.05,
+    initialMonthlyExpenses: monthlyExpenses,
+    annualDepreciation: ltrMetrics.annualDepreciation,
+    years: 5,
+  })
+  const year5 = projections[projections.length - 1]
+  const irr5yr = calculateHoldPeriodIRR(cashToClose.totalCashToClose, projections)
+
+  // Financing alternatives — same property, 3 capital structures side-by-side
+  const financingAlternatives = calculateFinancingAlternatives({
+    offerPrice,
+    pmmsRate: rates.mortgage30yr,
+    monthlyRent,
+    vacancyRate: 0.05,
+    monthlyExpenses,
+    rehabBudget,
+  })
 
   // Deal Doctor AI narration. If the model fails (rate limit, quota exhausted,
   // network), we still return the rest of the report — the math and climate
@@ -121,13 +180,38 @@ export async function generateFullReport(uuid: string): Promise<void> {
       monthlyPropertyTax,
       monthlyInsurance,
       monthlyMaintenance,
+      monthlyHOA,
       monthlyTotal: monthlyExpenses,
+      propertyTaxSource,              // 'county-record' | 'state-average'
+      hoaSource: monthlyHOA > 0 ? 'listing' : 'not-captured',
     },
+    cashToClose,                      // down + closing + inspection + reserves + rehab
+    wealthProjection: {
+      years: projections,
+      hero: {
+        totalWealthBuilt5yr: year5?.totalWealthBuilt ?? 0,
+        cumulativeCashFlow5yr: year5?.cumulativeCashFlow ?? 0,
+        equityFromPaydown5yr: year5?.equityFromPaydown ?? 0,
+        equityFromAppreciation5yr: year5?.equityFromAppreciation ?? 0,
+        cumulativeTaxShield5yr: year5?.cumulativeTaxShield ?? 0,
+        irr5yr,
+        propertyValue5yr: year5?.propertyValue ?? 0,
+      },
+      assumptions: {
+        rentGrowthRate: 0.03,
+        appreciationRate: 0.03,
+        expenseGrowthRate: 0.025,
+        effectiveTaxRate: 0.28,
+        saleCostPct: 0.06,
+      },
+    },
+    financingAlternatives,
+    rentComps,
     climate,
     ltr: ltrMetrics,
     dealDoctor,
     dealDoctorError,
-    comparableSales: comps.slice(0, 4),
+    comparableSales: saleComps.slice(0, 4),
     stateRules: {
       state: report.state,
       rentControl: stateRules.rentControl,

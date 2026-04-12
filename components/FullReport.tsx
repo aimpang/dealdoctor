@@ -20,6 +20,10 @@ import {
   WindIcon,
   CloudRainIcon,
   UmbrellaIcon,
+  BanknoteIcon,
+  LineChartIcon,
+  LandmarkIcon,
+  UsersIcon,
 } from 'lucide-react'
 
 interface FullReportProps {
@@ -27,7 +31,22 @@ interface FullReportProps {
 }
 
 export function FullReport({ data }: FullReportProps) {
-  const { property, rates, ltr, dealDoctor, dealDoctorError, comparableSales, stateRules, breakeven, climate, expenses } = data
+  const {
+    property,
+    rates,
+    ltr,
+    dealDoctor,
+    dealDoctorError,
+    comparableSales,
+    stateRules,
+    breakeven,
+    climate,
+    expenses,
+    cashToClose,
+    wealthProjection,
+    financingAlternatives,
+    rentComps,
+  } = data
 
   const formatCurrency = (n: number) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n)
@@ -43,6 +62,21 @@ export function FullReport({ data }: FullReportProps) {
 
   return (
     <div className="w-full space-y-6">
+      {/* Print button — hidden in print output itself */}
+      <div className="no-print flex justify-end">
+        <button
+          onClick={() => (typeof window !== 'undefined' ? window.print() : null)}
+          className="inline-flex items-center gap-1.5 rounded-md border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="6 9 6 2 18 2 18 9" />
+            <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+            <rect x="6" y="14" width="12" height="8" />
+          </svg>
+          Print or save as PDF
+        </button>
+      </div>
+
       {/* Property Header */}
       <div className="rounded-xl border bg-card p-6 sm:p-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -123,6 +157,76 @@ export function FullReport({ data }: FullReportProps) {
         </div>
       )}
 
+      {/* 5-Year Wealth Projection — the "why this deal matters over time" hero */}
+      {wealthProjection && (
+        <div className="rounded-xl border-2 border-primary/40 bg-primary/5 p-6 sm:p-8">
+          <div className="mb-3 flex items-center gap-2">
+            <LineChartIcon className="h-5 w-5 text-primary" />
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+              5-Year Wealth Projection
+            </h3>
+          </div>
+          <p className="text-2xl font-bold text-foreground sm:text-4xl">
+            Builds{' '}
+            <span className="text-primary">
+              {formatCurrency(wealthProjection.hero.totalWealthBuilt5yr)}
+            </span>{' '}
+            of wealth over 5 years
+          </p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            5-year IRR:{' '}
+            <span className="font-bold text-foreground">
+              {(wealthProjection.hero.irr5yr * 100).toFixed(1)}%
+            </span>
+            {' · '}Sum of cash flow + principal paydown + appreciation + depreciation tax shield
+          </p>
+
+          <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <SubMetric label="Cash Flow" value={formatCurrency(wealthProjection.hero.cumulativeCashFlow5yr)} />
+            <SubMetric label="Principal Paydown" value={formatCurrency(wealthProjection.hero.equityFromPaydown5yr)} />
+            <SubMetric label="Appreciation" value={formatCurrency(wealthProjection.hero.equityFromAppreciation5yr)} />
+            <SubMetric label="Tax Shield" value={formatCurrency(wealthProjection.hero.cumulativeTaxShield5yr)} />
+          </div>
+
+          <div className="mt-5 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-muted-foreground">
+                  <th className="pb-2 text-left font-medium">Year</th>
+                  <th className="pb-2 text-right font-medium">Cash Flow</th>
+                  <th className="pb-2 text-right font-medium">Value</th>
+                  <th className="pb-2 text-right font-medium">Loan Balance</th>
+                  <th className="pb-2 text-right font-medium">Wealth Built</th>
+                </tr>
+              </thead>
+              <tbody>
+                {wealthProjection.years.map((y: any) => (
+                  <tr key={y.year} className="border-b border-border/50">
+                    <td className="py-2 font-medium">Y{y.year}</td>
+                    <td className={cn('py-2 text-right font-medium', y.annualCashFlow >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400')}>
+                      {y.annualCashFlow >= 0 ? '+' : ''}{formatCurrency(y.annualCashFlow)}
+                    </td>
+                    <td className="py-2 text-right">{formatCurrency(y.propertyValue)}</td>
+                    <td className="py-2 text-right">{formatCurrency(y.loanBalance)}</td>
+                    <td className="py-2 text-right font-bold text-primary">
+                      {formatCurrency(y.totalWealthBuilt)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="mt-4 text-[11px] text-muted-foreground">
+            Assumes {(wealthProjection.assumptions.rentGrowthRate * 100).toFixed(1)}% rent growth,{' '}
+            {(wealthProjection.assumptions.appreciationRate * 100).toFixed(1)}% appreciation,{' '}
+            {(wealthProjection.assumptions.expenseGrowthRate * 100).toFixed(1)}% expense growth,
+            {' '}{(wealthProjection.assumptions.effectiveTaxRate * 100).toFixed(0)}% effective tax rate.
+            IRR includes sale at year 5 with {(wealthProjection.assumptions.saleCostPct * 100).toFixed(0)}% selling costs.
+          </p>
+        </div>
+      )}
+
       {/* Key Metrics Grid */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {[
@@ -149,6 +253,34 @@ export function FullReport({ data }: FullReportProps) {
           </div>
         ))}
       </div>
+
+      {/* Total Cash to Close — answers "how much do I need in the bank?" */}
+      {cashToClose && (
+        <div className="rounded-xl border bg-card p-6">
+          <div className="mb-3 flex items-center gap-2">
+            <BanknoteIcon className="h-5 w-5 text-primary" />
+            <h3 className="text-sm font-semibold text-foreground">Total Cash to Close</h3>
+          </div>
+          <p className="text-3xl font-bold text-foreground sm:text-4xl">
+            {formatCurrency(cashToClose.totalCashToClose)}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            What you need liquid to walk into closing — includes the 6-month PITI reserve most lenders require.
+          </p>
+          <div className="mt-4 space-y-1.5">
+            <LineItem label="Down payment" value={formatCurrency(cashToClose.downPayment)} />
+            <LineItem label="Closing costs (~2.5%)" value={formatCurrency(cashToClose.closingCosts)} />
+            <LineItem label="Inspection + appraisal" value={formatCurrency(cashToClose.inspectionAndAppraisal)} />
+            <LineItem label="Reserves (6mo PITI)" value={formatCurrency(cashToClose.reserves)} />
+            {cashToClose.rehabBudget > 0 && (
+              <LineItem label="Rehab budget" value={formatCurrency(cashToClose.rehabBudget)} />
+            )}
+            <div className="border-t pt-1.5">
+              <LineItem label="Total" value={formatCurrency(cashToClose.totalCashToClose)} bold />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Rates Used */}
       <div className="rounded-xl border bg-card p-6">
@@ -219,6 +351,73 @@ export function FullReport({ data }: FullReportProps) {
         </div>
       </div>
 
+      {/* Financing Alternatives — same deal, three capital structures side-by-side */}
+      {financingAlternatives && financingAlternatives.length > 0 && (
+        <div className="rounded-xl border bg-card p-6">
+          <div className="mb-4 flex items-center gap-2">
+            <LandmarkIcon className="h-5 w-5 text-primary" />
+            <h3 className="text-sm font-semibold text-foreground">Financing Alternatives</h3>
+          </div>
+          <p className="mb-4 text-xs text-muted-foreground">
+            Same property, different loan structures. Down payment, rate, and requirements differ.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-muted-foreground">
+                  <th className="pb-2 text-left font-medium">Loan Type</th>
+                  <th className="pb-2 text-right font-medium">Down</th>
+                  <th className="pb-2 text-right font-medium">Rate</th>
+                  <th className="pb-2 text-right font-medium">Monthly P&amp;I</th>
+                  <th className="pb-2 text-right font-medium">Cash Flow</th>
+                  <th className="pb-2 text-right font-medium">DSCR</th>
+                  <th className="pb-2 text-right font-medium">Cash to Close</th>
+                </tr>
+              </thead>
+              <tbody>
+                {financingAlternatives.map((f: any) => (
+                  <tr key={f.id} className="border-b border-border/50 align-top">
+                    <td className="py-3 pr-3">
+                      <p className="font-medium text-foreground">{f.name}</p>
+                      <p className="mt-0.5 text-[10px] leading-snug text-muted-foreground">
+                        {f.eligibilityNote}
+                      </p>
+                    </td>
+                    <td className="py-3 text-right">
+                      <div className="font-medium">{(f.downPaymentPct * 100).toFixed(1)}%</div>
+                      <div className="text-[10px] text-muted-foreground">{formatCurrency(f.downPayment)}</div>
+                    </td>
+                    <td className="py-3 text-right font-medium">{(f.annualRate * 100).toFixed(2)}%</td>
+                    <td className="py-3 text-right">{formatCurrency(f.monthlyPayment)}</td>
+                    <td
+                      className={cn(
+                        'py-3 text-right font-medium',
+                        f.monthlyCashFlow >= 0
+                          ? 'text-emerald-600 dark:text-emerald-400'
+                          : 'text-red-600 dark:text-red-400'
+                      )}
+                    >
+                      {f.monthlyCashFlow >= 0 ? '+' : ''}{formatCurrency(f.monthlyCashFlow)}
+                    </td>
+                    <td
+                      className={cn(
+                        'py-3 text-right',
+                        f.dscr >= 1.25
+                          ? 'text-emerald-600 dark:text-emerald-400 font-medium'
+                          : 'text-foreground'
+                      )}
+                    >
+                      {f.dscr}x
+                    </td>
+                    <td className="py-3 text-right font-bold">{formatCurrency(f.cashToClose)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* Refi Scenarios */}
       <div className="rounded-xl border bg-card p-6">
         <div className="flex items-center gap-2 mb-4">
@@ -281,6 +480,42 @@ export function FullReport({ data }: FullReportProps) {
         </div>
       </div>
 
+      {/* Rent Comparables — closes the trust gap on the rent estimate */}
+      {rentComps && rentComps.length > 0 && (
+        <div className="rounded-xl border bg-card p-6">
+          <div className="mb-3 flex items-center gap-2">
+            <UsersIcon className="h-5 w-5 text-primary" />
+            <h3 className="text-sm font-semibold text-foreground">Rent Comparables</h3>
+          </div>
+          <p className="mb-4 text-xs text-muted-foreground">
+            Nearby rentals used to estimate this property&apos;s rent. If these don&apos;t look
+            comparable (wrong neighborhood, wildly different unit), the rent estimate may
+            be off — verify with a local property manager before relying on these numbers.
+          </p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {rentComps.map((c: any, i: number) => (
+              <div key={i} className="rounded-lg border p-4">
+                <p className="text-sm font-medium text-foreground">{c.address}</p>
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  <span className="text-base font-bold text-foreground">
+                    {formatCurrency(c.rent)}/mo
+                  </span>
+                  {c.bedrooms != null && (
+                    <span>
+                      {c.bedrooms}bd{c.bathrooms != null ? ` / ${c.bathrooms}ba` : ''}
+                    </span>
+                  )}
+                  {c.square_feet && <span>{c.square_feet.toLocaleString()} sqft</span>}
+                  {typeof c.distance_miles === 'number' && (
+                    <span>· {c.distance_miles.toFixed(1)}mi</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Climate & Insurance */}
       {climate && (
         <div className="rounded-xl border bg-card p-6">
@@ -338,8 +573,25 @@ export function FullReport({ data }: FullReportProps) {
                   {formatCurrency(expenses.monthlyTotal)}
                 </p>
                 <p className="mt-1 text-[11px] text-muted-foreground">
-                  Tax {formatCurrency(expenses.monthlyPropertyTax)} · Ins {formatCurrency(expenses.monthlyInsurance)} · Maint {formatCurrency(expenses.monthlyMaintenance)}
+                  Tax {formatCurrency(expenses.monthlyPropertyTax)}
+                  {expenses.propertyTaxSource === 'county-record' && (
+                    <span className="ml-1 rounded bg-emerald-500/10 px-1 text-[9px] font-semibold text-emerald-700 dark:text-emerald-400">
+                      county record
+                    </span>
+                  )}
+                  {' · '}Ins {formatCurrency(expenses.monthlyInsurance)}
+                  {' · '}Maint {formatCurrency(expenses.monthlyMaintenance)}
+                  {expenses.monthlyHOA > 0 && (
+                    <> · HOA {formatCurrency(expenses.monthlyHOA)}</>
+                  )}
                 </p>
+                {expenses.monthlyHOA === 0 &&
+                  (property.propertyType || '').toLowerCase().includes('condo') && (
+                    <p className="mt-2 text-[10px] text-amber-600 dark:text-amber-400">
+                      ⚠ HOA not captured from listing — condos/townhomes often have dues
+                      ($150–$500/mo). Verify and add manually when underwriting.
+                    </p>
+                  )}
               </div>
             )}
           </div>
@@ -405,7 +657,6 @@ export function FullReport({ data }: FullReportProps) {
       ) : null}
 
       {/* Comparable Sales */}
-      {/* (see RiskBar helper at end of file) */}
       {comparableSales && comparableSales.length > 0 && (
         <div className="rounded-xl border bg-card p-6">
           <h3 className="mb-4 text-sm font-semibold text-foreground">Comparable Properties</h3>
@@ -423,6 +674,64 @@ export function FullReport({ data }: FullReportProps) {
           </div>
         </div>
       )}
+
+      {/* Data Sources — transparent provenance */}
+      <div className="rounded-xl border border-dashed bg-background/40 p-5 text-xs leading-relaxed text-muted-foreground">
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-foreground">
+          Data Sources
+        </p>
+        <ul className="space-y-1">
+          <li>• Property details, rent &amp; value estimates, sale &amp; rent comps — Rentcast AVM</li>
+          <li>• Flood zone — FEMA National Flood Hazard Layer REST API</li>
+          <li>• Geocoding — Mapbox</li>
+          <li>
+            • Mortgage rates — Freddie Mac PMMS (30yr / 15yr); investor premium applied for LTR/STR/FLIP
+          </li>
+          <li>• Insurance baseline — NAIC state averages, scaled by dwelling value</li>
+          <li>• Climate risk scores, STR revenue, breakeven math — DealDoctor&apos;s own models</li>
+          <li>• Deal Doctor narrative and photo review — Anthropic Claude Haiku 4.5</li>
+        </ul>
+        <p className="mt-3">
+          Full methodology at{' '}
+          <a
+            href="/methodology"
+            className="underline underline-offset-2 hover:text-foreground"
+          >
+            /methodology
+          </a>
+          . Not an appraisal or home inspection — always verify with licensed professionals before closing.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function SubMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border bg-background/50 p-3">
+      <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
+      <p className="mt-1 text-lg font-bold text-foreground">{value}</p>
+    </div>
+  )
+}
+
+function LineItem({
+  label,
+  value,
+  bold,
+}: {
+  label: string
+  value: string
+  bold?: boolean
+}) {
+  return (
+    <div className="flex items-center justify-between text-sm">
+      <span className={cn('text-muted-foreground', bold && 'font-semibold text-foreground')}>
+        {label}
+      </span>
+      <span className={cn('tabular-nums', bold ? 'text-lg font-bold text-foreground' : 'font-medium text-foreground')}>
+        {value}
+      </span>
     </div>
   )
 }

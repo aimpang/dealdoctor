@@ -144,7 +144,7 @@ export function PhotoAnalysis({ uuid, initialFindings }: Props) {
   ) ?? 0
 
   return (
-    <div className="rounded-xl border bg-card p-6">
+    <div className="no-print rounded-xl border bg-card p-6">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <CameraIcon className="h-5 w-5 text-primary" />

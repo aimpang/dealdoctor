@@ -17,12 +17,25 @@ export interface PropertyData {
   year_built: number
   square_feet: number
   lot_size?: number
+  // Optional county-record fields — present when Rentcast has them
+  annual_property_tax?: number     // actual most-recent-year tax (not state avg × price)
+  hoa_fee_monthly?: number         // monthly HOA dues if captured
 }
 
 export interface RentEstimate {
   estimated_rent: number
   rent_low: number
   rent_high: number
+}
+
+export interface RentComp {
+  address: string
+  bedrooms?: number
+  bathrooms?: number
+  square_feet?: number
+  rent: number
+  distance_miles?: number
+  days_old?: number
 }
 
 // Search for property by address string.
@@ -53,6 +66,30 @@ async function searchPropertyRentcast(address: string): Promise<PropertyData | n
 
     const prop = Array.isArray(data) ? data[0] : data
 
+    // Pull most-recent-year property tax if Rentcast returns county records.
+    // Shape: propertyTaxes = { "2024": { total: 8421 }, "2023": {...}, ... }
+    let annualPropertyTax: number | undefined
+    if (prop.propertyTaxes && typeof prop.propertyTaxes === 'object') {
+      const years = Object.keys(prop.propertyTaxes).sort().reverse()
+      for (const y of years) {
+        const t = prop.propertyTaxes[y]?.total
+        if (typeof t === 'number' && t > 0) { annualPropertyTax = t; break }
+      }
+    }
+
+    // HOA capture when available. Rentcast shape varies; handle the common forms.
+    let hoaMonthly: number | undefined
+    if (prop.hoa && typeof prop.hoa === 'object') {
+      const fee = Number(prop.hoa.fee)
+      if (Number.isFinite(fee) && fee > 0) {
+        const freq = (prop.hoa.frequency || 'monthly').toString().toLowerCase()
+        hoaMonthly =
+          freq.includes('year') || freq.includes('annual') ? Math.round(fee / 12) :
+          freq.includes('quarter') ? Math.round(fee / 3) :
+          Math.round(fee)
+      }
+    }
+
     return {
       property_id: prop.id || prop.addressHash || address,
       address: prop.formattedAddress || prop.addressLine1 || address.split(',')[0],
@@ -66,9 +103,45 @@ async function searchPropertyRentcast(address: string): Promise<PropertyData | n
       year_built: prop.yearBuilt || 2000,
       square_feet: prop.squareFootage || 1800,
       lot_size: prop.lotSize,
+      annual_property_tax: annualPropertyTax,
+      hoa_fee_monthly: hoaMonthly,
     }
   } catch {
     return null
+  }
+}
+
+// Rent comparables — separate function because we only need them for the paid
+// full report, not the pre-paywall teaser. Keeps preview fast.
+export async function getRentComps(address: string, bedrooms: number): Promise<RentComp[]> {
+  if (!API_KEY || API_KEY === 'your_key_here') return []
+  try {
+    const url = new URL('https://api.rentcast.io/v1/avm/rent/long-term')
+    url.searchParams.set('address', address)
+    url.searchParams.set('bedrooms', String(bedrooms))
+    url.searchParams.set('compCount', '5')
+
+    const res = await fetch(url.toString(), {
+      headers: { 'X-Api-Key': API_KEY },
+      next: { revalidate: 3600 },
+    })
+    if (!res.ok) return []
+    const data = await res.json()
+    const comps = Array.isArray(data?.comparables) ? data.comparables : []
+    return comps
+      .map((c: any): RentComp => ({
+        address: c.formattedAddress || c.addressLine1 || '',
+        bedrooms: c.bedrooms,
+        bathrooms: c.bathrooms,
+        square_feet: c.squareFootage,
+        rent: Number(c.price ?? c.rent ?? 0),
+        distance_miles: c.distance,
+        days_old: c.daysOld,
+      }))
+      .filter((c: RentComp) => c.rent > 0 && c.address)
+      .slice(0, 5)
+  } catch {
+    return []
   }
 }
 

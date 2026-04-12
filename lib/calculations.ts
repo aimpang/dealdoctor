@@ -171,6 +171,261 @@ export function calculateDepreciation(
   }
 }
 
+// --- CASH TO CLOSE ---
+// What a buyer actually needs liquid to walk into closing. Investors underwrite
+// from total capital required, not just "20% down." Lenders also expect 6 months
+// of PITI in reserves — many pre-approvals quietly assume this.
+export interface CashToCloseBreakdown {
+  downPayment: number
+  closingCosts: number          // ~2.5% of offer (title, origination, escrow setup)
+  inspectionAndAppraisal: number // typically $800 inspection + $600 appraisal
+  reserves: number              // 6 months PITI held liquid per lender guidance
+  rehabBudget: number           // passed through unchanged
+  totalCashToClose: number
+}
+
+export function calculateCashToClose(
+  offerPrice: number,
+  downPaymentPct: number,
+  rehabBudget: number,
+  monthlyPITI: number,
+  closingCostPct: number = 0.025,
+  reserveMonths: number = 6
+): CashToCloseBreakdown {
+  const downPayment = Math.round(offerPrice * downPaymentPct)
+  const closingCosts = Math.round(offerPrice * closingCostPct)
+  const inspectionAndAppraisal = 1500
+  const reserves = Math.round(monthlyPITI * reserveMonths)
+  const totalCashToClose = downPayment + closingCosts + inspectionAndAppraisal + reserves + rehabBudget
+  return { downPayment, closingCosts, inspectionAndAppraisal, reserves, rehabBudget, totalCashToClose }
+}
+
+// --- N-YEAR WEALTH PROJECTION ---
+// Investors don't buy for year-1 cash flow — they buy for total wealth built
+// over a hold period: cash flow + principal paydown + appreciation + tax shield.
+// Default assumptions are intentionally modest so the projection under-promises:
+//   rentGrowth 3%/yr (BLS shelter CPI long-run avg)
+//   appreciation 3%/yr (below recent boom, above long-run 2.5% real)
+//   expenseGrowth 2.5%/yr
+//   effectiveTaxRate 28% on depreciation shield
+export interface YearProjection {
+  year: number
+  annualRent: number
+  annualExpenses: number
+  annualCashFlow: number
+  cumulativeCashFlow: number
+  propertyValue: number
+  loanBalance: number
+  equityFromPaydown: number
+  equityFromAppreciation: number
+  annualTaxShield: number      // dep × effectiveTaxRate
+  cumulativeTaxShield: number
+  totalWealthBuilt: number     // cumCF + equityPaydown + equityAppreciation + cumTaxShield
+}
+
+export function projectWealth(params: {
+  offerPrice: number
+  loanAmount: number
+  annualRate: number
+  amortYears: number
+  initialMonthlyRent: number
+  vacancyRate: number
+  initialMonthlyExpenses: number
+  annualDepreciation: number
+  rentGrowthRate?: number
+  appreciationRate?: number
+  expenseGrowthRate?: number
+  effectiveTaxRate?: number
+  years?: number
+}): YearProjection[] {
+  const {
+    offerPrice,
+    loanAmount,
+    annualRate,
+    amortYears,
+    initialMonthlyRent,
+    vacancyRate,
+    initialMonthlyExpenses,
+    annualDepreciation,
+    rentGrowthRate = 0.03,
+    appreciationRate = 0.03,
+    expenseGrowthRate = 0.025,
+    effectiveTaxRate = 0.28,
+    years = 5,
+  } = params
+
+  const monthlyRate = annualRate / 12
+  const n = amortYears * 12
+  const monthlyPayment = loanAmount * (monthlyRate * Math.pow(1 + monthlyRate, n)) /
+    (Math.pow(1 + monthlyRate, n) - 1)
+
+  let balance = loanAmount
+  let cumCashFlow = 0
+  let cumTaxShield = 0
+  const result: YearProjection[] = []
+
+  for (let y = 1; y <= years; y++) {
+    // Amortize this year month-by-month to track exact principal paydown
+    for (let m = 0; m < 12; m++) {
+      const interest = balance * monthlyRate
+      const principal = monthlyPayment - interest
+      balance -= principal
+    }
+
+    const rentMult = Math.pow(1 + rentGrowthRate, y - 1)
+    const expMult = Math.pow(1 + expenseGrowthRate, y - 1)
+    const annualRent = initialMonthlyRent * rentMult * (1 - vacancyRate) * 12
+    const annualExpenses = initialMonthlyExpenses * expMult * 12
+    const annualCashFlow = annualRent - annualExpenses - (monthlyPayment * 12)
+    cumCashFlow += annualCashFlow
+
+    const propertyValue = offerPrice * Math.pow(1 + appreciationRate, y)
+    const equityFromPaydown = loanAmount - balance
+    const equityFromAppreciation = propertyValue - offerPrice
+
+    const taxShield = annualDepreciation * effectiveTaxRate
+    cumTaxShield += taxShield
+
+    const totalWealth = cumCashFlow + equityFromPaydown + equityFromAppreciation + cumTaxShield
+
+    result.push({
+      year: y,
+      annualRent: Math.round(annualRent),
+      annualExpenses: Math.round(annualExpenses),
+      annualCashFlow: Math.round(annualCashFlow),
+      cumulativeCashFlow: Math.round(cumCashFlow),
+      propertyValue: Math.round(propertyValue),
+      loanBalance: Math.round(balance),
+      equityFromPaydown: Math.round(equityFromPaydown),
+      equityFromAppreciation: Math.round(equityFromAppreciation),
+      annualTaxShield: Math.round(taxShield),
+      cumulativeTaxShield: Math.round(cumTaxShield),
+      totalWealthBuilt: Math.round(totalWealth),
+    })
+  }
+
+  return result
+}
+
+// --- IRR (internal rate of return) ---
+// Newton-Raphson on NPV. Returns the annualized rate (as a decimal, e.g. 0.124 = 12.4%)
+// at which the sum of discounted cash flows equals zero. Standard institutional metric.
+export function findIRR(flows: number[], guess: number = 0.10): number {
+  if (flows.length < 2) return 0
+  let rate = guess
+  for (let iter = 0; iter < 200; iter++) {
+    let npv = 0
+    let dnpv = 0
+    for (let t = 0; t < flows.length; t++) {
+      const denom = Math.pow(1 + rate, t)
+      npv += flows[t] / denom
+      if (t > 0) dnpv -= (t * flows[t]) / (denom * (1 + rate))
+    }
+    if (Math.abs(npv) < 0.01) break
+    if (Math.abs(dnpv) < 1e-10) break // avoid divide by zero
+    const next = rate - npv / dnpv
+    if (!Number.isFinite(next)) break
+    rate = Math.max(-0.99, Math.min(10, next)) // clamp wild swings
+  }
+  return Math.round(rate * 10000) / 10000
+}
+
+// IRR over a hold period, selling at the end at projected value minus selling
+// costs (6% = realtor + closing). Inputs tie together cashToClose, yearly cash
+// flows, the sale proceeds at year N.
+export function calculateHoldPeriodIRR(
+  cashToClose: number,
+  projections: YearProjection[],
+  saleCostPct: number = 0.06
+): number {
+  if (projections.length === 0) return 0
+  const flows: number[] = [-cashToClose]
+  for (let i = 0; i < projections.length - 1; i++) {
+    flows.push(projections[i].annualCashFlow)
+  }
+  const finalYear = projections[projections.length - 1]
+  const saleProceeds = finalYear.propertyValue * (1 - saleCostPct) - finalYear.loanBalance
+  flows.push(finalYear.annualCashFlow + saleProceeds)
+  return findIRR(flows)
+}
+
+// --- FINANCING ALTERNATIVES ---
+// Side-by-side comparison of capital structures for the same property. The
+// strategy (LTR/STR/FLIP) determines the base investor premium; financing type
+// layers on its own rate adjustment and down-payment structure.
+export interface FinancingAlternative {
+  id: string
+  name: string
+  downPaymentPct: number
+  annualRate: number
+  amortYears: number
+  downPayment: number
+  monthlyPayment: number
+  monthlyCashFlow: number
+  dscr: number
+  cashToClose: number
+  eligibilityNote: string
+}
+
+export function calculateFinancingAlternatives(params: {
+  offerPrice: number
+  pmmsRate: number
+  monthlyRent: number
+  vacancyRate: number
+  monthlyExpenses: number
+  rehabBudget: number
+}): FinancingAlternative[] {
+  const { offerPrice, pmmsRate, monthlyRent, vacancyRate, monthlyExpenses, rehabBudget } = params
+  const effectiveRent = monthlyRent * (1 - vacancyRate)
+
+  // Each scenario: rate, down, amortization, note.
+  const scenarios: Array<Omit<FinancingAlternative, 'downPayment' | 'monthlyPayment' | 'monthlyCashFlow' | 'dscr' | 'cashToClose'>> = [
+    {
+      id: 'fha',
+      name: 'FHA (owner-occupied)',
+      downPaymentPct: 0.035,
+      annualRate: pmmsRate, // FHA prices near PMMS for owner-occ
+      amortYears: 30,
+      eligibilityNote: 'Requires owner-occupancy. House-hack 2-4 unit counts. MIP premium applies.',
+    },
+    {
+      id: 'conventional',
+      name: 'Conventional investor',
+      downPaymentPct: 0.25,
+      annualRate: pmmsRate + 0.0075, // +75 bps non-owner-occupied
+      amortYears: 30,
+      eligibilityNote: 'Full income/asset documentation. 25% down typical for 1-unit investment.',
+    },
+    {
+      id: 'dscr',
+      name: 'DSCR (no-doc)',
+      downPaymentPct: 0.20,
+      annualRate: pmmsRate + 0.0100, // +100 bps for DSCR
+      amortYears: 30,
+      eligibilityNote: 'No personal income verification — qualifies on property DSCR ≥ 1.0-1.25. 20% down.',
+    },
+  ]
+
+  return scenarios.map((s) => {
+    const downPayment = Math.round(offerPrice * s.downPaymentPct)
+    const loan = offerPrice - downPayment
+    const monthlyPayment = calculateMortgage(loan, s.annualRate, s.amortYears)
+    const monthlyCashFlow = Math.round(effectiveRent - monthlyPayment - monthlyExpenses)
+    const noiAnnual = (effectiveRent - monthlyExpenses) * 12
+    const dscr = calculateDSCR(noiAnnual, monthlyPayment * 12)
+    const piti = monthlyPayment + monthlyExpenses
+    const cashToClose = downPayment + Math.round(offerPrice * 0.025) + 1500 + Math.round(piti * 6) + rehabBudget
+    return {
+      ...s,
+      downPayment,
+      monthlyPayment: Math.round(monthlyPayment),
+      monthlyCashFlow,
+      dscr,
+      cashToClose,
+    }
+  })
+}
+
 // --- STATE RULES ---
 export const STATE_RULES: Record<string, {
   name: string

@@ -6,6 +6,11 @@ import {
   calculateDepreciation,
   calculateDealMetrics,
   calculateRenewalScenarios,
+  calculateCashToClose,
+  projectWealth,
+  findIRR,
+  calculateHoldPeriodIRR,
+  calculateFinancingAlternatives,
   STATE_RULES,
   getStateFromZipCode,
 } from './calculations'
@@ -207,6 +212,205 @@ describe('STATE_RULES', () => {
     // TX 1.8% famously high — make sure we reflect that
     expect(STATE_RULES.TX.propertyTaxRate).toBeGreaterThan(STATE_RULES.CA.propertyTaxRate)
     expect(STATE_RULES.TX.propertyTaxRate).toBeGreaterThan(STATE_RULES.FL.propertyTaxRate)
+  })
+})
+
+// --- CASH TO CLOSE ---
+// Investors underwrite from total capital required. If this math is wrong, users
+// commit to deals they can't actually close.
+describe('calculateCashToClose', () => {
+  it('down = offer × down%', () => {
+    const c = calculateCashToClose(400_000, 0.2, 0, 2_500)
+    expect(c.downPayment).toBe(80_000)
+  })
+
+  it('closing costs = 2.5% of offer by default', () => {
+    const c = calculateCashToClose(400_000, 0.2, 0, 2_500)
+    expect(c.closingCosts).toBe(10_000)
+  })
+
+  it('reserves = 6 × monthly PITI by default', () => {
+    const c = calculateCashToClose(400_000, 0.2, 0, 2_500)
+    expect(c.reserves).toBe(15_000)
+  })
+
+  it('total includes rehab', () => {
+    const withRehab = calculateCashToClose(400_000, 0.2, 30_000, 2_500)
+    const withoutRehab = calculateCashToClose(400_000, 0.2, 0, 2_500)
+    expect(withRehab.totalCashToClose - withoutRehab.totalCashToClose).toBe(30_000)
+  })
+
+  it('total is sum of all components', () => {
+    const c = calculateCashToClose(400_000, 0.2, 30_000, 2_500)
+    expect(c.totalCashToClose).toBe(
+      c.downPayment + c.closingCosts + c.inspectionAndAppraisal + c.reserves + c.rehabBudget
+    )
+  })
+
+  it('custom reserve months scales linearly', () => {
+    const c3 = calculateCashToClose(400_000, 0.2, 0, 2_500, 0.025, 3)
+    const c6 = calculateCashToClose(400_000, 0.2, 0, 2_500, 0.025, 6)
+    expect(c6.reserves - c3.reserves).toBe(Math.round(2_500 * 3))
+  })
+})
+
+// --- WEALTH PROJECTION ---
+describe('projectWealth', () => {
+  const baseParams = {
+    offerPrice: 400_000,
+    loanAmount: 320_000,
+    annualRate: 0.07,
+    amortYears: 30,
+    initialMonthlyRent: 3_000,
+    vacancyRate: 0.05,
+    initialMonthlyExpenses: 800,
+    annualDepreciation: 11_636,
+    years: 5,
+  }
+
+  it('returns one entry per year', () => {
+    const p = projectWealth(baseParams)
+    expect(p).toHaveLength(5)
+    expect(p[0].year).toBe(1)
+    expect(p[4].year).toBe(5)
+  })
+
+  it('loan balance decreases monotonically (paydown)', () => {
+    const p = projectWealth(baseParams)
+    for (let i = 1; i < p.length; i++) {
+      expect(p[i].loanBalance).toBeLessThan(p[i - 1].loanBalance)
+    }
+  })
+
+  it('property value grows monotonically with default appreciation', () => {
+    const p = projectWealth(baseParams)
+    for (let i = 1; i < p.length; i++) {
+      expect(p[i].propertyValue).toBeGreaterThan(p[i - 1].propertyValue)
+    }
+  })
+
+  it('cumulative tax shield = years × annual depreciation × effective tax rate', () => {
+    const p = projectWealth(baseParams)
+    const expected = Math.round(baseParams.annualDepreciation * 0.28) * 5
+    expect(Math.abs(p[4].cumulativeTaxShield - expected)).toBeLessThan(5)
+  })
+
+  it('total wealth is sum of the four components', () => {
+    const p = projectWealth(baseParams)
+    const y5 = p[4]
+    const sum = y5.cumulativeCashFlow + y5.equityFromPaydown + y5.equityFromAppreciation + y5.cumulativeTaxShield
+    // Rounding may cause off-by-one on sums
+    expect(Math.abs(y5.totalWealthBuilt - sum)).toBeLessThanOrEqual(2)
+  })
+
+  it('0% rent growth and 0% appreciation = no appreciation equity', () => {
+    const p = projectWealth({ ...baseParams, rentGrowthRate: 0, appreciationRate: 0 })
+    expect(p[4].equityFromAppreciation).toBe(0)
+  })
+})
+
+// --- IRR ---
+describe('findIRR', () => {
+  it('returns 0 for flat zero flows', () => {
+    expect(findIRR([-1000, 1000])).toBeCloseTo(0, 2)
+  })
+
+  it('matches a simple known IRR: invest $1000, get $1100 back in year 1 → 10%', () => {
+    expect(findIRR([-1000, 1100])).toBeCloseTo(0.10, 2)
+  })
+
+  it('matches a 2-year IRR: invest $1000, get $1210 in year 2 → 10%', () => {
+    expect(findIRR([-1000, 0, 1210])).toBeCloseTo(0.10, 2)
+  })
+
+  it('handles negative IRR when flows show a loss', () => {
+    const r = findIRR([-1000, 500])
+    expect(r).toBeLessThan(0)
+  })
+})
+
+describe('calculateHoldPeriodIRR', () => {
+  it('returns a reasonable rate for a realistic 5-year hold', () => {
+    const projections = projectWealth({
+      offerPrice: 400_000,
+      loanAmount: 320_000,
+      annualRate: 0.0725,
+      amortYears: 30,
+      initialMonthlyRent: 3_500,
+      vacancyRate: 0.05,
+      initialMonthlyExpenses: 800,
+      annualDepreciation: 11_636,
+      years: 5,
+    })
+    const irr = calculateHoldPeriodIRR(100_000, projections)
+    // Should be positive for a cash-flowing deal with appreciation
+    expect(irr).toBeGreaterThan(0)
+    // And not absurd
+    expect(irr).toBeLessThan(1)
+  })
+
+  it('returns 0 when projections are empty', () => {
+    expect(calculateHoldPeriodIRR(100_000, [])).toBe(0)
+  })
+})
+
+// --- FINANCING ALTERNATIVES ---
+describe('calculateFinancingAlternatives', () => {
+  const baseParams = {
+    offerPrice: 400_000,
+    pmmsRate: 0.065,
+    monthlyRent: 3_000,
+    vacancyRate: 0.05,
+    monthlyExpenses: 800,
+    rehabBudget: 0,
+  }
+
+  it('returns FHA, Conventional, and DSCR options', () => {
+    const alts = calculateFinancingAlternatives(baseParams)
+    const ids = alts.map((a) => a.id)
+    expect(ids).toContain('fha')
+    expect(ids).toContain('conventional')
+    expect(ids).toContain('dscr')
+  })
+
+  it('FHA has lowest down payment', () => {
+    const alts = calculateFinancingAlternatives(baseParams)
+    const fha = alts.find((a) => a.id === 'fha')!
+    const others = alts.filter((a) => a.id !== 'fha')
+    for (const o of others) {
+      expect(fha.downPaymentPct).toBeLessThan(o.downPaymentPct)
+    }
+  })
+
+  it('DSCR rate is higher than Conventional rate (no-doc premium)', () => {
+    const alts = calculateFinancingAlternatives(baseParams)
+    const conv = alts.find((a) => a.id === 'conventional')!
+    const dscr = alts.find((a) => a.id === 'dscr')!
+    expect(dscr.annualRate).toBeGreaterThan(conv.annualRate)
+  })
+
+  it('each alternative has a monthly cash flow computed consistently with its rate/down', () => {
+    const alts = calculateFinancingAlternatives(baseParams)
+    for (const a of alts) {
+      // loan = price - down, then payment = calcMortgage
+      const loan = baseParams.offerPrice - a.downPayment
+      const payment = calculateMortgage(loan, a.annualRate, a.amortYears)
+      expect(Math.abs(a.monthlyPayment - Math.round(payment))).toBeLessThanOrEqual(1)
+    }
+  })
+
+  it('each alternative has a positive cash-to-close', () => {
+    const alts = calculateFinancingAlternatives(baseParams)
+    for (const a of alts) {
+      expect(a.cashToClose).toBeGreaterThan(0)
+    }
+  })
+
+  it('FHA cash-to-close is less than Conventional (lower down)', () => {
+    const alts = calculateFinancingAlternatives(baseParams)
+    const fha = alts.find((a) => a.id === 'fha')!
+    const conv = alts.find((a) => a.id === 'conventional')!
+    expect(fha.cashToClose).toBeLessThan(conv.cashToClose)
   })
 })
 
