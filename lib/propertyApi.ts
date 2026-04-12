@@ -267,20 +267,31 @@ export async function getComparableSales(city: string, state: string, bedrooms: 
       if (!res.ok) return []
 
       const data = await res.json()
-      return (Array.isArray(data) ? data : []).slice(0, 4).map((p: any) => {
-        const price = p.price || p.estimatedValue || 0
-        const sqft = p.squareFootage || 0
-        return {
-          address: p.formattedAddress || p.addressLine1,
-          estimated_value: price,
-          bedrooms: p.bedrooms,
-          bathrooms: p.bathrooms,
-          square_feet: sqft,
-          price_per_sqft: sqft > 0 && price > 0 ? Math.round(price / sqft) : null,
-          days_on_market: typeof p.daysOnMarket === 'number' ? p.daysOnMarket : null,
-          sold_date: p.lastSaleDate || p.soldDate || null,
-        }
-      })
+      return (Array.isArray(data) ? data : [])
+        .map((p: any) => {
+          // Rentcast sold records use lastSalePrice; active listings use price;
+          // off-market AVM estimates use estimatedValue. Try all three in order.
+          const price =
+            Number(p.lastSalePrice) ||
+            Number(p.price) ||
+            Number(p.estimatedValue) ||
+            0
+          const sqft = Number(p.squareFootage) || 0
+          return {
+            address: p.formattedAddress || p.addressLine1,
+            estimated_value: price,
+            bedrooms: p.bedrooms,
+            bathrooms: p.bathrooms,
+            square_feet: sqft,
+            price_per_sqft: sqft > 0 && price > 0 ? Math.round(price / sqft) : null,
+            days_on_market: typeof p.daysOnMarket === 'number' ? p.daysOnMarket : null,
+            sold_date: p.lastSaleDate || p.soldDate || null,
+          }
+        })
+        // Drop comps without any price signal — showing "$0" erodes trust faster
+        // than showing fewer comps does.
+        .filter((c: any) => c.estimated_value > 0)
+        .slice(0, 4)
     } catch {
       return []
     }

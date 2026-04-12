@@ -667,7 +667,9 @@ export function FullReport({ data, uuid }: FullReportProps) {
                           {c.bedrooms}bd{c.bathrooms != null ? `/${c.bathrooms}ba` : ''}
                         </span>
                       )}
-                      {c.square_feet && <span>{c.square_feet.toLocaleString()} sqft</span>}
+                      {c.square_feet > 0 ? (
+                        <span>{c.square_feet.toLocaleString()} sqft</span>
+                      ) : null}
                       {typeof c.distance_miles === 'number' && <span>· {c.distance_miles.toFixed(1)}mi</span>}
                     </div>
                   </div>
@@ -702,12 +704,12 @@ export function FullReport({ data, uuid }: FullReportProps) {
                       <span>
                         {comp.bedrooms}bd/{comp.bathrooms}ba
                       </span>
-                      {comp.square_feet && <span>{comp.square_feet.toLocaleString()} sqft</span>}
-                      {typeof comp.days_on_market === 'number' && (
-                        <span>
-                          {comp.days_on_market} DOM
-                        </span>
-                      )}
+                      {comp.square_feet > 0 ? (
+                        <span>{comp.square_feet.toLocaleString()} sqft</span>
+                      ) : null}
+                      {typeof comp.days_on_market === 'number' && comp.days_on_market > 0 ? (
+                        <span>{comp.days_on_market} DOM</span>
+                      ) : null}
                     </div>
                   </div>
                 ))}
