@@ -19,9 +19,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Please enter a full address' }, { status: 400 })
   }
 
-  // Check if this is a US address (zip code pattern)
-  const isUS = /\b\d{5}(-\d{4})?\b/.test(address)
-  if (!isUS) {
+  // Check if this looks like a Canadian address (postal code pattern like A1A 1A1)
+  const isCanadian = /[A-Za-z]\d[A-Za-z]\s*\d[A-Za-z]\d/.test(address)
+  if (isCanadian) {
     return NextResponse.json({
       error: 'Canadian addresses coming soon. Currently serving US properties only.',
       comingSoon: true
