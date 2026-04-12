@@ -6,8 +6,32 @@ const FRED_BASE = 'https://api.stlouisfed.org/fred/series/observations'
 export interface CurrentRates {
   fedFundsRate: number         // Federal funds rate
   treasuryYield10yr: number    // 10-year Treasury yield
-  mortgage30yr: number         // Freddie Mac 30-year fixed average
-  mortgage15yr: number         // Freddie Mac 15-year fixed average
+  mortgage30yr: number         // Freddie Mac 30-year fixed average (owner-occupied PMMS)
+  mortgage15yr: number         // Freddie Mac 15-year fixed average (owner-occupied PMMS)
+}
+
+// Freddie Mac PMMS reports owner-occupied rates. Investor loans price higher
+// because lenders treat non-owner-occupied as riskier. Typical premiums over
+// PMMS for conforming loans with 20-25% down, ~2026 market:
+//   - DSCR / non-owner-occupied LTR: +75 bps
+//   - STR-permitted loans (stricter underwriting): +100 bps
+//   - Fix-and-flip / hard money: +150 bps (and these are usually short-term, not 30yr)
+// Showing PMMS to an investor without this premium flips DEAL/PASS verdicts on
+// marginal properties by $200-300/mo in payment. Always apply.
+export const INVESTOR_PREMIUM = {
+  LTR: 0.0075,
+  STR: 0.0100,
+  FLIP: 0.0150,
+  PRIMARY: 0, // owner-occupied — no premium
+} as const
+
+export type Strategy = keyof typeof INVESTOR_PREMIUM
+
+export function applyInvestorPremium(
+  pmmsRate: number,
+  strategy: Strategy = 'LTR'
+): number {
+  return pmmsRate + INVESTOR_PREMIUM[strategy]
 }
 
 export async function getCurrentRates(): Promise<CurrentRates> {

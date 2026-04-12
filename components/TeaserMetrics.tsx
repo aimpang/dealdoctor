@@ -106,9 +106,9 @@ export function TeaserMetrics({ teaser, property }: TeaserMetricsProps) {
         />
         <SubStat
           icon={PercentIcon}
-          label="30yr Rate"
+          label="Investor Rate"
           value={`${(teaser.currentRate * 100).toFixed(2)}%`}
-          sub="Freddie Mac weekly"
+          sub="PMMS + DSCR premium"
         />
       </div>
     </div>

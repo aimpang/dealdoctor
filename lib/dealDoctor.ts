@@ -166,7 +166,8 @@ function parseDealDoctorResponse(text: string): DealDoctorOutput {
 // because a 1BR/studio rents for much less than a 4BR family rental in the same city.
 // Multipliers roughly track AirDNA market medians: ~+30% per bedroom above 2BR,
 // ~-25% per bedroom below 2BR. Not an appraisal — gives the AI a defensible anchor.
-function estimateSTRRevenue(city: string, _state: string, bedrooms?: number): number {
+// Exported for unit testing; still called internally by generateDealDoctor.
+export function estimateSTRRevenue(city: string, _state: string, bedrooms?: number): number {
   const cityLower = city.toLowerCase()
   const strMarkets: Record<string, number> = {
     'austin': 3500,
@@ -196,7 +197,9 @@ function estimateSTRRevenue(city: string, _state: string, bedrooms?: number): nu
   for (const [key, val] of Object.entries(strMarkets)) {
     if (cityLower.includes(key)) { baseline = val; break }
   }
-  if (!bedrooms || bedrooms <= 0) return baseline
+  // Only skip the multiplier when bedroom count is truly unspecified.
+  // 0 = studio and should apply the 0.55× multiplier, not short-circuit.
+  if (bedrooms == null || bedrooms < 0) return baseline
 
   // Baseline assumes 2BR. Scale from there.
   const BEDROOM_MULTIPLIERS: Record<number, number> = {

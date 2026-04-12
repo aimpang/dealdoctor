@@ -117,8 +117,8 @@ export function FullReport({ data }: FullReportProps) {
           </div>
           <p className="mt-4 text-xs text-muted-foreground">
             Breakeven is the purchase price at which this property cash-flows ~$0/month given
-            current rent ({formatCurrency(ltr.noiAnnual / 12 + (ltr.noiAnnual > 0 ? 0 : 0))}/mo NOI implied)
-            and today&apos;s rate ({(rates.mortgage30yr * 100).toFixed(2)}%). Use it as your walk-away number.
+            current rent ({formatCurrency(Math.round(ltr.noiAnnual / 12))}/mo NOI)
+            and the investor rate ({((rates.mortgage30yrInvestor ?? rates.mortgage30yr) * 100).toFixed(2)}%). Use it as your walk-away number.
           </p>
         </div>
       )}
@@ -152,14 +152,30 @@ export function FullReport({ data }: FullReportProps) {
 
       {/* Rates Used */}
       <div className="rounded-xl border bg-card p-6">
-        <h3 className="mb-3 text-sm font-semibold text-foreground">Rates Used (Freddie Mac Survey)</h3>
-        <div className="grid grid-cols-3 gap-4 text-center">
+        <h3 className="mb-3 text-sm font-semibold text-foreground">Rates Used</h3>
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <div>
-            <p className="text-xs text-muted-foreground">30yr Fixed</p>
-            <p className="text-lg font-bold text-foreground">{(rates.mortgage30yr * 100).toFixed(2)}%</p>
+            <p className="text-xs text-muted-foreground">PMMS 30yr (owner-occ)</p>
+            <p className="text-lg font-bold text-muted-foreground line-through decoration-muted-foreground/50">
+              {(rates.mortgage30yr * 100).toFixed(2)}%
+            </p>
+            <p className="text-[10px] text-muted-foreground">Freddie Mac reference</p>
           </div>
           <div>
-            <p className="text-xs text-muted-foreground">15yr Fixed</p>
+            <p className="text-xs text-muted-foreground">Investor rate applied</p>
+            <p className="text-lg font-bold text-primary">
+              {rates.mortgage30yrInvestor
+                ? (rates.mortgage30yrInvestor * 100).toFixed(2)
+                : (rates.mortgage30yr * 100).toFixed(2)}%
+            </p>
+            <p className="text-[10px] text-muted-foreground">
+              {rates.investorPremiumBps
+                ? `PMMS +${rates.investorPremiumBps} bps (${property.strategy ?? 'LTR'})`
+                : 'No premium'}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">PMMS 15yr</p>
             <p className="text-lg font-bold text-foreground">{(rates.mortgage15yr * 100).toFixed(2)}%</p>
           </div>
           <div>
@@ -167,6 +183,11 @@ export function FullReport({ data }: FullReportProps) {
             <p className="text-lg font-bold text-foreground">{(rates.fedFunds * 100).toFixed(2)}%</p>
           </div>
         </div>
+        <p className="mt-3 text-[11px] text-muted-foreground">
+          PMMS is for owner-occupied mortgages. Investor loans (DSCR / non-owner-occupied) price
+          higher — we apply the premium so all downstream math (cash flow, DSCR, breakeven, refi)
+          reflects what you&apos;ll actually pay.
+        </p>
       </div>
 
       {/* DSCR Details */}

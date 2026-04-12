@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { searchProperty, getRentEstimate } from '@/lib/propertyApi'
-import { getCurrentRates } from '@/lib/rates'
+import { getCurrentRates, applyInvestorPremium } from '@/lib/rates'
 import { getStateFromZipCode, calculateBreakEvenPrice } from '@/lib/calculations'
 import { prisma } from '@/lib/db'
 import { randomUUID } from 'crypto'
@@ -46,9 +46,11 @@ export async function POST(req: NextRequest) {
     const state = property.state || getStateFromZipCode(property.zip_code)
     const estimatedRent = rentEstimate?.estimated_rent || Math.round(property.estimated_value * 0.005)
 
-    // Breakeven price is our flagship hook — compute up front so the teaser can
-    // show "listing is $X above/below breakeven" with zero friction.
-    const breakevenPrice = calculateBreakEvenPrice(estimatedRent, rates.mortgage30yr)
+    // Breakeven hook uses the investor rate (PMMS + LTR premium). DealDoctor's
+    // audience is investors, so the pre-paywall walk-away number must reflect
+    // what they'll actually pay to finance the deal — not an owner-occupied rate.
+    const investorRate = applyInvestorPremium(rates.mortgage30yr, 'LTR')
+    const breakevenPrice = calculateBreakEvenPrice(estimatedRent, investorRate)
     const listingVsBreakeven = breakevenPrice - property.estimated_value
 
     // Generate UUID and store in DB
@@ -64,7 +66,8 @@ export async function POST(req: NextRequest) {
       bathrooms: property.bathrooms,
       sqft: property.square_feet,
       yearBuilt: property.year_built,
-      currentRate: rates.mortgage30yr,
+      currentRate: investorRate, // display the rate our math actually used
+      pmmsRate: rates.mortgage30yr, // reference: owner-occupied PMMS
     }
 
     await prisma.report.create({

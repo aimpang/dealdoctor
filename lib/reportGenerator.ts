@@ -1,6 +1,6 @@
 import { prisma } from './db'
 import { searchProperty, getRentEstimate, getComparableSales } from './propertyApi'
-import { getCurrentRates } from './rates'
+import { getCurrentRates, applyInvestorPremium, INVESTOR_PREMIUM, type Strategy } from './rates'
 import {
   calculateDealMetrics,
   calculateBreakEvenPrice,
@@ -24,6 +24,11 @@ export async function generateFullReport(uuid: string): Promise<void> {
   const offerPrice = report.offerPrice ?? askPrice
   const downPaymentPct = report.downPaymentPct ?? 0.20
   const rehabBudget = report.rehabBudget ?? 0
+
+  // Apply investor-rate premium based on strategy. PMMS is owner-occupied;
+  // real DSCR / non-owner-occupied pricing runs higher. See rates.ts for rationale.
+  const strategy = (report.strategy as Strategy) ?? 'LTR'
+  const investorRate = applyInvestorPremium(rates.mortgage30yr, strategy)
   const monthlyRent = rentEstimate?.estimated_rent || askPrice * 0.005
   const stateRules = STATE_RULES[report.state] || STATE_RULES['TX']
 
@@ -40,7 +45,7 @@ export async function generateFullReport(uuid: string): Promise<void> {
     {
       purchasePrice: offerPrice,
       downPaymentPct,
-      annualRate: rates.mortgage30yr,
+      annualRate: investorRate, // was owner-occupied PMMS — now strategy-adjusted
       amortizationYears: 30,
       state: report.state,
       rehabBudget,
@@ -60,12 +65,12 @@ export async function generateFullReport(uuid: string): Promise<void> {
       ? compValues[Math.floor(compValues.length / 2)]
       : undefined
 
-  // Deal Doctor AI narration uses offer, rate, climate, bedrooms, ARV, and rehab
-  // as concrete anchors so the model cites specifics rather than giving generic advice.
+  // Deal Doctor AI narration uses the investor rate (not PMMS) so the fixes it
+  // proposes are calibrated to the same numbers shown in the report.
   const dealDoctor = await generateDealDoctor(
     report.address, report.city, report.state,
-    (report.strategy as 'LTR' | 'STR' | 'FLIP') ?? 'LTR',
-    ltrMetrics, offerPrice, monthlyRent, rates.mortgage30yr,
+    strategy as 'LTR' | 'STR' | 'FLIP',
+    ltrMetrics, offerPrice, monthlyRent, investorRate,
     climate,
     property.bedrooms,
     arvEstimate,
@@ -90,15 +95,17 @@ export async function generateFullReport(uuid: string): Promise<void> {
       propertyType: property.property_type,
     },
     rates: {
-      mortgage30yr: rates.mortgage30yr,
+      mortgage30yr: rates.mortgage30yr,          // owner-occupied PMMS (reference)
+      mortgage30yrInvestor: investorRate,        // strategy-adjusted, used by the math
+      investorPremiumBps: Math.round(INVESTOR_PREMIUM[strategy] * 10000),
       mortgage15yr: rates.mortgage15yr,
       fedFunds: rates.fedFundsRate,
     },
     breakeven: {
-      price: calculateBreakEvenPrice(monthlyRent, rates.mortgage30yr),
+      // Breakeven must use the investor rate — otherwise the "walk-away price" is a lie.
+      price: calculateBreakEvenPrice(monthlyRent, investorRate),
       yourOffer: offerPrice,
-      // Positive = offer is below breakeven (good); negative = above (bad)
-      delta: calculateBreakEvenPrice(monthlyRent, rates.mortgage30yr) - offerPrice,
+      delta: calculateBreakEvenPrice(monthlyRent, investorRate) - offerPrice,
     },
     expenses: {
       monthlyPropertyTax,

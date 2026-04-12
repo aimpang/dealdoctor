@@ -123,6 +123,9 @@ export function calculateRenewalScenarios(
 // Binary-search the purchase price at which monthly cash flow is ~$0 given current
 // rent and rates. This is DealDoctor's flagship metric: "offer $X and it works."
 // Assumes 20% down, 30yr amort, 1.5% annual property tax/insurance, $250/mo ops buffer.
+// Invariant: CF(price) is monotonically decreasing — at low prices CF>0, at high CF<0.
+// We search for the crossover: when CF>0 at mid, breakeven is ≥ mid (push low up);
+// when CF<0, breakeven is < mid (pull high down).
 export function calculateBreakEvenPrice(
   monthlyRent: number,
   annualRate: number,
@@ -135,7 +138,7 @@ export function calculateBreakEvenPrice(
     const n = 30 * 12
     const payment = loan * (monthlyRate * Math.pow(1 + monthlyRate, n)) / (Math.pow(1 + monthlyRate, n) - 1)
     const cf = monthlyRent * 0.95 - payment - (mid * 0.015 / 12) - 250
-    if (cf > 0) high = mid; else low = mid
+    if (cf > 0) low = mid; else high = mid
   }
   return Math.round((low + high) / 2 / 1000) * 1000
 }
@@ -313,21 +316,25 @@ export function calculateDealMetrics(
   }
 }
 
+// All inputs are DECIMAL fractions (coc = 0.08 for 8%, capRate = 0.05 for 5%).
+// Thresholds are expressed in the same units so the comparisons are consistent.
+// Prior to 2026-04-12 this function had a units mismatch: thresholds were written
+// as whole-percent (coc >= 8) but inputs are decimals — DEAL verdict was unreachable.
 function classifyDeal(
   coc: number, capRate: number, monthlyCF: number, dscr: number
 ): { verdict: 'DEAL' | 'MARGINAL' | 'PASS', primaryFailureMode: string, dealScore: number } {
   const cocScore = Math.min(100, Math.max(0, (coc / 0.08) * 40))
-  const capScore = Math.min(100, Math.max(0, (capRate / 5) * 30))
+  const capScore = Math.min(100, Math.max(0, (capRate / 0.05) * 30))
   const cfScore = Math.min(100, Math.max(0, ((monthlyCF + 500) / 1000) * 30))
   const dealScore = Math.round(cocScore + capScore + cfScore)
 
   let verdict: 'DEAL' | 'MARGINAL' | 'PASS'
   let primaryFailureMode: string
 
-  if (coc >= 8 && monthlyCF >= 0 && dscr >= 1.25) {
+  if (coc >= 0.08 && monthlyCF >= 0 && dscr >= 1.25) {
     verdict = 'DEAL'
     primaryFailureMode = 'STRONG_DEAL'
-  } else if (coc >= 4 && monthlyCF >= -300) {
+  } else if (coc >= 0.04 && monthlyCF >= -300) {
     verdict = 'MARGINAL'
     if (dscr < 1.25) primaryFailureMode = 'DSCR_LOW'
     else if (monthlyCF < 0) primaryFailureMode = 'THIN_MARGIN'
@@ -335,7 +342,7 @@ function classifyDeal(
   } else {
     verdict = 'PASS'
     if (monthlyCF < -500) primaryFailureMode = 'NEGATIVE_CASHFLOW'
-    else if (capRate < 3) primaryFailureMode = 'OVERPRICED'
+    else if (capRate < 0.03) primaryFailureMode = 'OVERPRICED'
     else primaryFailureMode = 'POOR_RETURNS'
   }
 
