@@ -83,8 +83,11 @@ export async function POST(req: NextRequest) {
         bathrooms: property.bathrooms
       }
     })
-  } catch (err) {
+  } catch (err: any) {
     console.error('Preview error:', err)
-    return NextResponse.json({ error: 'Something went wrong. Please try again.' }, { status: 500 })
+    return NextResponse.json({
+      error: 'Something went wrong. Please try again.',
+      debug: err?.message
+    }, { status: 500 })
   }
 }
