@@ -426,6 +426,85 @@ export function calculateFinancingAlternatives(params: {
   })
 }
 
+// --- SHORT-TERM RENTAL PROJECTION ---
+// Converts a property's LTR inputs into an STR P&L so investors can see whether
+// pivoting to Airbnb/VRBO actually improves the deal after the (much higher) STR
+// operating costs. The revenue input is already occupancy-adjusted (comes from
+// estimateSTRRevenue in dealDoctor.ts, which bakes in a ~60% occupancy baseline).
+export interface STRProjection {
+  monthlyGrossRevenue: number
+  monthlyOpex: number
+  monthlyMortgagePayment: number
+  monthlyNetCashFlow: number
+  annualNOI: number
+  annualDSCR: number
+  opExRatio: number
+  vsLTRMonthlyDelta: number     // STR CF minus LTR CF; positive = STR wins
+  estimatedOccupancy: number    // 0.60 baseline — document the assumption
+  breakdown: {
+    management: number          // 20% of gross
+    cleaning: number            // 10% of gross
+    suppliesAndPlatformFees: number // 6% of gross
+    utilities: number           // 7% of gross — owner pays (unlike LTR)
+    propertyTax: number
+    insurance: number           // 50% bump over LTR HO-3 (specialty STR carrier)
+  }
+}
+
+export function calculateSTRProjection(params: {
+  monthlyGrossRevenue: number
+  monthlyMortgagePayment: number
+  monthlyPropertyTax: number
+  monthlyInsuranceLTR: number
+  monthlyLTRCashFlow: number
+}): STRProjection {
+  const { monthlyGrossRevenue, monthlyMortgagePayment,
+          monthlyPropertyTax, monthlyInsuranceLTR, monthlyLTRCashFlow } = params
+
+  // Variable STR opex as % of gross revenue. Conservative middle-of-the-road
+  // assumptions — adjust in the report UI if your market is self-managed or
+  // uses a premium PM.
+  const management = Math.round(monthlyGrossRevenue * 0.20)
+  const cleaning = Math.round(monthlyGrossRevenue * 0.10)
+  const suppliesAndPlatformFees = Math.round(monthlyGrossRevenue * 0.06)
+  const utilities = Math.round(monthlyGrossRevenue * 0.07)
+  const insurance = Math.round(monthlyInsuranceLTR * 1.5)
+
+  const monthlyOpex = management + cleaning + suppliesAndPlatformFees + utilities + monthlyPropertyTax + insurance
+  const monthlyNetCashFlow = Math.round(monthlyGrossRevenue - monthlyMortgagePayment - monthlyOpex)
+  const annualNOI = Math.round((monthlyGrossRevenue - monthlyOpex) * 12)
+  const annualDebtService = monthlyMortgagePayment * 12
+  const annualDSCR = calculateDSCR(annualNOI, annualDebtService)
+
+  // Variable opex (scales with gross): management + cleaning + supplies + utilities.
+  // Insurance is excluded here because it's a fixed $ amount driven by dwelling
+  // value, not by STR revenue. ~43% is the industry ballpark for the variable portion.
+  const variableOpex = management + cleaning + suppliesAndPlatformFees + utilities
+  const opExRatio = monthlyGrossRevenue > 0
+    ? Math.round((variableOpex / monthlyGrossRevenue) * 1000) / 1000
+    : 0
+
+  return {
+    monthlyGrossRevenue: Math.round(monthlyGrossRevenue),
+    monthlyOpex,
+    monthlyMortgagePayment: Math.round(monthlyMortgagePayment),
+    monthlyNetCashFlow,
+    annualNOI,
+    annualDSCR,
+    opExRatio,
+    vsLTRMonthlyDelta: Math.round(monthlyNetCashFlow - monthlyLTRCashFlow),
+    estimatedOccupancy: 0.60,
+    breakdown: {
+      management,
+      cleaning,
+      suppliesAndPlatformFees,
+      utilities,
+      propertyTax: monthlyPropertyTax,
+      insurance,
+    },
+  }
+}
+
 // --- SENSITIVITY ANALYSIS ---
 // Re-runs the core metrics under adverse/favorable scenarios so investors can
 // see "how safe is this deal?" at a glance. Investors paying $8.99 for a report

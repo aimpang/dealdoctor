@@ -4,6 +4,7 @@ import {
   getRentEstimate,
   getComparableSales,
   getRentComps,
+  getMarketSnapshot,
 } from './propertyApi'
 import { getCurrentRates, applyInvestorPremium, INVESTOR_PREMIUM, type Strategy } from './rates'
 import {
@@ -15,9 +16,10 @@ import {
   calculateFinancingAlternatives,
   calculateSensitivity,
   calculateRecommendedOffers,
+  calculateSTRProjection,
   STATE_RULES,
 } from './calculations'
-import { generateDealDoctor } from './dealDoctor'
+import { generateDealDoctor, estimateSTRRevenue } from './dealDoctor'
 import { getClimateAndInsurance } from './climateRisk'
 
 export async function generateFullReport(uuid: string): Promise<void> {
@@ -28,12 +30,14 @@ export async function generateFullReport(uuid: string): Promise<void> {
   const property = await searchProperty(report.address)
   if (!property) return
 
-  // Fetch rent estimate, sale comps, and rent comps in parallel.
-  // Rent comps are the #1 trust gap — users want to see the neighbors we priced against.
-  const [rentEstimate, saleComps, rentComps] = await Promise.all([
+  // Fetch rent estimate, sale comps, rent comps, and market snapshot in parallel.
+  // Rent comps close the trust gap on rent estimates; market snapshot adds the
+  // zip-level growth/DOM context investors ask for.
+  const [rentEstimate, saleComps, rentComps, marketSnapshot] = await Promise.all([
     getRentEstimate(report.address, property.bedrooms),
     getComparableSales(report.city, report.state, property.bedrooms),
     getRentComps(report.address, property.bedrooms),
+    getMarketSnapshot(report.zipCode),
   ])
 
   const askPrice = property.estimated_value
@@ -139,6 +143,17 @@ export async function generateFullReport(uuid: string): Promise<void> {
     cashToClose: cashToClose.totalCashToClose,
   })
 
+  // STR projection — compares Airbnb/VRBO P&L against LTR using our bedroom-aware
+  // STR revenue estimate and STR-specific opex ratios (management + cleaning + utilities).
+  const strRevenue = estimateSTRRevenue(report.city, report.state, property.bedrooms)
+  const strProjection = calculateSTRProjection({
+    monthlyGrossRevenue: strRevenue,
+    monthlyMortgagePayment: ltrMetrics.monthlyMortgagePayment,
+    monthlyPropertyTax,
+    monthlyInsuranceLTR: monthlyInsurance,
+    monthlyLTRCashFlow: ltrMetrics.monthlyNetCashFlow,
+  })
+
   // Recommended max offers for three target outcomes
   const recommendedOffers = calculateRecommendedOffers({
     monthlyRent,
@@ -215,6 +230,15 @@ export async function generateFullReport(uuid: string): Promise<void> {
       propertyTaxSource,              // 'county-record' | 'state-average'
       hoaSource: monthlyHOA > 0 ? 'listing' : 'not-captured',
     },
+    // Raw underwriting inputs — needed by interactive UI (rehab estimator, what-if tools)
+    // so they can re-run calculations without re-deriving from NOI.
+    inputs: {
+      monthlyRent,
+      vacancyRate: 0.05,
+      monthlyExpenses,
+      annualRate: investorRate,
+      amortYears: 30,
+    },
     cashToClose,                      // down + closing + inspection + reserves + rehab
     wealthProjection: {
       years: projections,
@@ -238,6 +262,8 @@ export async function generateFullReport(uuid: string): Promise<void> {
     financingAlternatives,
     sensitivity,
     recommendedOffers,
+    strProjection,
+    marketSnapshot,
     rentComps,
     climate,
     ltr: ltrMetrics,

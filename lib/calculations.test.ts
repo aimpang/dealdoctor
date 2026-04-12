@@ -13,6 +13,7 @@ import {
   calculateFinancingAlternatives,
   calculateSensitivity,
   calculateRecommendedOffers,
+  calculateSTRProjection,
   STATE_RULES,
   getStateFromZipCode,
 } from './calculations'
@@ -537,6 +538,66 @@ describe('calculateRecommendedOffers', () => {
     const lowRate = calculateRecommendedOffers({ ...baseParams, annualRate: 0.05 })
     const highRate = calculateRecommendedOffers({ ...baseParams, annualRate: 0.08 })
     expect(highRate.breakevenPrice).toBeLessThan(lowRate.breakevenPrice)
+  })
+})
+
+// --- STR PROJECTION ---
+describe('calculateSTRProjection', () => {
+  const baseParams = {
+    monthlyGrossRevenue: 4_500,
+    monthlyMortgagePayment: 2_000,
+    monthlyPropertyTax: 450,
+    monthlyInsuranceLTR: 300,
+    monthlyLTRCashFlow: 300,
+  }
+
+  it('opex ratio sums the five variable components (~43% of gross)', () => {
+    const r = calculateSTRProjection(baseParams)
+    // management 20 + cleaning 10 + supplies 6 + utilities 7 + insurance(50% of LTR)
+    // variable portion: 43% of gross
+    expect(r.opExRatio).toBeCloseTo(0.43, 2)
+  })
+
+  it('STR insurance is 50% higher than LTR insurance', () => {
+    const r = calculateSTRProjection(baseParams)
+    expect(r.breakdown.insurance).toBe(Math.round(baseParams.monthlyInsuranceLTR * 1.5))
+  })
+
+  it('net cash flow = gross - mortgage - opex', () => {
+    const r = calculateSTRProjection(baseParams)
+    expect(r.monthlyNetCashFlow).toBe(
+      Math.round(baseParams.monthlyGrossRevenue - baseParams.monthlyMortgagePayment - r.monthlyOpex)
+    )
+  })
+
+  it('vsLTRMonthlyDelta is STR CF minus LTR CF', () => {
+    const r = calculateSTRProjection(baseParams)
+    expect(r.vsLTRMonthlyDelta).toBe(r.monthlyNetCashFlow - baseParams.monthlyLTRCashFlow)
+  })
+
+  it('higher gross revenue produces higher net (monotonic)', () => {
+    const lower = calculateSTRProjection({ ...baseParams, monthlyGrossRevenue: 3_000 })
+    const higher = calculateSTRProjection({ ...baseParams, monthlyGrossRevenue: 6_000 })
+    expect(higher.monthlyNetCashFlow).toBeGreaterThan(lower.monthlyNetCashFlow)
+  })
+
+  it('DSCR uses annualized NOI / annual debt service', () => {
+    const r = calculateSTRProjection(baseParams)
+    const expectedDSCR =
+      Math.round((r.annualNOI / (baseParams.monthlyMortgagePayment * 12)) * 100) / 100
+    expect(r.annualDSCR).toBeCloseTo(expectedDSCR, 2)
+  })
+
+  it('breakdown values sum (plus fixed costs) to monthly opex', () => {
+    const r = calculateSTRProjection(baseParams)
+    const sum =
+      r.breakdown.management +
+      r.breakdown.cleaning +
+      r.breakdown.suppliesAndPlatformFees +
+      r.breakdown.utilities +
+      r.breakdown.propertyTax +
+      r.breakdown.insurance
+    expect(sum).toBe(r.monthlyOpex)
   })
 })
 

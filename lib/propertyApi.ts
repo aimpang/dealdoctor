@@ -111,6 +111,75 @@ async function searchPropertyRentcast(address: string): Promise<PropertyData | n
   }
 }
 
+// Zip-level market statistics — used for the "Local Market Snapshot" section.
+// Rentcast returns current + historical medians so we can show a 12-month growth
+// trend. If the endpoint isn't available on our plan, return null and the UI
+// hides the whole section (we never show fake market data).
+export interface MarketSnapshot {
+  zipCode: string
+  salePriceMedian: number | null
+  rentMedian: number | null
+  pricePerSqft: number | null
+  rentPerSqft: number | null
+  avgDaysOnMarket: number | null
+  salePriceGrowth12mo: number | null // decimal, e.g. 0.052 = +5.2%
+  rentGrowth12mo: number | null
+}
+
+export async function getMarketSnapshot(zipCode: string): Promise<MarketSnapshot | null> {
+  if (!API_KEY || API_KEY === 'your_key_here' || !zipCode) return null
+  try {
+    const url = new URL('https://api.rentcast.io/v1/markets')
+    url.searchParams.set('zipCode', zipCode)
+    url.searchParams.set('historyRange', '12')
+    url.searchParams.set('dataType', 'All')
+
+    const res = await fetch(url.toString(), {
+      headers: { 'X-Api-Key': API_KEY },
+      next: { revalidate: 86_400 }, // once per day per zip is plenty
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+
+    const saleNow =
+      data?.saleData?.averagePrice ?? data?.saleData?.medianPrice ?? null
+    const rentNow =
+      data?.rentalData?.averageRent ?? data?.rentalData?.medianRent ?? null
+
+    // Find the oldest point in the history window (12 months back)
+    const saleHistory = data?.saleData?.history ?? {}
+    const rentHistory = data?.rentalData?.history ?? {}
+    const oldestSaleKey = Object.keys(saleHistory).sort()[0]
+    const oldestRentKey = Object.keys(rentHistory).sort()[0]
+    const saleThen =
+      oldestSaleKey
+        ? saleHistory[oldestSaleKey]?.averagePrice ?? saleHistory[oldestSaleKey]?.medianPrice
+        : null
+    const rentThen =
+      oldestRentKey
+        ? rentHistory[oldestRentKey]?.averageRent ?? rentHistory[oldestRentKey]?.medianRent
+        : null
+
+    const growth = (now: number | null, then: number | null): number | null =>
+      now && then && then > 0
+        ? Math.round(((now - then) / then) * 10000) / 10000
+        : null
+
+    return {
+      zipCode,
+      salePriceMedian: saleNow,
+      rentMedian: rentNow,
+      pricePerSqft: data?.saleData?.averagePricePerSquareFoot ?? null,
+      rentPerSqft: data?.rentalData?.averageRentPerSquareFoot ?? null,
+      avgDaysOnMarket: data?.saleData?.averageDaysOnMarket ?? null,
+      salePriceGrowth12mo: growth(saleNow, saleThen),
+      rentGrowth12mo: growth(rentNow, rentThen),
+    }
+  } catch {
+    return null
+  }
+}
+
 // Rent comparables — separate function because we only need them for the paid
 // full report, not the pre-paywall teaser. Keeps preview fast.
 export async function getRentComps(address: string, bedrooms: number): Promise<RentComp[]> {

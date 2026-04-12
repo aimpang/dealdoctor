@@ -3,6 +3,7 @@
 import { cn } from '@/lib/utils'
 import { DealDoctorSection } from './DealDoctor'
 import { WealthAreaChart, WealthCompositionPie, SensitivityTornado } from './ReportCharts'
+import { RehabEstimator } from './RehabEstimator'
 import {
   CheckCircle2Icon,
   XCircleIcon,
@@ -69,6 +70,8 @@ export function FullReport({ data }: FullReportProps) {
     financingAlternatives,
     sensitivity,
     recommendedOffers,
+    strProjection,
+    marketSnapshot,
     rentComps,
   } = data
 
@@ -411,6 +414,131 @@ export function FullReport({ data }: FullReportProps) {
             </Card>
           )}
 
+          {/* Short-Term Rental (STR) Projection */}
+          {strProjection && (
+            <Card>
+              <CardHeader
+                label="Short-Term Rental Comparison"
+                hint={`If you pivot to Airbnb/VRBO — assumes ${(strProjection.estimatedOccupancy * 100).toFixed(0)}% occupancy`}
+              />
+              <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {/* LTR column */}
+                <div className="rounded-md border border-border/60 bg-background/40 p-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Long-Term Rental (base)
+                  </p>
+                  <p className="mt-1 text-sm text-foreground tabular-nums">
+                    Rent:{' '}
+                    <span className="font-semibold">
+                      {fmt(data.inputs?.monthlyRent ?? ltr.noiAnnual / 12 + expenses.monthlyTotal)}/mo
+                    </span>
+                  </p>
+                  <p className="mt-0.5 text-sm text-muted-foreground tabular-nums">
+                    Net CF:{' '}
+                    <span
+                      className={cn(
+                        'font-semibold',
+                        ltr.monthlyNetCashFlow >= 0
+                          ? 'text-emerald-700 dark:text-emerald-400'
+                          : 'text-red-700 dark:text-red-400'
+                      )}
+                    >
+                      {ltr.monthlyNetCashFlow >= 0 ? '+' : ''}
+                      {fmt(ltr.monthlyNetCashFlow)}/mo
+                    </span>
+                  </p>
+                  <p className="mt-0.5 text-sm text-muted-foreground tabular-nums">
+                    DSCR: <span className="font-semibold text-foreground">{ltr.dscr}x</span>
+                  </p>
+                </div>
+
+                {/* STR column */}
+                <div
+                  className={cn(
+                    'rounded-md border p-3',
+                    strProjection.vsLTRMonthlyDelta > 0
+                      ? 'border-emerald-500/40 bg-emerald-500/5'
+                      : 'border-amber-500/40 bg-amber-500/5'
+                  )}
+                >
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Short-Term Rental
+                  </p>
+                  <p className="mt-1 text-sm text-foreground tabular-nums">
+                    Gross: <span className="font-semibold">{fmt(strProjection.monthlyGrossRevenue)}/mo</span>
+                  </p>
+                  <p className="mt-0.5 text-sm text-muted-foreground tabular-nums">
+                    Net CF:{' '}
+                    <span
+                      className={cn(
+                        'font-semibold',
+                        strProjection.monthlyNetCashFlow >= 0
+                          ? 'text-emerald-700 dark:text-emerald-400'
+                          : 'text-red-700 dark:text-red-400'
+                      )}
+                    >
+                      {strProjection.monthlyNetCashFlow >= 0 ? '+' : ''}
+                      {fmt(strProjection.monthlyNetCashFlow)}/mo
+                    </span>
+                  </p>
+                  <p className="mt-0.5 text-sm text-muted-foreground tabular-nums">
+                    DSCR: <span className="font-semibold text-foreground">{strProjection.annualDSCR}x</span>
+                  </p>
+                  <p className="mt-2 text-[11px] font-semibold text-foreground">
+                    {strProjection.vsLTRMonthlyDelta > 0 ? (
+                      <span className="text-emerald-700 dark:text-emerald-400">
+                        STR wins by {fmt(strProjection.vsLTRMonthlyDelta)}/mo
+                      </span>
+                    ) : (
+                      <span className="text-amber-700 dark:text-amber-400">
+                        LTR wins by {fmt(-strProjection.vsLTRMonthlyDelta)}/mo
+                      </span>
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  STR monthly opex breakdown
+                </p>
+                <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground tabular-nums sm:grid-cols-3">
+                  <Line label="Management (20%)" value={fmt(strProjection.breakdown.management)} />
+                  <Line label="Cleaning (10%)" value={fmt(strProjection.breakdown.cleaning)} />
+                  <Line label="Platform + supplies" value={fmt(strProjection.breakdown.suppliesAndPlatformFees)} />
+                  <Line label="Utilities (owner)" value={fmt(strProjection.breakdown.utilities)} />
+                  <Line label="Insurance (+50%)" value={fmt(strProjection.breakdown.insurance)} />
+                  <Line label="Property tax" value={fmt(strProjection.breakdown.propertyTax)} />
+                </div>
+              </div>
+
+              <p className="mt-3 text-[10px] text-muted-foreground">
+                STR revenue estimate uses bedroom-scaled city baseline; verify against AirDNA or
+                comparable listings before committing to this strategy.
+              </p>
+            </Card>
+          )}
+
+          {/* Interactive rehab estimator (no-print) */}
+          {data.inputs && (
+            <RehabEstimator
+              offerPrice={property.offerPrice ?? property.askPrice}
+              downPaymentPct={property.downPaymentPct ?? 0.20}
+              annualRate={data.inputs.annualRate}
+              loanAmount={ltr.loanAmount}
+              monthlyRent={data.inputs.monthlyRent}
+              vacancyRate={data.inputs.vacancyRate}
+              monthlyExpenses={data.inputs.monthlyExpenses}
+              monthlyMortgagePayment={ltr.monthlyMortgagePayment}
+              annualDepreciation={ltr.annualDepreciation}
+              baselineMonthlyCashFlow={ltr.monthlyNetCashFlow}
+              baselineCashToClose={cashToClose?.totalCashToClose ?? 0}
+              baseline5yrWealth={wealthProjection?.hero?.totalWealthBuilt5yr ?? 0}
+              baseline5yrIRR={wealthProjection?.hero?.irr5yr ?? 0}
+              baselineDSCR={ltr.dscr}
+            />
+          )}
+
           {/* Rent Comparables */}
           {rentComps && rentComps.length > 0 && (
             <Card>
@@ -506,6 +634,58 @@ export function FullReport({ data }: FullReportProps) {
               <div className="mt-2">
                 <WealthCompositionPie hero={wealthProjection.hero} />
               </div>
+            </Card>
+          )}
+
+          {/* Local Market Snapshot — zip-level context */}
+          {marketSnapshot && (marketSnapshot.salePriceMedian || marketSnapshot.rentMedian) && (
+            <Card>
+              <CardHeader label={`Zip ${marketSnapshot.zipCode} Market`} />
+              <div className="mt-2 space-y-1.5 text-sm">
+                {marketSnapshot.salePriceMedian != null && (
+                  <Line
+                    label="Median sale"
+                    value={fmt(marketSnapshot.salePriceMedian)}
+                    strong
+                  />
+                )}
+                {marketSnapshot.rentMedian != null && (
+                  <Line label="Median rent" value={`${fmt(marketSnapshot.rentMedian)}/mo`} />
+                )}
+                {marketSnapshot.pricePerSqft != null && (
+                  <Line label="$ / sqft" value={`$${marketSnapshot.pricePerSqft}`} />
+                )}
+                {marketSnapshot.avgDaysOnMarket != null && (
+                  <Line
+                    label="Avg days on market"
+                    value={`${Math.round(marketSnapshot.avgDaysOnMarket)}d`}
+                  />
+                )}
+              </div>
+              {(marketSnapshot.salePriceGrowth12mo != null ||
+                marketSnapshot.rentGrowth12mo != null) && (
+                <div className="mt-3 border-t border-border/40 pt-3">
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    12-month change
+                  </p>
+                  <div className="space-y-1 text-sm">
+                    {marketSnapshot.salePriceGrowth12mo != null && (
+                      <Line
+                        label="Sale price"
+                        value={`${marketSnapshot.salePriceGrowth12mo >= 0 ? '+' : ''}${(marketSnapshot.salePriceGrowth12mo * 100).toFixed(1)}%`}
+                        tone={marketSnapshot.salePriceGrowth12mo >= 0 ? 'pos' : 'neg'}
+                      />
+                    )}
+                    {marketSnapshot.rentGrowth12mo != null && (
+                      <Line
+                        label="Rent"
+                        value={`${marketSnapshot.rentGrowth12mo >= 0 ? '+' : ''}${(marketSnapshot.rentGrowth12mo * 100).toFixed(1)}%`}
+                        tone={marketSnapshot.rentGrowth12mo >= 0 ? 'pos' : 'neg'}
+                      />
+                    )}
+                  </div>
+                </div>
+              )}
             </Card>
           )}
 
