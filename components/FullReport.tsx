@@ -1,9 +1,11 @@
 'use client'
 
+import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { DealDoctorSection } from './DealDoctor'
 import { WealthAreaChart, WealthCompositionPie, SensitivityTornado } from './ReportCharts'
 import { RehabEstimator } from './RehabEstimator'
+import { PortfolioButton } from './PortfolioButton'
 import {
   CheckCircle2Icon,
   XCircleIcon,
@@ -13,10 +15,14 @@ import {
   PrinterIcon,
   TargetIcon,
   ActivityIcon,
+  DownloadIcon,
+  EyeOffIcon,
+  EyeIcon,
 } from 'lucide-react'
 
 interface FullReportProps {
   data: any
+  uuid?: string
 }
 
 /* ───── Formatters ───── */
@@ -53,7 +59,25 @@ const VERDICT = {
   },
 } as const
 
-export function FullReport({ data }: FullReportProps) {
+export function FullReport({ data, uuid }: FullReportProps) {
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const pathname = usePathname()
+  const isLenderView = searchParams.get('view') === 'lender'
+
+  // Lender-ready view hides assumptions an underwriter wouldn't underwrite on:
+  // appreciation-driven wealth projections, tax shields that depend on personal
+  // tax posture, STR revenue potential, and the rehab estimator.
+  const hideInLenderView = (section: 'str' | 'rehab' | 'composition' | 'tax' | 'wealthHero') =>
+    isLenderView && ['str', 'rehab', 'composition', 'tax', 'wealthHero'].includes(section)
+
+  const toggleLenderView = () => {
+    const params = new URLSearchParams(searchParams.toString())
+    if (isLenderView) params.delete('view')
+    else params.set('view', 'lender')
+    const qs = params.toString()
+    router.push(`${pathname}${qs ? `?${qs}` : ''}`, { scroll: false })
+  }
   const {
     property,
     rates,
@@ -79,8 +103,57 @@ export function FullReport({ data }: FullReportProps) {
 
   return (
     <div className="w-full">
-      {/* Top utility bar — print only visible outside print */}
-      <div className="no-print mb-3 flex justify-end">
+      {/* Top utility bar — all hidden in print */}
+      <div className="no-print mb-3 flex flex-wrap items-center justify-end gap-2">
+        {uuid && (
+          <PortfolioButton
+            deal={{
+              uuid,
+              address: property?.address ?? '',
+              cityState: `${property?.city ?? ''}, ${property?.state ?? ''}`,
+              verdict: ltr?.verdict,
+              dealScore: ltr?.dealScore,
+              offer: property?.offerPrice ?? property?.askPrice,
+              breakevenDelta: breakeven?.delta,
+              fiveYrWealth: wealthProjection?.hero?.totalWealthBuilt5yr,
+              fiveYrIRR: wealthProjection?.hero?.irr5yr,
+            }}
+          />
+        )}
+
+        {uuid && (
+          <a
+            href={`/api/report/${uuid}/export`}
+            className="inline-flex items-center gap-1.5 rounded-md border bg-card px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <DownloadIcon className="h-3.5 w-3.5" />
+            Export Excel
+          </a>
+        )}
+
+        <button
+          onClick={toggleLenderView}
+          className={cn(
+            'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors',
+            isLenderView
+              ? 'border-primary/40 bg-primary/10 text-primary'
+              : 'border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground'
+          )}
+          aria-pressed={isLenderView}
+        >
+          {isLenderView ? (
+            <>
+              <EyeIcon className="h-3.5 w-3.5" />
+              Full analysis view
+            </>
+          ) : (
+            <>
+              <EyeOffIcon className="h-3.5 w-3.5" />
+              Lender-ready view
+            </>
+          )}
+        </button>
+
         <button
           onClick={() => typeof window !== 'undefined' && window.print()}
           className="inline-flex items-center gap-1.5 rounded-md border bg-card px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
@@ -89,6 +162,19 @@ export function FullReport({ data }: FullReportProps) {
           Print / Save PDF
         </button>
       </div>
+
+      {/* Lender-view banner */}
+      {isLenderView && (
+        <div className="mb-4 rounded-md border border-primary/30 bg-primary/5 px-4 py-2.5 text-xs">
+          <p className="font-semibold text-foreground">Lender-ready view active.</p>
+          <p className="mt-0.5 text-muted-foreground">
+            STR projections, rehab value-add estimator, tax shield benefits, and
+            appreciation-dependent sections are hidden. DSCR, cash flow, sensitivity,
+            financing alternatives, and comps remain — the numbers an underwriter will
+            actually touch.
+          </p>
+        </div>
+      )}
 
       {/* Property header strip */}
       <header className="mb-5 border-b border-border pb-5">
@@ -415,7 +501,7 @@ export function FullReport({ data }: FullReportProps) {
           )}
 
           {/* Short-Term Rental (STR) Projection */}
-          {strProjection && (
+          {!hideInLenderView('str') && strProjection && (
             <Card>
               <CardHeader
                 label="Short-Term Rental Comparison"
@@ -519,8 +605,8 @@ export function FullReport({ data }: FullReportProps) {
             </Card>
           )}
 
-          {/* Interactive rehab estimator (no-print) */}
-          {data.inputs && (
+          {/* Interactive rehab estimator (no-print, hidden in lender view) */}
+          {!hideInLenderView('rehab') && data.inputs && (
             <RehabEstimator
               offerPrice={property.offerPrice ?? property.askPrice}
               downPaymentPct={property.downPaymentPct ?? 0.20}
@@ -628,7 +714,7 @@ export function FullReport({ data }: FullReportProps) {
           </Card>
 
           {/* Wealth composition pie — where the 5yr wealth actually comes from */}
-          {wealthProjection && (
+          {!hideInLenderView('composition') && wealthProjection && (
             <Card>
               <CardHeader label="Where Wealth Comes From" />
               <div className="mt-2">
@@ -769,6 +855,7 @@ export function FullReport({ data }: FullReportProps) {
           )}
 
           {/* Depreciation */}
+          {!hideInLenderView('tax') && (
           <Card>
             <CardHeader label="Year-1 Tax Benefits" />
             <div className="mt-2 space-y-1.5 text-sm">
@@ -784,6 +871,7 @@ export function FullReport({ data }: FullReportProps) {
               27.5yr straight-line on ~80% building basis; 28% effective rate.
             </p>
           </Card>
+          )}
 
           {/* Climate & Insurance — condensed */}
           {climate && (

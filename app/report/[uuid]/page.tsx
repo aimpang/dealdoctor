@@ -152,7 +152,7 @@ export default function ReportPage() {
       <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
         {report.paid && fullData ? (
           <div className="space-y-6">
-            <FullReport data={fullData} />
+            <FullReport data={fullData} uuid={uuid} />
             <PhotoAnalysis
               uuid={uuid}
               initialFindings={

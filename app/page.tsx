@@ -48,7 +48,12 @@ export default function LandingPage() {
             </span>
           </div>
           <div className="flex items-center gap-3 text-sm">
-            <span className="hidden text-muted-foreground sm:inline">US Properties</span>
+            <a
+              href="/portfolio"
+              className="text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              My Portfolio
+            </a>
             <div className="flex items-center gap-1.5 rounded-full border bg-card px-3 py-1.5 text-xs font-medium text-foreground">
               <MapPinIcon className="h-3 w-3 text-primary" />
               <span>US</span>
