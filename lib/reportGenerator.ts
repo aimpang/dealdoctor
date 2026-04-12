@@ -65,17 +65,27 @@ export async function generateFullReport(uuid: string): Promise<void> {
       ? compValues[Math.floor(compValues.length / 2)]
       : undefined
 
-  // Deal Doctor AI narration uses the investor rate (not PMMS) so the fixes it
-  // proposes are calibrated to the same numbers shown in the report.
-  const dealDoctor = await generateDealDoctor(
-    report.address, report.city, report.state,
-    strategy as 'LTR' | 'STR' | 'FLIP',
-    ltrMetrics, offerPrice, monthlyRent, investorRate,
-    climate,
-    property.bedrooms,
-    arvEstimate,
-    rehabBudget || undefined
-  )
+  // Deal Doctor AI narration. If the model fails (rate limit, quota exhausted,
+  // network), we still return the rest of the report — the math and climate
+  // sections stand on their own. Only the "3 fixes" section goes missing.
+  let dealDoctor = null
+  let dealDoctorError: string | null = null
+  try {
+    dealDoctor = await generateDealDoctor(
+      report.address, report.city, report.state,
+      strategy as 'LTR' | 'STR' | 'FLIP',
+      ltrMetrics, offerPrice, monthlyRent, investorRate,
+      climate,
+      property.bedrooms,
+      arvEstimate,
+      rehabBudget || undefined
+    )
+  } catch (err: any) {
+    console.error('Deal Doctor AI failed (report still generated):', err?.message)
+    dealDoctorError = err?.message?.includes('429') || err?.message?.includes('quota')
+      ? 'AI diagnosis temporarily unavailable — rate limit reached. Numbers below are unaffected.'
+      : 'AI diagnosis could not be generated. Numbers below are unaffected.'
+  }
 
   const fullReportData = {
     generatedAt: new Date().toISOString(),
@@ -116,6 +126,7 @@ export async function generateFullReport(uuid: string): Promise<void> {
     climate,
     ltr: ltrMetrics,
     dealDoctor,
+    dealDoctorError,
     comparableSales: comps.slice(0, 4),
     stateRules: {
       state: report.state,

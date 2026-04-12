@@ -1,8 +1,11 @@
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import Anthropic from '@anthropic-ai/sdk'
 import { DealMetrics, STATE_RULES, calculateBreakEvenPrice } from './calculations'
 import type { ClimateAndInsurance } from './climateRisk'
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
+// Claude Haiku 4.5 — cheap, fast, high-quality narration. See rationale in
+// memory/project_positioning_and_ai.md. ~$0.005 per report at typical prompt size.
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const MODEL_ID = 'claude-haiku-4-5-20251001'
 
 export interface DealDoctorOutput {
   diagnosis: string
@@ -125,9 +128,15 @@ Rules:
 - Keep diagnosis under 60 words
 - Keep each fix detail row under 8 words per cell`
 
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
-  const result = await model.generateContent(prompt)
-  const text = result.response.text()
+  const result = await anthropic.messages.create({
+    model: MODEL_ID,
+    max_tokens: 1500,
+    messages: [{ role: 'user', content: prompt }],
+  })
+  const text = result.content
+    .filter((block): block is Anthropic.TextBlock => block.type === 'text')
+    .map((b) => b.text)
+    .join('\n')
   return parseDealDoctorResponse(text)
 }
 

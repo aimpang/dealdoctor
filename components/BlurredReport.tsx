@@ -139,7 +139,7 @@ export function BlurredReport({ uuid, address }: BlurredReportProps) {
             <div className="flex flex-col gap-1.5 text-xs text-muted-foreground">
               <div className="flex items-center gap-2">
                 <ZapIcon className="h-3.5 w-3.5 text-primary" />
-                <span>AI-powered Deal Doctor diagnosis</span>
+                <span>Claude-powered Deal Doctor diagnosis</span>
               </div>
               <div className="flex items-center gap-2">
                 <FileTextIcon className="h-3.5 w-3.5 text-primary" />
@@ -171,6 +171,16 @@ export function BlurredReport({ uuid, address }: BlurredReportProps) {
                 <span className="font-semibold text-foreground">Not useful?</span>{' '}
                 Email us within 7 days for a full refund — no questions asked.
               </p>
+              {/* Dev-only shortcut. process.env.NODE_ENV is inlined at build time,
+                  so this whole block tree-shakes out of production bundles. */}
+              {process.env.NODE_ENV !== 'production' && (
+                <a
+                  href={`/report/${uuid}?debug=1`}
+                  className="mt-2 rounded-md border border-dashed border-amber-500/50 bg-amber-500/5 px-3 py-1 font-mono text-amber-700 dark:text-amber-400 hover:bg-amber-500/10"
+                >
+                  🔧 DEV: view full report (bypass paywall) →
+                </a>
+              )}
             </div>
           </div>
         </div>

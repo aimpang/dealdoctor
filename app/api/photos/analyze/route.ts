@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import Anthropic from '@anthropic-ai/sdk'
 import { prisma } from '@/lib/db'
 
 // Post-payment photo analysis. Users can drop 1-5 listing photos and Gemini Vision
@@ -83,30 +83,43 @@ Return STRICT JSON with no markdown fences, no prose outside the JSON:
   ]
 }`
 
-    const apiKey = process.env.GEMINI_API_KEY
+    const apiKey = process.env.ANTHROPIC_API_KEY
     if (!apiKey) {
       return NextResponse.json({ error: 'AI not configured' }, { status: 500 })
     }
 
-    const genAI = new GoogleGenerativeAI(apiKey)
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-2.0-flash',
-      generationConfig: { responseMimeType: 'application/json' },
-    })
+    const anthropic = new Anthropic({ apiKey })
 
-    const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [
-      { text: prompt },
+    // Build Claude multimodal message: text prompt + N image blocks.
+    const content: Anthropic.ContentBlockParam[] = [
+      { type: 'text', text: prompt + '\n\nIMPORTANT: Return only valid JSON. No markdown fences, no preamble, no explanation.' },
+      ...images.map((img): Anthropic.ImageBlockParam => ({
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: img.mimeType as 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif',
+          data: img.data,
+        },
+      })),
     ]
-    for (const img of images) {
-      parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } })
-    }
 
-    const result = await model.generateContent(parts)
-    const text = result.response.text()
+    const result = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 2000,
+      messages: [{ role: 'user', content }],
+    })
+    const text = result.content
+      .filter((block): block is Anthropic.TextBlock => block.type === 'text')
+      .map((b) => b.text)
+      .join('\n')
+      .trim()
+
+    // Claude doesn't have a strict JSON mode — strip any accidental fence and parse.
+    const stripped = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '')
 
     let parsed: { photos: Array<{ index: number; findings: any[] }> }
     try {
-      parsed = JSON.parse(text)
+      parsed = JSON.parse(stripped)
     } catch {
       return NextResponse.json(
         { error: 'AI returned unparseable output' },

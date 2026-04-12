@@ -27,7 +27,7 @@ interface FullReportProps {
 }
 
 export function FullReport({ data }: FullReportProps) {
-  const { property, rates, ltr, dealDoctor, comparableSales, stateRules, breakeven, climate, expenses } = data
+  const { property, rates, ltr, dealDoctor, dealDoctorError, comparableSales, stateRules, breakeven, climate, expenses } = data
 
   const formatCurrency = (n: number) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n)
@@ -389,10 +389,20 @@ export function FullReport({ data }: FullReportProps) {
         </div>
       )}
 
-      {/* Deal Doctor */}
-      {dealDoctor && (
+      {/* Deal Doctor — or graceful fallback if the AI step failed */}
+      {dealDoctor ? (
         <DealDoctorSection dealDoctor={dealDoctor} verdict={ltr.verdict} />
-      )}
+      ) : dealDoctorError ? (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-5">
+          <div className="flex items-start gap-2">
+            <AlertTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+            <div>
+              <p className="text-sm font-semibold text-foreground">AI diagnosis unavailable</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">{dealDoctorError}</p>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* Comparable Sales */}
       {/* (see RiskBar helper at end of file) */}

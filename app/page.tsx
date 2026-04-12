@@ -99,7 +99,7 @@ export default function LandingPage() {
             )}
           >
             Paste any US property address. Get instant mortgage math, cash flow analysis,
-            DSCR check, the exact breakeven offer price, and an AI-powered deal diagnosis.
+            DSCR check, the exact breakeven offer price, and a Claude-powered deal diagnosis.
           </p>
 
           {/* Address Input */}
@@ -186,8 +186,8 @@ export default function LandingPage() {
               },
               {
                 icon: ZapIcon,
-                title: 'AI Deal Doctor',
-                desc: 'AI-powered diagnosis with 3 concrete fixes anchored to real numbers. Negotiation, value-add, and pivot strategies.',
+                title: 'Claude Deal Doctor',
+                desc: 'Claude-powered diagnosis with 3 concrete fixes anchored to real numbers from your report. Negotiation, value-add, and pivot strategies.',
               },
               {
                 icon: BuildingIcon,

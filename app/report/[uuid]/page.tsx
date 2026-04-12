@@ -12,6 +12,7 @@ export default function ReportPage() {
   const searchParams = useSearchParams()
   const uuid = params.uuid as string
   const isSuccess = searchParams.get('success') === 'true'
+  const isDebug = searchParams.get('debug') === '1'
 
   const [report, setReport] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -22,7 +23,7 @@ export default function ReportPage() {
 
     const fetchReport = async () => {
       try {
-        const res = await fetch(`/api/report/${uuid}`)
+        const res = await fetch(`/api/report/${uuid}${isDebug ? '?debug=1' : ''}`)
         if (!res.ok) {
           setError(res.status === 404 ? 'Report not found.' : 'Failed to load report.')
           setLoading(false)
@@ -53,7 +54,7 @@ export default function ReportPage() {
     }, 3000)
 
     return () => clearInterval(intervalId)
-  }, [uuid])
+  }, [uuid, isDebug])
 
   // Success flash
   const [showSuccess, setShowSuccess] = useState(isSuccess)
@@ -129,6 +130,20 @@ export default function ReportPage() {
             <CheckCircle2Icon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
             <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
               Payment successful! Your full report is ready.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Debug-mode banner — only shown when the API flagged this response as debug */}
+      {report?.debug && (
+        <div className="border-b border-amber-500/30 bg-amber-500/10">
+          <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 py-2">
+            <span className="font-mono text-xs font-bold text-amber-700 dark:text-amber-400">
+              🔧 DEBUG MODE
+            </span>
+            <p className="text-xs text-amber-700 dark:text-amber-400">
+              Paywall bypassed. Report is rendering as if paid. This URL only works in local dev.
             </p>
           </div>
         </div>
