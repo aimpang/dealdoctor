@@ -7,10 +7,19 @@ lemonSqueezySetup({
   onError: (error) => console.error('LemonSqueezy error:', error),
 })
 
+const VARIANT_MAP: Record<string, string | undefined> = {
+  single: process.env.LEMONSQUEEZY_VARIANT_SINGLE,
+  '5pack': process.env.LEMONSQUEEZY_VARIANT_5PACK,
+  unlimited: process.env.LEMONSQUEEZY_VARIANT_UNLIMITED,
+}
+
 export async function POST(req: NextRequest) {
-  const { uuid } = await req.json()
+  const { uuid, plan } = await req.json()
 
   if (!uuid) return NextResponse.json({ error: 'Missing report ID' }, { status: 400 })
+
+  const variantId = VARIANT_MAP[plan || 'single']
+  if (!variantId) return NextResponse.json({ error: 'Invalid plan' }, { status: 400 })
 
   // Check report exists and isn't already paid
   const report = await prisma.report.findUnique({ where: { id: uuid } })
@@ -24,11 +33,12 @@ export async function POST(req: NextRequest) {
 
   const checkout = await createCheckout(
     process.env.LEMONSQUEEZY_STORE_ID!,
-    Number(process.env.LEMONSQUEEZY_VARIANT_ID!),
+    Number(variantId),
     {
       checkoutData: {
         custom: {
           uuid: uuid,
+          plan: plan || 'single',
         },
       },
       productOptions: {

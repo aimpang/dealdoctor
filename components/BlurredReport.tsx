@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
-import { LockIcon, ArrowRightIcon, ShieldCheckIcon, ZapIcon, FileTextIcon } from 'lucide-react'
+import { LockIcon, ArrowRightIcon, ZapIcon, FileTextIcon, ShieldCheckIcon, StarIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 interface BlurredReportProps {
@@ -10,16 +10,41 @@ interface BlurredReportProps {
   address: string
 }
 
+const plans = [
+  {
+    id: 'single',
+    name: 'Single Report',
+    price: '$14.99',
+    desc: 'This property',
+    popular: false,
+  },
+  {
+    id: '5pack',
+    name: '5 Reports',
+    price: '$44.99',
+    desc: '$9/report',
+    popular: true,
+  },
+  {
+    id: 'unlimited',
+    name: 'Unlimited',
+    price: '$99.99',
+    desc: 'Analyze everything',
+    popular: false,
+  },
+]
+
 export function BlurredReport({ uuid, address }: BlurredReportProps) {
   const [loading, setLoading] = useState(false)
+  const [selectedPlan, setSelectedPlan] = useState('single')
 
-  const handleUnlock = async () => {
+  const handleUnlock = async (plan: string) => {
     setLoading(true)
     try {
       const res = await fetch('/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uuid }),
+        body: JSON.stringify({ uuid, plan }),
       })
       const data = await res.json()
       if (data.alreadyPaid) {
@@ -70,7 +95,7 @@ export function BlurredReport({ uuid, address }: BlurredReportProps) {
 
         {/* Unlock overlay */}
         <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-b from-card/40 via-card/80 to-card">
-          <div className="flex max-w-sm flex-col items-center gap-5 px-6 text-center">
+          <div className="flex w-full max-w-lg flex-col items-center gap-5 px-4 text-center">
             <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 ring-4 ring-primary/5">
               <LockIcon className="h-6 w-6 text-primary" />
             </div>
@@ -80,28 +105,54 @@ export function BlurredReport({ uuid, address }: BlurredReportProps) {
                 Unlock Full Report
               </h3>
               <p className="mt-1.5 text-sm text-muted-foreground">
-                Complete investment analysis for<br />
+                Complete investment analysis for{' '}
                 <span className="font-medium text-foreground">{address}</span>
               </p>
             </div>
 
-            <div className="flex flex-col gap-2 text-xs text-muted-foreground">
+            {/* Plan selector */}
+            <div className="grid w-full grid-cols-3 gap-2">
+              {plans.map((plan) => (
+                <button
+                  key={plan.id}
+                  onClick={() => setSelectedPlan(plan.id)}
+                  className={cn(
+                    "relative rounded-xl border p-3 text-left transition-all duration-200",
+                    selectedPlan === plan.id
+                      ? "border-primary bg-primary/5 ring-1 ring-primary"
+                      : "border-border hover:border-primary/40"
+                  )}
+                >
+                  {plan.popular && (
+                    <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold text-primary-foreground">
+                      <StarIcon className="h-2.5 w-2.5" />
+                      Best Value
+                    </span>
+                  )}
+                  <p className="text-lg font-bold text-foreground">{plan.price}</p>
+                  <p className="text-xs font-semibold text-foreground">{plan.name}</p>
+                  <p className="text-[10px] text-muted-foreground">{plan.desc}</p>
+                </button>
+              ))}
+            </div>
+
+            <div className="flex flex-col gap-1.5 text-xs text-muted-foreground">
               <div className="flex items-center gap-2">
                 <ZapIcon className="h-3.5 w-3.5 text-primary" />
                 <span>AI-powered Deal Doctor diagnosis</span>
               </div>
               <div className="flex items-center gap-2">
                 <FileTextIcon className="h-3.5 w-3.5 text-primary" />
-                <span>Stress test, renewal scenarios, CCA tax benefits</span>
+                <span>DSCR, refi scenarios, depreciation benefits</span>
               </div>
               <div className="flex items-center gap-2">
                 <ShieldCheckIcon className="h-3.5 w-3.5 text-primary" />
-                <span>Shareable URL - access anytime, forever</span>
+                <span>Shareable URL — access anytime, forever</span>
               </div>
             </div>
 
             <Button
-              onClick={handleUnlock}
+              onClick={() => handleUnlock(selectedPlan)}
               disabled={loading}
               size="lg"
               className={cn(
@@ -110,7 +161,7 @@ export function BlurredReport({ uuid, address }: BlurredReportProps) {
                 "transition-all duration-200 active:scale-95"
               )}
             >
-              {loading ? 'Redirecting...' : 'Get Full Report — $14.99 USD'}
+              {loading ? 'Redirecting...' : `Get Full Report — ${plans.find(p => p.id === selectedPlan)?.price}`}
               <ArrowRightIcon className="h-4 w-4" />
             </Button>
 

@@ -237,50 +237,68 @@ export default function LandingPage() {
       {/* Pricing CTA */}
       <section className="border-t">
         <div className="mx-auto max-w-6xl px-4 py-16 sm:py-24">
-          <div className="mx-auto max-w-lg text-center">
+          <div className="text-center">
             <h2 className="font-[family-name:var(--font-playfair)] text-3xl font-bold text-foreground sm:text-4xl">
-              One report. One price.
+              Simple pricing. No subscriptions.
             </h2>
-            <div className="mt-6 rounded-2xl border-2 border-primary/20 bg-card p-8 shadow-lg shadow-primary/5">
-              <div className="flex items-baseline justify-center gap-1">
-                <span className="text-5xl font-bold text-foreground">$14</span>
-                <span className="text-2xl font-bold text-foreground">.99</span>
-                <span className="ml-1 text-sm text-muted-foreground">USD</span>
-              </div>
-              <p className="mt-2 text-sm text-muted-foreground">Per property analysis</p>
-
-              <div className="mt-6 space-y-3 text-left text-sm">
-                {[
-                  'Complete US mortgage math with DSCR analysis',
-                  'AI-powered Deal Doctor diagnosis with 3 fixes',
-                  'Refi scenarios, depreciation benefits, comparables',
-                  'Shareable report URL — access forever',
-                  'Instant delivery after payment',
-                ].map((item) => (
-                  <div key={item} className="flex items-start gap-2.5">
-                    <CheckCircle2Icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                    <span className="text-foreground">{item}</span>
-                  </div>
-                ))}
-              </div>
-
-              <Button
-                size="lg"
-                className="mt-8 w-full gap-2 text-base font-bold shadow-lg shadow-primary/25"
-                onClick={() => {
-                  document.querySelector('input')?.focus()
-                  window.scrollTo({ top: 0, behavior: 'smooth' })
-                }}
-              >
-                Analyze a Property
-                <ArrowRightIcon className="h-4 w-4" />
-              </Button>
-
-              <p className="mt-3 text-xs text-muted-foreground">
-                Secure payment &middot; No subscription, no account needed
-              </p>
-            </div>
+            <p className="mt-2 text-sm text-muted-foreground">Pay once, keep your reports forever.</p>
           </div>
+
+          <div className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-3 max-w-3xl mx-auto">
+            {[
+              { name: 'Single Report', price: '$14.99', per: 'one report', features: ['Full deal analysis', 'AI Deal Doctor', 'Shareable URL'] },
+              { name: '5 Reports', price: '$44.99', per: '$9/report', features: ['Everything in Single', '5 property analyses', 'Best per-report value'], popular: true },
+              { name: 'Unlimited', price: '$99.99', per: 'unlimited reports', features: ['Everything in 5-Pack', 'Analyze every deal', 'Serious investors'] },
+            ].map((tier) => (
+              <div
+                key={tier.name}
+                className={cn(
+                  "relative rounded-2xl border bg-card p-6 text-center",
+                  tier.popular ? "border-2 border-primary shadow-lg shadow-primary/10" : "border-border"
+                )}
+              >
+                {tier.popular && (
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-primary px-3 py-1 text-xs font-bold text-primary-foreground">
+                    Most Popular
+                  </span>
+                )}
+                <p className="text-sm font-semibold text-muted-foreground">{tier.name}</p>
+                <div className="mt-2 flex items-baseline justify-center gap-1">
+                  <span className="text-4xl font-bold text-foreground">{tier.price}</span>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">{tier.per}</p>
+
+                <div className="mt-5 space-y-2.5 text-left text-sm">
+                  {tier.features.map((f) => (
+                    <div key={f} className="flex items-center gap-2">
+                      <CheckCircle2Icon className="h-4 w-4 shrink-0 text-primary" />
+                      <span className="text-foreground">{f}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <Button
+                  size="lg"
+                  variant={tier.popular ? 'default' : 'outline'}
+                  className={cn(
+                    "mt-6 w-full gap-2 font-bold",
+                    tier.popular && "shadow-lg shadow-primary/25"
+                  )}
+                  onClick={() => {
+                    document.querySelector('input')?.focus()
+                    window.scrollTo({ top: 0, behavior: 'smooth' })
+                  }}
+                >
+                  Get Started
+                  <ArrowRightIcon className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+
+          <p className="mt-6 text-center text-xs text-muted-foreground">
+            Secure payment via LemonSqueezy &middot; No account needed
+          </p>
         </div>
       </section>
 
