@@ -57,7 +57,7 @@ export default function RetrievePage() {
       </h1>
       <p className="mt-2 text-center text-sm text-muted-foreground">
         Lost your report link, or on a new device? Enter the email you used to
-        buy. We'll send a restore link.
+        buy. We&apos;ll send a restore link.
       </p>
 
       {status === 'sent' ? (
