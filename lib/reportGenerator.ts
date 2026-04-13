@@ -23,6 +23,7 @@ import {
 import { generateDealDoctor, estimateSTRRevenue } from './dealDoctor'
 import { getClimateAndInsurance } from './climateRisk'
 import { getLocationSignals } from './locationSignals'
+import { applyStudentHousingHeuristic } from './studentHousing'
 
 export async function generateFullReport(uuid: string): Promise<void> {
   const report = await prisma.report.findUnique({ where: { id: uuid } })
@@ -78,7 +79,19 @@ export async function generateFullReport(uuid: string): Promise<void> {
   // real DSCR / non-owner-occupied pricing runs higher. See rates.ts for rationale.
   const strategy = (report.strategy as Strategy) ?? 'LTR'
   const investorRate = applyInvestorPremium(rates.mortgage30yr, strategy)
-  const monthlyRent = rentEstimate?.estimated_rent || askPrice * 0.005
+  const rawRentAvm = rentEstimate?.estimated_rent || askPrice * 0.005
+
+  // Student-housing heuristic: when the AVM is clearly a per-bedroom rate
+  // (subdivision match or implausibly low yield), multiply by bedroom count
+  // to get whole-property rent. ALL downstream math (cash flow, DSCR, 5yr
+  // wealth, IRR, breakeven, sensitivity) then uses the corrected figure.
+  const rentAdjustment = applyStudentHousingHeuristic({
+    rentAvm: rawRentAvm,
+    propertyValue: offerPrice,
+    bedrooms: property.bedrooms,
+    subdivision: property.subdivision,
+  })
+  const monthlyRent = rentAdjustment.effectiveRent
   const stateRules = STATE_RULES[report.state] || STATE_RULES['TX']
 
   // Climate + insurance (flood zone + state insurance + hazard scores)
@@ -393,6 +406,17 @@ export async function generateFullReport(uuid: string): Promise<void> {
       monthlyTotal: monthlyExpenses,
       propertyTaxSource,              // 'county-record' | 'state-average'
       hoaSource: monthlyHOA > 0 ? 'listing' : 'not-captured',
+    },
+    // Student-housing rent transformation metadata — UI shows BOTH the raw
+    // per-bed AVM and the multiplied whole-property figure so users see what
+    // happened and can judge. When rentMultiplied is false, these fields are
+    // null/undefined and the UI renders nothing.
+    rentAdjustment: {
+      applied: rentAdjustment.isMultiplied,
+      perBedroomRent: rentAdjustment.perBedroomRent,
+      bedroomsUsed: rentAdjustment.bedroomsUsed,
+      effectiveRent: rentAdjustment.effectiveRent,
+      reason: rentAdjustment.reason,
     },
     // Raw underwriting inputs — needed by interactive UI (rehab estimator, what-if tools)
     // so they can re-run calculations without re-deriving from NOI.

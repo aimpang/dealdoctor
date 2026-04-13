@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { searchProperty, getRentEstimate, RentcastQuotaError } from '@/lib/propertyApi'
 import { getCurrentRates, applyInvestorPremium } from '@/lib/rates'
 import { getStateFromZipCode, calculateBreakEvenPrice } from '@/lib/calculations'
+import { applyStudentHousingHeuristic } from '@/lib/studentHousing'
 import { prisma } from '@/lib/db'
 import { randomUUID } from 'crypto'
 import { rateLimit } from '@/lib/rateLimit'
@@ -50,7 +51,18 @@ export async function POST(req: NextRequest) {
 
     const rentEstimate = await getRentEstimate(address, property.bedrooms)
     const state = property.state || getStateFromZipCode(property.zip_code)
-    const estimatedRent = rentEstimate?.estimated_rent || Math.round(property.estimated_value * 0.005)
+    const rawRentAvm = rentEstimate?.estimated_rent || Math.round(property.estimated_value * 0.005)
+
+    // Student-housing heuristic: if this looks like a per-bedroom AVM, multiply
+    // by bedroom count to get whole-property rent for all math. Applied BEFORE
+    // breakeven / warnings so the downstream numbers use the corrected rent.
+    const rentAdjustment = applyStudentHousingHeuristic({
+      rentAvm: rawRentAvm,
+      propertyValue: property.estimated_value,
+      bedrooms: property.bedrooms,
+      subdivision: property.subdivision,
+    })
+    const estimatedRent = rentAdjustment.effectiveRent
 
     // Data-quality warnings — shown in the teaser so buyers don't pay for a
     // report based on bad data. The two common failure modes:
@@ -75,7 +87,14 @@ export async function POST(req: NextRequest) {
           "Value derived from the last sale price grown at 3%/yr (no live AVM or recent assessment). Treat as a rough anchor only.",
       })
     }
-    if (annualYield < 0.04) {
+    // If we auto-multiplied rent (student housing), emit an INFO note instead
+    // of the "rent-suspect" warning — the heuristic is the correction.
+    if (rentAdjustment.isMultiplied) {
+      warnings.push({
+        code: 'rent-multiplied',
+        message: `Rent AVM ($${rentAdjustment.perBedroomRent?.toLocaleString()}/bed) looked like a per-bedroom rate${rentAdjustment.reason === 'subdivision-match' ? ` (property is in a known student-rental complex)` : ' (implausibly low yield suggested it)'}. Math below uses $${rentAdjustment.effectiveRent.toLocaleString()}/mo total (${rentAdjustment.bedroomsUsed} beds × per-bedroom rate). Verify against actual signed leases.`,
+      })
+    } else if (annualYield < 0.04) {
       warnings.push({
         code: 'rent-suspect',
         message:
@@ -146,6 +165,12 @@ export async function POST(req: NextRequest) {
       valueRangeHigh: property.value_range_high,
       rentRangeLow: rentEstimate?.rent_low,
       rentRangeHigh: rentEstimate?.rent_high,
+      // Student-housing heuristic metadata — UI shows both figures so users
+      // can see the transformation and judge whether to trust it.
+      perBedroomRent: rentAdjustment.perBedroomRent,
+      rentMultiplied: rentAdjustment.isMultiplied,
+      rentMultipliedBy: rentAdjustment.bedroomsUsed,
+      rentMultiplierReason: rentAdjustment.reason,
       warnings, // data-quality flags — shown BEFORE paywall
     }
 

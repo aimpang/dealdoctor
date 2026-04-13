@@ -23,6 +23,10 @@ interface TeaserMetricsProps {
     valueRangeHigh?: number
     rentRangeLow?: number
     rentRangeHigh?: number
+    perBedroomRent?: number | null
+    rentMultiplied?: boolean
+    rentMultipliedBy?: number | null
+    rentMultiplierReason?: 'subdivision-match' | 'yield-anomaly' | null
     warnings?: TeaserWarning[]
   }
   property: {
@@ -150,7 +154,13 @@ export function TeaserMetrics({ teaser, property }: TeaserMetricsProps) {
           icon={TrendingUpIcon}
           label="Est. Rent"
           value={`${fmt(teaser.estimatedRent)}/mo`}
-          sub={teaser.yearBuilt ? `Built ${teaser.yearBuilt}` : `${property.city}, ${property.state}`}
+          sub={
+            teaser.rentMultiplied && teaser.perBedroomRent && teaser.rentMultipliedBy
+              ? `${fmt(teaser.perBedroomRent)}/bed × ${teaser.rentMultipliedBy} beds (per-bed → total)`
+              : teaser.yearBuilt
+                ? `Built ${teaser.yearBuilt}`
+                : `${property.city}, ${property.state}`
+          }
         />
         <SubStat
           icon={TargetIcon}
