@@ -66,6 +66,7 @@ npm run pressure:load
 | **bradley-dr** | Per-bedroom rent AVM used as whole-property rent (student-housing heuristic fires) |
 | **escalones** | Student-housing heuristic false-positiving on luxury coastal SFR (tripled a legit $7k rent to $21k); wide AVM spread read as "high confidence" |
 | **austin-baseline** | Regression canary — if anything breaks the normal happy-path flow, this test fails first |
+| **phoenix-townhouse** | Rentcast search not narrowed by propertyType → $460k SFR-mixed median on a $300k townhouse. Locks: every sale + rent comp shares subject propertyType, median in 0.7×–1.4× of subject |
 
 ## What the fuzz suite catches
 
@@ -98,12 +99,13 @@ Every fixture scenario runs the full shared invariant set from
 response shapes drift over time; fixtures lie silently within ~2 months.
 
 ```bash
-for slug in fort-myers-oasis bradley-dr escalones austin-baseline; do
+for slug in fort-myers-oasis bradley-dr escalones austin-baseline phoenix-townhouse; do
   case "$slug" in
-    fort-myers-oasis) ARGS='--address "3000 Oasis Grand Blvd, Apt 2502" --city "Fort Myers" --state FL --zip 33916 --offer 275000' ;;
+    fort-myers-oasis)  ARGS='--address "3000 Oasis Grand Blvd, Apt 2502" --city "Fort Myers" --state FL --zip 33916 --offer 275000' ;;
     bradley-dr)        ARGS='--address "1324 Bradley Dr" --city Harrisonburg --state VA --zip 22801' ;;
     escalones)         ARGS='--address "216 W Escalones, San Clemente, CA 92672" --city "San Clemente" --state CA --zip 92672' ;;
     austin-baseline)   ARGS='--address "1500 W Anderson Ln" --city Austin --state TX --zip 78757' ;;
+    phoenix-townhouse) ARGS='--address "15671 N 29th St" --city Phoenix --state AZ --zip 85032 --offer 300000' ;;
   esac
   eval "npm run pressure:record -- --slug $slug --strategy LTR $ARGS"
 done

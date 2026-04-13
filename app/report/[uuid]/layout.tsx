@@ -29,7 +29,9 @@ export async function generateMetadata({
     subtitle = `${verdict === 'DEAL' ? 'Strong Deal' : verdict === 'MARGINAL' ? 'Marginal' : 'Pass'} — ${deltaStr}`
   }
 
-  const title = `${report.address}, ${report.city}, ${report.state} — DealDoctor`
+  // Title drives the browser's "Save as PDF" default filename — keep the
+  // product name first + hyphen so the saved file reads "Deal Doctor - 123 Main St, ...".
+  const title = `Deal Doctor - ${report.address}, ${report.city}, ${report.state}`
   return {
     title,
     description: subtitle,

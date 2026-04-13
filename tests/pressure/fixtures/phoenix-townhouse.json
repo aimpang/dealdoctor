@@ -1,0 +1,242 @@
+{
+  "recordedAt": "2026-04-13T05:43:12.075Z",
+  "args": {
+    "slug": "phoenix-townhouse",
+    "address": "15671 N 29th St",
+    "city": "Phoenix",
+    "state": "AZ",
+    "zip": "85032",
+    "strategy": "LTR",
+    "offer": 300000,
+    "downPct": 0.25,
+    "rehab": 0
+  },
+  "reportRow": {
+    "id": "fixture-phoenix-townhouse",
+    "address": "15671 N 29th St",
+    "city": "Phoenix",
+    "state": "AZ",
+    "zipCode": "85032",
+    "strategy": "LTR",
+    "offerPrice": 300000,
+    "downPaymentPct": 0.25,
+    "rehabBudget": 0,
+    "teaserData": "{}",
+    "paid": false,
+    "fullReportData": null,
+    "photoFindings": null,
+    "customerId": null,
+    "createdAt": "2026-04-13T05:43:12.074Z",
+    "updatedAt": "2026-04-13T05:43:12.075Z"
+  },
+  "fetchResults": {
+    "property": {
+      "property_id": "15671-N-29th-St,-Phoenix,-AZ-85032",
+      "address": "15671 N 29th St, Phoenix, AZ 85032",
+      "city": "Phoenix",
+      "state": "AZ",
+      "zip_code": "85032",
+      "bedrooms": 3,
+      "bathrooms": 2,
+      "property_type": "Townhouse",
+      "estimated_value": 282000,
+      "year_built": 2005,
+      "square_feet": 1407,
+      "lot_size": 1731,
+      "latitude": 33.629314,
+      "longitude": -112.019156,
+      "annual_property_tax": 607,
+      "hoa_fee_monthly": 490,
+      "value_source": "avm",
+      "value_range_low": 230000,
+      "value_range_high": 335000,
+      "last_sale_price": 304000,
+      "last_sale_date": "2024-05-02T00:00:00.000Z",
+      "latest_tax_assessment": 23470,
+      "zoning": "M-M",
+      "subdivision": "ZAMORA CONDOMINIUMS AMD"
+    },
+    "rates": {
+      "fedFundsRate": 0.045,
+      "treasuryYield10yr": 0.042,
+      "mortgage30yr": 0.065,
+      "mortgage15yr": 0.058
+    },
+    "rentEstimate": {
+      "status": "fulfilled",
+      "value": {
+        "estimated_rent": 2320,
+        "rent_low": 2020,
+        "rent_high": 2620
+      }
+    },
+    "saleComps": {
+      "status": "fulfilled",
+      "value": [
+        {
+          "address": "2845 E Tracy Ln, Unit 8, Phoenix, AZ 85032",
+          "estimated_value": 296000,
+          "bedrooms": 3,
+          "bathrooms": 2,
+          "square_feet": 1199,
+          "price_per_sqft": 247,
+          "days_on_market": null,
+          "sold_date": "2022-05-13T00:00:00.000Z"
+        },
+        {
+          "address": "2844 E Waltann Ln, Unit 4, Phoenix, AZ 85032",
+          "estimated_value": 245500,
+          "bedrooms": 3,
+          "bathrooms": 2,
+          "square_feet": 1110,
+          "price_per_sqft": 221,
+          "days_on_market": null,
+          "sold_date": "2021-03-05T00:00:00.000Z"
+        },
+        {
+          "address": "15671 N 29th St, Phoenix, AZ 85032",
+          "estimated_value": 304000,
+          "bedrooms": 3,
+          "bathrooms": 2,
+          "square_feet": 1407,
+          "price_per_sqft": 216,
+          "days_on_market": null,
+          "sold_date": "2024-05-02T00:00:00.000Z"
+        },
+        {
+          "address": "15649 N 29th Pl, Phoenix, AZ 85032",
+          "estimated_value": 357000,
+          "bedrooms": 3,
+          "bathrooms": 2.5,
+          "square_feet": 1520,
+          "price_per_sqft": 235,
+          "days_on_market": null,
+          "sold_date": "2023-06-20T00:00:00.000Z"
+        }
+      ]
+    },
+    "rentComps": {
+      "status": "fulfilled",
+      "value": [
+        {
+          "address": "16021 N 30th St, Unit 119, Phoenix, AZ 85032",
+          "bedrooms": 3,
+          "bathrooms": 2.5,
+          "square_feet": 1426,
+          "rent": 1950,
+          "distance_miles": 0.2574,
+          "days_old": 1
+        },
+        {
+          "address": "15818 N 25th St, Unit 115, Phoenix, AZ 85032",
+          "bedrooms": 3,
+          "bathrooms": 2.5,
+          "square_feet": 1355,
+          "rent": 1749,
+          "distance_miles": 0.5671,
+          "days_old": 11
+        },
+        {
+          "address": "15818 N 25th St, Unit 111, Phoenix, AZ 85032",
+          "bedrooms": 3,
+          "bathrooms": 2.5,
+          "square_feet": 1355,
+          "rent": 1799,
+          "distance_miles": 0.5761,
+          "days_old": 11
+        },
+        {
+          "address": "2842 E Tracy Ln, Unit 3, Phoenix, AZ 85032",
+          "bedrooms": 3,
+          "bathrooms": 2.5,
+          "square_feet": 1589,
+          "rent": 2350,
+          "distance_miles": 0.0811,
+          "days_old": 5
+        },
+        {
+          "address": "15818 N 25th St, Unit 129, Phoenix, AZ 85032",
+          "bedrooms": 3,
+          "bathrooms": 2.5,
+          "square_feet": 1275,
+          "rent": 1995,
+          "distance_miles": 0.5988,
+          "days_old": 178
+        }
+      ]
+    },
+    "marketSnapshot": {
+      "status": "fulfilled",
+      "value": {
+        "zipCode": "85032",
+        "salePriceMedian": 471049,
+        "rentMedian": 1871,
+        "pricePerSqft": 295.93,
+        "rentPerSqft": 1.8,
+        "avgDaysOnMarket": 61.94,
+        "salePriceGrowth12mo": -0.0083,
+        "rentGrowth12mo": -0.1078
+      }
+    },
+    "climate": {
+      "status": "fulfilled",
+      "value": {
+        "latitude": 33.629316,
+        "longitude": -112.019167,
+        "floodZone": null,
+        "floodRisk": "unknown",
+        "floodInsuranceRequired": false,
+        "estimatedAnnualInsurance": 1600,
+        "insuranceBreakdown": {
+          "baseStatePremium": 1600,
+          "dwellingScaleFactor": 1,
+          "floodZoneAddOn": 0
+        },
+        "climateScores": {
+          "hurricane": 0,
+          "wildfire": 3,
+          "heat": 5,
+          "drought": 5,
+          "tornado": 0
+        },
+        "summary": "AZ has elevated exposure to extreme heat and drought / water scarcity. Budget $1,600/yr for insurance — higher than the national average ($1,800).",
+        "topConcerns": [
+          "Extreme heat",
+          "Drought / water scarcity",
+          "Wildfire"
+        ]
+      }
+    },
+    "locationSignals": {
+      "status": "fulfilled",
+      "value": {
+        "walkabilityScore": 28,
+        "walkabilityLabel": "Car-Dependent",
+        "radiusMeters": 800,
+        "dataConfidence": "low",
+        "amenities": {
+          "restaurants": {
+            "count": 0,
+            "nearestMeters": null
+          },
+          "groceries": {
+            "count": 0,
+            "nearestMeters": null
+          },
+          "schools": {
+            "count": 3,
+            "nearestMeters": 245
+          },
+          "parks": {
+            "count": 0,
+            "nearestMeters": null
+          },
+          "transit": {
+            "count": 2,
+            "nearestMeters": 343
+          }
+        }
+      }
+    }
+  }
+}

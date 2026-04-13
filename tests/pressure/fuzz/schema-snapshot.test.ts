@@ -14,7 +14,13 @@ import { replayFixture, EXPECTED_FULL_REPORT_KEYS } from '../scenarios/invariant
 
 describe('fuzz · schema snapshot', () => {
   it('top-level keys are stable across all scenario fixtures', async () => {
-    const slugs = ['fort-myers-oasis', 'bradley-dr', 'escalones', 'austin-baseline']
+    const slugs = [
+      'fort-myers-oasis',
+      'bradley-dr',
+      'escalones',
+      'austin-baseline',
+      'phoenix-townhouse',
+    ]
     for (const slug of slugs) {
       const data = await replayFixture(slug)
       expect(

@@ -326,14 +326,22 @@ export async function getMarketSnapshot(zipCode: string): Promise<MarketSnapshot
 }
 
 // Rent comparables — separate function because we only need them for the paid
-// full report, not the pre-paywall teaser. Keeps preview fast.
-export async function getRentComps(address: string, bedrooms: number): Promise<RentComp[]> {
+// full report, not the pre-paywall teaser. Keeps preview fast. propertyType
+// narrows the AVM's own comp pool so a townhouse isn't priced against SFRs.
+export async function getRentComps(
+  address: string,
+  bedrooms: number,
+  propertyType?: string | null
+): Promise<RentComp[]> {
   if (!API_KEY || API_KEY === 'your_key_here') return []
   try {
     const url = new URL('https://api.rentcast.io/v1/avm/rent/long-term')
     url.searchParams.set('address', address)
     url.searchParams.set('bedrooms', String(bedrooms))
     url.searchParams.set('compCount', '5')
+    if (propertyType) {
+      url.searchParams.set('propertyType', propertyType)
+    }
 
     const res = await fetch(url.toString(), {
       headers: { 'X-Api-Key': API_KEY },
@@ -398,18 +406,25 @@ export async function getRentEstimate(address: string, bedrooms: number): Promis
 // around the subject property (much more useful than city-wide bedroom-median).
 // Falls back to city+bedroom when coordinates aren't available.
 //
-// `subject` — the subject property's sqft + estimated value. Used to filter
-// out non-residential Rentcast records that otherwise poison the comp median:
-// parking spaces, storage units, boat slips, tax-auction outcomes, and
-// assessor-only records with nonsense prices (we saw a $21,500 median once
-// for a $275k high-rise condo because the API returned a parking deed).
+// `subject` — the subject property's sqft + estimated value + propertyType.
+// Used to filter out non-residential Rentcast records that otherwise poison
+// the comp median: parking spaces, storage units, boat slips, tax-auction
+// outcomes, and assessor-only records with nonsense prices (we saw a $21,500
+// median once for a $275k high-rise condo because the API returned a parking
+// deed). propertyType narrows the Rentcast query upstream so SFR detached
+// homes don't land in a townhouse/condo comp set (Phoenix 15671 N 29th St
+// caught: $460k SFR median on a $300k townhouse).
 export async function getComparableSales(
   city: string,
   state: string,
   bedrooms: number,
   coords?: { lat: number; lng: number } | null,
   radiusMiles: number = 1.0,
-  subject?: { sqft?: number | null; value?: number | null } | null
+  subject?: {
+    sqft?: number | null
+    value?: number | null
+    propertyType?: string | null
+  } | null
 ) {
   if (API_KEY && API_KEY !== 'your_key_here') {
     try {
@@ -423,6 +438,12 @@ export async function getComparableSales(
         url.searchParams.set('state', state)
       }
       url.searchParams.set('bedrooms', bedrooms.toString())
+      // Narrow by property type when we know it — avoids pulling SFR detached
+      // homes into a townhouse/condo comp set. Rentcast values: "Single Family",
+      // "Condo", "Townhouse", "Multi-Family", "Manufactured", "Apartment".
+      if (subject?.propertyType) {
+        url.searchParams.set('propertyType', subject.propertyType)
+      }
       // Request more than we'll show — we're about to filter aggressively.
       url.searchParams.set('limit', '20')
       url.searchParams.set('status', 'Sold')

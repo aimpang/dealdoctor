@@ -14,7 +14,7 @@
     "test:coverage": "vitest run --coverage",
     "check": "next lint && vitest run",
     "pressure:accuracy": "vitest run tests/pressure",
-    "pressure:record": "tsx tests/pressure/fixtures/record.ts",
+    "pressure:record": "tsx --env-file=.env.local tests/pressure/fixtures/record.ts",
     "pressure:e2e": "playwright test",
     "pressure:load": "tsx tests/pressure/load/preview.ts",
     "prepare": "husky"

@@ -502,8 +502,9 @@ export async function generateFullReport(uuid: string): Promise<void> {
     getComparableSales(report.city, report.state, property.bedrooms, coords, 1.0, {
       sqft: property.square_feet,
       value: property.estimated_value,
+      propertyType: property.property_type,
     }),
-    getRentComps(report.address, property.bedrooms),
+    getRentComps(report.address, property.bedrooms, property.property_type),
     getMarketSnapshot(report.zipCode),
   ])
 

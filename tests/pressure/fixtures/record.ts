@@ -111,9 +111,10 @@ async function main() {
       getComparableSales(args.city, args.state, property.bedrooms, coords, 1.0, {
         sqft: property.square_feet,
         value: property.estimated_value,
+        propertyType: property.property_type,
       })
     ),
-    settle(getRentComps(args.address, property.bedrooms)),
+    settle(getRentComps(args.address, property.bedrooms, property.property_type)),
     settle(getMarketSnapshot(args.zip)),
   ])
 
