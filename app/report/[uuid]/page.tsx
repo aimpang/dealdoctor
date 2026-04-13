@@ -105,7 +105,7 @@ export default function ReportPage() {
   return (
     <div className="min-h-screen">
       {/* Nav */}
-      <header className="sticky top-0 z-40 border-b border-border/50 bg-background/80 backdrop-blur-xl">
+      <header className="no-print sticky top-0 z-40 border-b border-border/50 bg-background/80 backdrop-blur-xl">
         <nav className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
           <a href="/" className="inline-flex">
             <Logo variant="wordmark" size="md" />
@@ -119,7 +119,7 @@ export default function ReportPage() {
 
       {/* Success banner */}
       {showSuccess && (
-        <div className="border-b bg-emerald-500/10">
+        <div className="no-print border-b bg-emerald-500/10">
           <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 py-3">
             <CheckCircle2Icon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
             <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
@@ -131,7 +131,7 @@ export default function ReportPage() {
 
       {/* Debug-mode banner — only shown when the API flagged this response as debug */}
       {report?.debug && (
-        <div className="border-b border-amber-500/30 bg-amber-500/10">
+        <div className="no-print border-b border-amber-500/30 bg-amber-500/10">
           <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 py-2">
             <span className="font-mono text-xs font-bold text-amber-700 dark:text-amber-400">
               🔧 DEBUG MODE

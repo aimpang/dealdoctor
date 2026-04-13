@@ -203,7 +203,7 @@ export default function LandingPage() {
       </div>
 
       {/* Nav */}
-      <header className="sticky top-0 z-40 border-b border-border/50 bg-background/80 backdrop-blur-xl">
+      <header className="no-print sticky top-0 z-40 border-b border-border/50 bg-background/80 backdrop-blur-xl">
         <nav className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
           <Logo variant="wordmark" size="md" />
           <div className="flex items-center gap-3 text-sm">
