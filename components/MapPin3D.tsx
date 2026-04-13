@@ -8,13 +8,12 @@ interface MapPin3DProps {
   address: string
 }
 
-// Rendering engine: MapLibre GL (open-source fork of Mapbox GL, same API).
+// Engine: MapLibre GL (MIT fork of Mapbox GL, identical API).
 // Basemap: OpenFreeMap — free OSM-derived vector tiles on a public CDN,
-// no API key required, no watermark or logo. Only visible credit is the
-// legally-mandatory "© OpenStreetMap contributors" attribution (required
-// for any OSM-based map and displayed as a small "i" icon in compact mode).
+// no API key, no watermark, only legally-required "© OpenStreetMap" credit
+// (shown as a small "i" icon via compact attribution mode).
 //
-// Geocoding still uses Mapbox (server-side REST API, no visible watermark).
+// Geocoding still uses Mapbox REST (server-side token, not visible to users).
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
 const BASEMAP_STYLE = 'https://tiles.openfreemap.org/styles/positron'
@@ -28,7 +27,7 @@ export default function MapPin3D({ city, state, address }: MapPin3DProps) {
     if (!mountRef.current) return
     if (!MAPBOX_TOKEN) {
       setStatus('error')
-      setErrorMsg('Missing NEXT_PUBLIC_MAPBOX_TOKEN (used for geocoding only)')
+      setErrorMsg('Missing NEXT_PUBLIC_MAPBOX_TOKEN (used for geocoding)')
       return
     }
 
@@ -36,104 +35,122 @@ export default function MapPin3D({ city, state, address }: MapPin3DProps) {
     let cancelled = false
 
     const load = async () => {
-      const maplibregl = (await import('maplibre-gl')).default
-      if (cancelled) return
+      try {
+        // Dynamic import: maplibre-gl uses window-only APIs, can't SSR
+        const mod = await import('maplibre-gl')
+        // v5 exports both default and named; prefer named to match the types
+        const maplibregl: typeof import('maplibre-gl') = (mod as any).default || mod
+        if (cancelled) return
 
-      // Geocode via Mapbox REST — same backend as before; user never sees it.
-      const query = encodeURIComponent(`${address}, ${city}, ${state}`)
-      const geoRes = await fetch(
-        `https://api.mapbox.com/geocoding/v5/mapbox.places/${query}.json?access_token=${MAPBOX_TOKEN}&limit=1&types=address`
-      )
-      if (!geoRes.ok) {
-        setStatus('error')
-        setErrorMsg('Geocoding failed')
-        return
-      }
-      const geo = await geoRes.json()
-      if (cancelled) return
-      const feature = geo.features?.[0]
-      if (!feature) {
-        setStatus('error')
-        setErrorMsg('Address not found on map')
-        return
-      }
-      const [lng, lat] = feature.center as [number, number]
+        // Geocode via Mapbox REST
+        const query = encodeURIComponent(`${address}, ${city}, ${state}`)
+        const geoRes = await fetch(
+          `https://api.mapbox.com/geocoding/v5/mapbox.places/${query}.json?access_token=${MAPBOX_TOKEN}&limit=1&types=address`
+        )
+        if (!geoRes.ok) throw new Error(`Geocoding ${geoRes.status}`)
+        const geo = await geoRes.json()
+        if (cancelled) return
+        const feature = geo.features?.[0]
+        if (!feature) throw new Error('Address not found on map')
+        const [lng, lat] = feature.center as [number, number]
 
-      map = new maplibregl.Map({
-        container: mountRef.current!,
-        style: BASEMAP_STYLE,
-        center: [lng, lat],
-        zoom: 17,
-        pitch: 60,
-        bearing: -20,
-        attributionControl: { compact: true }, // small "i" icon instead of full bar
-        canvasContextAttributes: { antialias: true },
-        interactive: true,
-      })
-
-      map.on('load', () => {
-        if (!map) return
-
-        // OpenFreeMap / OpenMapTiles schema exposes buildings under the
-        // `openmaptiles` source, `building` source-layer, with a `render_height`
-        // attribute for building heights. Extrude them with a color ramp that
-        // complements the positron basemap.
-        map.addLayer({
-          id: '3d-buildings',
-          source: 'openmaptiles',
-          'source-layer': 'building',
-          type: 'fill-extrusion',
-          minzoom: 14,
-          paint: {
-            'fill-extrusion-color': [
-              'interpolate',
-              ['linear'],
-              ['coalesce', ['get', 'render_height'], ['get', 'height'], 10],
-              0, '#d4d4d8',
-              10, '#a1a1aa',
-              25, '#737b8a',
-              50, '#525968',
-              100, '#3f4553',
-            ],
-            'fill-extrusion-height': [
-              'interpolate',
-              ['linear'],
-              ['zoom'],
-              14, 0,
-              15, ['coalesce', ['get', 'render_height'], ['get', 'height'], 0],
-            ],
-            'fill-extrusion-base': [
-              'coalesce', ['get', 'render_min_height'], ['get', 'min_height'], 0,
-            ],
-            'fill-extrusion-opacity': 0.88,
-          },
+        map = new maplibregl.Map({
+          container: mountRef.current!,
+          style: BASEMAP_STYLE,
+          center: [lng, lat],
+          zoom: 17,
+          pitch: 60,
+          bearing: -20,
+          attributionControl: { compact: true },
+          interactive: true,
         })
 
-        // Subject-property pin — pulsing orange dot at the geocoded coord.
-        const el = document.createElement('div')
-        el.style.cssText = `
-          width: 18px; height: 18px; border-radius: 999px;
-          background: #f97316; border: 3px solid #ffffff;
-          box-shadow: 0 0 0 2px #f97316, 0 2px 8px rgba(249, 115, 22, 0.45);
-          animation: dd-pin-pulse 1.8s ease-in-out infinite;
-        `
-        new maplibregl.Marker({ element: el })
-          .setLngLat([lng, lat])
-          .addTo(map)
+        // Surface any load errors to the UI instead of silently failing
+        map.on('error', (e: any) => {
+          const msg = e?.error?.message || e?.message || 'map error'
+          console.warn('[map]', msg, e)
+        })
 
-        setStatus('ready')
-      })
+        map.on('load', () => {
+          if (!map || cancelled) return
 
-      map.on('error', (e: any) => {
-        console.warn('[map]', e?.error?.message || e)
-      })
+          // Add 3D buildings IF the style has the openmaptiles source. Wrap in
+          // try so a schema mismatch doesn't black out the whole map — 2D still
+          // works either way.
+          try {
+            if (map.getSource('openmaptiles')) {
+              map.addLayer({
+                id: '3d-buildings',
+                source: 'openmaptiles',
+                'source-layer': 'building',
+                type: 'fill-extrusion',
+                minzoom: 14,
+                paint: {
+                  'fill-extrusion-color': [
+                    'interpolate',
+                    ['linear'],
+                    ['coalesce', ['get', 'render_height'], ['get', 'height'], 10],
+                    0, '#d4d4d8',
+                    10, '#a1a1aa',
+                    25, '#737b8a',
+                    50, '#525968',
+                    100, '#3f4553',
+                  ],
+                  'fill-extrusion-height': [
+                    'interpolate',
+                    ['linear'],
+                    ['zoom'],
+                    14, 0,
+                    15, ['coalesce', ['get', 'render_height'], ['get', 'height'], 0],
+                  ],
+                  'fill-extrusion-base': [
+                    'coalesce',
+                    ['get', 'render_min_height'],
+                    ['get', 'min_height'],
+                    0,
+                  ],
+                  'fill-extrusion-opacity': 0.88,
+                },
+              } as any)
+            }
+          } catch (err) {
+            console.warn('[map] 3D buildings layer skipped:', err)
+          }
+
+          // Subject-property pin — pulsing orange dot at the geocoded point.
+          const el = document.createElement('div')
+          el.style.cssText = `
+            width: 18px; height: 18px; border-radius: 999px;
+            background: #f97316; border: 3px solid #ffffff;
+            box-shadow: 0 0 0 2px #f97316, 0 2px 8px rgba(249, 115, 22, 0.45);
+            animation: dd-pin-pulse 1.8s ease-in-out infinite;
+          `
+          new maplibregl.Marker({ element: el })
+            .setLngLat([lng, lat])
+            .addTo(map)
+
+          setStatus('ready')
+        })
+      } catch (err: any) {
+        if (!cancelled) {
+          console.error('[map] init failed', err)
+          setStatus('error')
+          setErrorMsg(err?.message || 'Map failed to load')
+        }
+      }
     }
 
     load()
 
     return () => {
       cancelled = true
-      if (map) map.remove()
+      if (map) {
+        try {
+          map.remove()
+        } catch {
+          /* ignore teardown errors */
+        }
+      }
     }
   }, [address, city, state])
 

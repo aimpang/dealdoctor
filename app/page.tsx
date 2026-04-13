@@ -207,6 +207,17 @@ export default function LandingPage() {
         <nav className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
           <Logo variant="wordmark" size="md" />
           <div className="flex items-center gap-3 text-sm">
+            {/* Dev-only: clears entitlement cookie so the paywall (and its
+                debug link) reappear after a test purchase. Tree-shakes out in prod. */}
+            {process.env.NODE_ENV !== 'production' && (
+              <a
+                href="/api/auth/reset"
+                className="hidden rounded-md border border-dashed border-amber-500/50 bg-amber-500/5 px-2 py-1 font-mono text-[10px] text-amber-700 dark:text-amber-400 hover:bg-amber-500/10 sm:inline-flex"
+                title="Dev-only: clear the entitlement cookie so the paywall + debug link reappear"
+              >
+                🔧 Reset entitlement
+              </a>
+            )}
             <a
               href="/retrieve"
               className="text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
