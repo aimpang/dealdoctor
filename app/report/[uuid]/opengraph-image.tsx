@@ -43,10 +43,10 @@ export default async function OGImage({ params }: { params: { uuid: string } }) 
             <svg width="200" height="100" viewBox="0 0 64 32" xmlns="http://www.w3.org/2000/svg">
               <path d="M0 22 L18 22 M46 22 L64 22" stroke="#fafafa" strokeOpacity="0.35" strokeWidth="1.8" strokeLinecap="round" fill="none" />
               <path d="M18 22 L22 26 L32 6 L42 26 L46 22" stroke="#fafafa" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-              <circle cx="32" cy="6" r="3" fill="#f97316" />
+              <circle cx="32" cy="6" r="3" fill="#e34a1c" />
             </svg>
             <div style={{ fontSize: 72, fontWeight: 800 }}>
-              Deal<span style={{ color: '#f97316' }}>Doctor</span>
+              Deal<span style={{ color: '#e34a1c' }}>Doctor</span>
             </div>
           </div>
           <div style={{ fontSize: 28, marginTop: 16, color: '#a1a1aa' }}>
@@ -106,10 +106,10 @@ export default async function OGImage({ params }: { params: { uuid: string } }) 
             <svg width="48" height="24" viewBox="0 0 64 32" xmlns="http://www.w3.org/2000/svg">
               <path d="M0 22 L18 22 M46 22 L64 22" stroke="#18181b" strokeOpacity="0.35" strokeWidth="1.8" strokeLinecap="round" fill="none" />
               <path d="M18 22 L22 26 L32 6 L42 26 L46 22" stroke="#18181b" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-              <circle cx="32" cy="6" r="2.5" fill="#f97316" />
+              <circle cx="32" cy="6" r="2.5" fill="#e34a1c" />
             </svg>
             <div style={{ fontSize: 26, fontWeight: 800, color: '#18181b', display: 'flex' }}>
-              Deal<span style={{ color: '#f97316' }}>Doctor</span>
+              Deal<span style={{ color: '#e34a1c' }}>Doctor</span>
             </div>
           </div>
           <div

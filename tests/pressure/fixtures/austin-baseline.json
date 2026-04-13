@@ -1,0 +1,194 @@
+{
+  "recordedAt": "2026-04-13T04:25:08.738Z",
+  "args": {
+    "slug": "austin-baseline",
+    "address": "1500 W Anderson Ln",
+    "city": "Austin",
+    "state": "TX",
+    "zip": "78757",
+    "strategy": "LTR",
+    "downPct": 0.25,
+    "rehab": 0
+  },
+  "reportRow": {
+    "id": "fixture-austin-baseline",
+    "address": "1500 W Anderson Ln",
+    "city": "Austin",
+    "state": "TX",
+    "zipCode": "78757",
+    "strategy": "LTR",
+    "offerPrice": null,
+    "downPaymentPct": 0.25,
+    "rehabBudget": 0,
+    "teaserData": "{}",
+    "paid": false,
+    "fullReportData": null,
+    "photoFindings": null,
+    "customerId": null,
+    "createdAt": "2026-04-13T04:25:08.737Z",
+    "updatedAt": "2026-04-13T04:25:08.738Z"
+  },
+  "fetchResults": {
+    "property": {
+      "property_id": "1500-W-Anderson-Ln,-Austin,-TX-78757",
+      "address": "1500 W Anderson Ln, Austin, TX 78757",
+      "city": "Austin",
+      "state": "TX",
+      "zip_code": "78757",
+      "bedrooms": 3,
+      "bathrooms": 2,
+      "property_type": "Land",
+      "estimated_value": 27476547,
+      "year_built": 1971,
+      "square_feet": 1800,
+      "lot_size": 477853,
+      "latitude": 30.351427,
+      "longitude": -97.72056,
+      "value_source": "tax-assessment",
+      "last_sale_date": null,
+      "latest_tax_assessment": 23892650,
+      "subdivision": "DAVIS G W"
+    },
+    "rates": {
+      "fedFundsRate": 0.045,
+      "treasuryYield10yr": 0.042,
+      "mortgage30yr": 0.065,
+      "mortgage15yr": 0.058
+    },
+    "rentEstimate": {
+      "status": "fulfilled",
+      "value": {
+        "estimated_rent": 1370,
+        "rent_low": 900,
+        "rent_high": 1850
+      }
+    },
+    "saleComps": {
+      "status": "fulfilled",
+      "value": []
+    },
+    "rentComps": {
+      "status": "fulfilled",
+      "value": [
+        {
+          "address": "7909 Lazy Ln, Unit A, Austin, TX 78757",
+          "bedrooms": 3,
+          "bathrooms": 1,
+          "square_feet": 1000,
+          "rent": 1795,
+          "distance_miles": 0.1076,
+          "days_old": 1
+        },
+        {
+          "address": "8011 Lazy Ln, Austin, TX 78757",
+          "bedrooms": 3,
+          "bathrooms": 2,
+          "square_feet": 1349,
+          "rent": 1800,
+          "distance_miles": 0.174,
+          "days_old": 4
+        },
+        {
+          "address": "8011 Lazy Ln, Unit B, Austin, TX 78757",
+          "bedrooms": 3,
+          "bathrooms": 2,
+          "square_feet": 1349,
+          "rent": 1800,
+          "distance_miles": 0.1741,
+          "days_old": 4
+        },
+        {
+          "address": "7803 Lazy Ln, Austin, TX 78757",
+          "bedrooms": 3,
+          "bathrooms": 2,
+          "square_feet": 1515,
+          "rent": 2295,
+          "distance_miles": 0.177,
+          "days_old": 193
+        },
+        {
+          "address": "7711 Lazy Ln, Austin, TX 78757",
+          "bedrooms": 3,
+          "bathrooms": 2,
+          "square_feet": 1685,
+          "rent": 2250,
+          "distance_miles": 0.2062,
+          "days_old": 58
+        }
+      ]
+    },
+    "marketSnapshot": {
+      "status": "fulfilled",
+      "value": {
+        "zipCode": "78757",
+        "salePriceMedian": 817103,
+        "rentMedian": 2229,
+        "pricePerSqft": 424.19,
+        "rentPerSqft": 1.95,
+        "avgDaysOnMarket": 64.75,
+        "salePriceGrowth12mo": 0.0089,
+        "rentGrowth12mo": 0.0624
+      }
+    },
+    "climate": {
+      "status": "fulfilled",
+      "value": {
+        "latitude": 30.352537,
+        "longitude": -97.720681,
+        "floodZone": null,
+        "floodRisk": "unknown",
+        "floodInsuranceRequired": false,
+        "estimatedAnnualInsurance": 13200,
+        "insuranceBreakdown": {
+          "baseStatePremium": 13200,
+          "dwellingScaleFactor": 3,
+          "floodZoneAddOn": 0
+        },
+        "climateScores": {
+          "hurricane": 4,
+          "wildfire": 0,
+          "heat": 4,
+          "drought": 4,
+          "tornado": 4
+        },
+        "summary": "TX has elevated exposure to hurricane / tropical storm and extreme heat. Budget $13,200/yr for insurance — higher than the national average ($1,800).",
+        "topConcerns": [
+          "Hurricane / tropical storm",
+          "Extreme heat",
+          "Drought / water scarcity"
+        ]
+      }
+    },
+    "locationSignals": {
+      "status": "fulfilled",
+      "value": {
+        "walkabilityScore": 67,
+        "walkabilityLabel": "Somewhat Walkable",
+        "radiusMeters": 800,
+        "dataConfidence": "high",
+        "amenities": {
+          "restaurants": {
+            "count": 2,
+            "nearestMeters": 186
+          },
+          "groceries": {
+            "count": 0,
+            "nearestMeters": null
+          },
+          "schools": {
+            "count": 2,
+            "nearestMeters": 119
+          },
+          "parks": {
+            "count": 0,
+            "nearestMeters": null
+          },
+          "transit": {
+            "count": 7,
+            "nearestMeters": 22
+          }
+        }
+      }
+    }
+  }
+}

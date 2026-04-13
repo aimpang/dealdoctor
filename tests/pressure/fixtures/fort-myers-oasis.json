@@ -1,0 +1,240 @@
+{
+  "recordedAt": "2026-04-13T04:24:50.390Z",
+  "args": {
+    "slug": "fort-myers-oasis",
+    "address": "3000 Oasis Grand Blvd, Apt 2502",
+    "city": "Fort Myers",
+    "state": "FL",
+    "zip": "33916",
+    "strategy": "LTR",
+    "offer": 275000,
+    "downPct": 0.25,
+    "rehab": 0
+  },
+  "reportRow": {
+    "id": "fixture-fort-myers-oasis",
+    "address": "3000 Oasis Grand Blvd, Apt 2502",
+    "city": "Fort Myers",
+    "state": "FL",
+    "zipCode": "33916",
+    "strategy": "LTR",
+    "offerPrice": 275000,
+    "downPaymentPct": 0.25,
+    "rehabBudget": 0,
+    "teaserData": "{}",
+    "paid": false,
+    "fullReportData": null,
+    "photoFindings": null,
+    "customerId": null,
+    "createdAt": "2026-04-13T04:24:50.389Z",
+    "updatedAt": "2026-04-13T04:24:50.390Z"
+  },
+  "fetchResults": {
+    "property": {
+      "property_id": "3000-Oasis-Grand-Blvd,-Apt-2502,-Fort-Myers,-FL-33916",
+      "address": "3000 Oasis Grand Blvd, Apt 2502, Fort Myers, FL 33916",
+      "city": "Fort Myers",
+      "state": "FL",
+      "zip_code": "33916",
+      "bedrooms": 2,
+      "bathrooms": 2,
+      "property_type": "Condo",
+      "estimated_value": 293000,
+      "year_built": 2008,
+      "square_feet": 1319,
+      "lot_size": 14937,
+      "latitude": 26.654324,
+      "longitude": -81.854179,
+      "annual_property_tax": 6004,
+      "hoa_fee_monthly": 1257,
+      "value_source": "avm",
+      "value_range_low": 247000,
+      "value_range_high": 338000,
+      "last_sale_price": 385000,
+      "last_sale_date": "2023-01-20T00:00:00.000Z",
+      "latest_tax_assessment": 349486,
+      "subdivision": "CITY RIVER DISTRICT"
+    },
+    "rates": {
+      "fedFundsRate": 0.045,
+      "treasuryYield10yr": 0.042,
+      "mortgage30yr": 0.065,
+      "mortgage15yr": 0.058
+    },
+    "rentEstimate": {
+      "status": "fulfilled",
+      "value": {
+        "estimated_rent": 3490,
+        "rent_low": 2670,
+        "rent_high": 4320
+      }
+    },
+    "saleComps": {
+      "status": "fulfilled",
+      "value": [
+        {
+          "address": "1044 Luray Ave, Fort Myers, FL 33916",
+          "estimated_value": 118500,
+          "bedrooms": 2,
+          "bathrooms": 1,
+          "square_feet": 891,
+          "price_per_sqft": 133,
+          "days_on_market": null,
+          "sold_date": "2020-10-08T00:00:00.000Z"
+        },
+        {
+          "address": "3666 Pearl St, Fort Myers, FL 33916",
+          "estimated_value": 440000,
+          "bedrooms": 2,
+          "bathrooms": 1,
+          "square_feet": 1100,
+          "price_per_sqft": 400,
+          "days_on_market": null,
+          "sold_date": "2022-02-23T00:00:00.000Z"
+        },
+        {
+          "address": "1106 Rose Ave, Fort Myers, FL 33916",
+          "estimated_value": 190000,
+          "bedrooms": 2,
+          "bathrooms": 2,
+          "square_feet": 1238,
+          "price_per_sqft": 153,
+          "days_on_market": null,
+          "sold_date": "2023-02-16T00:00:00.000Z"
+        },
+        {
+          "address": "1117 Rose Ave, Fort Myers, FL 33916",
+          "estimated_value": 87500,
+          "bedrooms": 2,
+          "bathrooms": 1,
+          "square_feet": 1128,
+          "price_per_sqft": 78,
+          "days_on_market": null,
+          "sold_date": "2020-10-02T00:00:00.000Z"
+        }
+      ]
+    },
+    "rentComps": {
+      "status": "fulfilled",
+      "value": [
+        {
+          "address": "3000 Oasis Grand Blvd, Apt 903, Fort Myers, FL 33916",
+          "bedrooms": 2,
+          "bathrooms": 2,
+          "square_feet": 1592,
+          "rent": 2000,
+          "distance_miles": 0.0021,
+          "days_old": 1
+        },
+        {
+          "address": "3000 Oasis Grand Blvd, Apt 2702, Fort Myers, FL 33916",
+          "bedrooms": 2,
+          "bathrooms": 2,
+          "square_feet": 1180,
+          "rent": 3600,
+          "distance_miles": 0.0021,
+          "days_old": 1
+        },
+        {
+          "address": "3000 Oasis Grand Blvd, Apt 3006, Fort Myers, FL 33916",
+          "bedrooms": 2,
+          "bathrooms": 2,
+          "square_feet": 1008,
+          "rent": 3500,
+          "distance_miles": 0.0021,
+          "days_old": 1
+        },
+        {
+          "address": "3000 Oasis Grand Blvd, Unit MPH6, Fort Myers, FL 33916",
+          "bedrooms": 2,
+          "bathrooms": 2,
+          "square_feet": 1008,
+          "rent": 2400,
+          "distance_miles": 0.0021,
+          "days_old": 29
+        },
+        {
+          "address": "3000 Oasis Grand Blvd, Apt 3005, Fort Myers, FL 33916",
+          "bedrooms": 2,
+          "bathrooms": 2,
+          "square_feet": 1321,
+          "rent": 4500,
+          "distance_miles": 0.0021,
+          "days_old": 44
+        }
+      ]
+    },
+    "marketSnapshot": {
+      "status": "fulfilled",
+      "value": {
+        "zipCode": "33916",
+        "salePriceMedian": 304021,
+        "rentMedian": 1948,
+        "pricePerSqft": 211.17,
+        "rentPerSqft": 1.74,
+        "avgDaysOnMarket": 104.62,
+        "salePriceGrowth12mo": -0.0688,
+        "rentGrowth12mo": -0.0639
+      }
+    },
+    "climate": {
+      "status": "fulfilled",
+      "value": {
+        "latitude": 26.6543,
+        "longitude": -81.854131,
+        "floodZone": null,
+        "floodRisk": "unknown",
+        "floodInsuranceRequired": false,
+        "estimatedAnnualInsurance": 5500,
+        "insuranceBreakdown": {
+          "baseStatePremium": 5500,
+          "dwellingScaleFactor": 0.92,
+          "floodZoneAddOn": 0
+        },
+        "climateScores": {
+          "hurricane": 5,
+          "wildfire": 0,
+          "heat": 4,
+          "drought": 0,
+          "tornado": 0
+        },
+        "summary": "FL has elevated exposure to hurricane / tropical storm and extreme heat. Budget $5,500/yr for insurance — higher than the national average ($1,800).",
+        "topConcerns": [
+          "Hurricane / tropical storm",
+          "Extreme heat"
+        ]
+      }
+    },
+    "locationSignals": {
+      "status": "fulfilled",
+      "value": {
+        "walkabilityScore": 0,
+        "walkabilityLabel": "Limited amenity data",
+        "radiusMeters": 800,
+        "dataConfidence": "insufficient",
+        "amenities": {
+          "restaurants": {
+            "count": 0,
+            "nearestMeters": null
+          },
+          "groceries": {
+            "count": 0,
+            "nearestMeters": null
+          },
+          "schools": {
+            "count": 0,
+            "nearestMeters": null
+          },
+          "parks": {
+            "count": 0,
+            "nearestMeters": null
+          },
+          "transit": {
+            "count": 0,
+            "nearestMeters": null
+          }
+        }
+      }
+    }
+  }
+}

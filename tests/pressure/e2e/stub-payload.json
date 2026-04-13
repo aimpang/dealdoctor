@@ -1,0 +1,549 @@
+{
+  "generatedAt": "2026-04-13T04:54:42.647Z",
+  "property": {
+    "address": "1500 W Anderson Ln",
+    "city": "Austin",
+    "state": "TX",
+    "askPrice": 27476547,
+    "offerPrice": 27476547,
+    "downPaymentPct": 0.25,
+    "rehabBudget": 0,
+    "strategy": "LTR",
+    "bedrooms": 3,
+    "bathrooms": 2,
+    "sqft": 1800,
+    "yearBuilt": 1971,
+    "propertyType": "Land",
+    "latitude": 30.351427,
+    "longitude": -97.72056
+  },
+  "rates": {
+    "mortgage30yr": 0.065,
+    "mortgage30yrInvestor": 0.07250000000000001,
+    "investorPremiumBps": 75,
+    "mortgage15yr": 0.058,
+    "fedFunds": 0.045
+  },
+  "breakeven": {
+    "price": 157000,
+    "yourOffer": 27476547,
+    "delta": -27319547
+  },
+  "expenses": {
+    "monthlyPropertyTax": 41215,
+    "monthlyInsurance": 1100,
+    "monthlyMaintenance": 150,
+    "monthlyHOA": 0,
+    "monthlyTotal": 42465,
+    "propertyTaxSource": "state-average",
+    "hoaSource": "not-captured"
+  },
+  "rentAdjustment": {
+    "applied": false,
+    "perBedroomRent": null,
+    "bedroomsUsed": null,
+    "effectiveRent": 1370,
+    "reason": null
+  },
+  "inputs": {
+    "monthlyRent": 1370,
+    "vacancyRate": 0.05,
+    "monthlyExpenses": 42465,
+    "annualRate": 0.07250000000000001,
+    "amortYears": 30
+  },
+  "cashToClose": {
+    "downPayment": 6869137,
+    "closingCosts": 686914,
+    "inspectionAndAppraisal": 1500,
+    "reserves": 1097364,
+    "rehabBudget": 0,
+    "totalCashToClose": 8654915
+  },
+  "wealthProjection": {
+    "years": [
+      {
+        "year": 1,
+        "annualRent": 15618,
+        "annualExpenses": 509580,
+        "annualCashFlow": -2180908,
+        "cumulativeCashFlow": -2180908,
+        "propertyValue": 27721088,
+        "loanBalance": 20407960,
+        "equityFromPaydown": 199450,
+        "equityFromAppreciation": 244541,
+        "annualTaxShield": 223809,
+        "cumulativeTaxShield": 223809,
+        "totalWealthBuilt": -1513108
+      },
+      {
+        "year": 2,
+        "annualRent": 16593,
+        "annualExpenses": 540092,
+        "annualCashFlow": -2210446,
+        "cumulativeCashFlow": -4391354,
+        "propertyValue": 27967806,
+        "loanBalance": 20193559,
+        "equityFromPaydown": 413851,
+        "equityFromAppreciation": 491259,
+        "annualTaxShield": 223809,
+        "cumulativeTaxShield": 447618,
+        "totalWealthBuilt": -3038626
+      },
+      {
+        "year": 3,
+        "annualRent": 17628,
+        "annualExpenses": 572431,
+        "annualCashFlow": -2241749,
+        "cumulativeCashFlow": -6633103,
+        "propertyValue": 28216719,
+        "loanBalance": 19963087,
+        "equityFromPaydown": 644323,
+        "equityFromAppreciation": 740172,
+        "annualTaxShield": 223809,
+        "cumulativeTaxShield": 671427,
+        "totalWealthBuilt": -4577181
+      },
+      {
+        "year": 4,
+        "annualRent": 18728,
+        "annualExpenses": 606706,
+        "annualCashFlow": -2274924,
+        "cumulativeCashFlow": -8908027,
+        "propertyValue": 28467848,
+        "loanBalance": 19715340,
+        "equityFromPaydown": 892070,
+        "equityFromAppreciation": 991301,
+        "annualTaxShield": 223809,
+        "cumulativeTaxShield": 895236,
+        "totalWealthBuilt": -6129419
+      },
+      {
+        "year": 5,
+        "annualRent": 19897,
+        "annualExpenses": 643033,
+        "annualCashFlow": -2310083,
+        "cumulativeCashFlow": -11218110,
+        "propertyValue": 28721212,
+        "loanBalance": 19449022,
+        "equityFromPaydown": 1158388,
+        "equityFromAppreciation": 1244665,
+        "annualTaxShield": 223809,
+        "cumulativeTaxShield": 1119045,
+        "totalWealthBuilt": -7696011
+      }
+    ],
+    "hero": {
+      "totalWealthBuilt5yr": -7696011,
+      "cumulativeCashFlow5yr": -11218110,
+      "equityFromPaydown5yr": 1158388,
+      "equityFromAppreciation5yr": 1244665,
+      "cumulativeTaxShield5yr": 1119045,
+      "irr5yr": null,
+      "propertyValue5yr": 28721212
+    },
+    "assumptions": {
+      "rentGrowthRate": 0.0624,
+      "appreciationRate": 0.0089,
+      "expenseGrowthRate": 0.059876368774284705,
+      "stateTaxGrowth": 0.06,
+      "effectiveTaxRate": 0.28,
+      "saleCostPct": 0.06,
+      "rentGrowthSource": "zip-12mo",
+      "appreciationSource": "zip-12mo"
+    }
+  },
+  "financingAlternatives": [
+    {
+      "id": "fha",
+      "name": "FHA (owner-occupied)",
+      "downPaymentPct": 0.035,
+      "annualRate": 0.065,
+      "amortYears": 30,
+      "eligibilityNote": "Requires owner-occupancy. House-hack 2-4 unit counts. MIP premium applies.",
+      "downPayment": 961679,
+      "monthlyPayment": 167592,
+      "monthlyCashFlow": -208755,
+      "dscr": -0.25,
+      "cashToClose": 2910435
+    },
+    {
+      "id": "conventional",
+      "name": "Conventional investor",
+      "downPaymentPct": 0.25,
+      "annualRate": 0.07250000000000001,
+      "amortYears": 30,
+      "eligibilityNote": "Full income/asset documentation. 25% down typical for 1-unit investment.",
+      "downPayment": 6869137,
+      "monthlyPayment": 140579,
+      "monthlyCashFlow": -181742,
+      "dscr": -0.29,
+      "cashToClose": 8655814
+    },
+    {
+      "id": "dscr",
+      "name": "DSCR (no-doc)",
+      "downPaymentPct": 0.2,
+      "annualRate": 0.075,
+      "amortYears": 30,
+      "eligibilityNote": "No personal income verification — qualifies on property DSCR ≥ 1.0-1.25. 20% down.",
+      "downPayment": 5495309,
+      "monthlyPayment": 153696,
+      "monthlyCashFlow": -194860,
+      "dscr": -0.27,
+      "cashToClose": 7360689
+    }
+  ],
+  "sensitivity": [
+    {
+      "scenario": "Base case",
+      "description": "Inputs as reported, 3% appreciation",
+      "monthlyCashFlow": -181742,
+      "cashFlowDelta": 0,
+      "dscr": -0.29,
+      "fiveYrWealth": -4376598,
+      "wealthDelta": 0,
+      "fiveYrIRR": -0.1932
+    },
+    {
+      "scenario": "Rent −10%",
+      "description": "Softer rental market",
+      "monthlyCashFlow": -181873,
+      "cashFlowDelta": -131,
+      "dscr": -0.29,
+      "fiveYrWealth": -4384890,
+      "wealthDelta": -8292,
+      "fiveYrIRR": -0.1934
+    },
+    {
+      "scenario": "Rent +10%",
+      "description": "Rent outperforms",
+      "monthlyCashFlow": -181612,
+      "cashFlowDelta": 130,
+      "dscr": -0.29,
+      "fiveYrWealth": -4368307,
+      "wealthDelta": 8291,
+      "fiveYrIRR": -0.193
+    },
+    {
+      "scenario": "Rate +1%",
+      "description": "Rate spike at refi",
+      "monthlyCashFlow": -195980,
+      "cashFlowDelta": -14238,
+      "dscr": -0.27,
+      "fiveYrWealth": -5417399,
+      "wealthDelta": -1040801,
+      "fiveYrIRR": -0.2167
+    },
+    {
+      "scenario": "Expenses +20%",
+      "description": "Inflation / vacancy spike",
+      "monthlyCashFlow": -190235,
+      "cashFlowDelta": -8493,
+      "dscr": -0.35,
+      "fiveYrWealth": -4912302,
+      "wealthDelta": -535704,
+      "fiveYrIRR": -0.2044
+    },
+    {
+      "scenario": "Appreciation 0%",
+      "description": "Flat market",
+      "monthlyCashFlow": -181742,
+      "cashFlowDelta": 0,
+      "dscr": -0.29,
+      "fiveYrWealth": -8752900,
+      "wealthDelta": -4376302,
+      "fiveYrIRR": null
+    },
+    {
+      "scenario": "Appreciation 5%",
+      "description": "Hot market",
+      "monthlyCashFlow": -181742,
+      "cashFlowDelta": 0,
+      "dscr": -0.29,
+      "fiveYrWealth": -1161637,
+      "wealthDelta": 3214961,
+      "fiveYrIRR": -0.1142
+    }
+  ],
+  "recommendedOffers": {
+    "breakevenPrice": 157000,
+    "priceForCashOnCash": {
+      "target": 0.08,
+      "maxPrice": 0
+    },
+    "priceForIRR": {
+      "target": 0.1,
+      "maxPrice": 0
+    }
+  },
+  "strProjection": {
+    "monthlyGrossRevenue": 4550,
+    "monthlyOpex": 44822,
+    "monthlyMortgagePayment": 140579,
+    "monthlyNetCashFlow": -180851,
+    "annualNOI": -483264,
+    "annualDSCR": -0.29,
+    "opExRatio": 0.43,
+    "vsLTRMonthlyDelta": 891,
+    "estimatedOccupancy": 0.6,
+    "breakdown": {
+      "management": 910,
+      "cleaning": 455,
+      "suppliesAndPlatformFees": 273,
+      "utilities": 319,
+      "propertyTax": 41215,
+      "insurance": 1650
+    }
+  },
+  "marketSnapshot": {
+    "zipCode": "78757",
+    "salePriceMedian": 817103,
+    "rentMedian": 2229,
+    "pricePerSqft": 424.19,
+    "rentPerSqft": 1.95,
+    "avgDaysOnMarket": 64.75,
+    "salePriceGrowth12mo": 0.0089,
+    "rentGrowth12mo": 0.0624
+  },
+  "locationSignals": {
+    "walkabilityScore": 67,
+    "walkabilityLabel": "Somewhat Walkable",
+    "radiusMeters": 800,
+    "dataConfidence": "high",
+    "amenities": {
+      "restaurants": {
+        "count": 2,
+        "nearestMeters": 186
+      },
+      "groceries": {
+        "count": 0,
+        "nearestMeters": null
+      },
+      "schools": {
+        "count": 2,
+        "nearestMeters": 119
+      },
+      "parks": {
+        "count": 0,
+        "nearestMeters": null
+      },
+      "transit": {
+        "count": 7,
+        "nearestMeters": 22
+      }
+    }
+  },
+  "rentComps": [
+    {
+      "address": "7909 Lazy Ln, Unit A, Austin, TX 78757",
+      "bedrooms": 3,
+      "bathrooms": 1,
+      "square_feet": 1000,
+      "rent": 1795,
+      "distance_miles": 0.1076,
+      "days_old": 1
+    },
+    {
+      "address": "8011 Lazy Ln, Austin, TX 78757",
+      "bedrooms": 3,
+      "bathrooms": 2,
+      "square_feet": 1349,
+      "rent": 1800,
+      "distance_miles": 0.174,
+      "days_old": 4
+    },
+    {
+      "address": "8011 Lazy Ln, Unit B, Austin, TX 78757",
+      "bedrooms": 3,
+      "bathrooms": 2,
+      "square_feet": 1349,
+      "rent": 1800,
+      "distance_miles": 0.1741,
+      "days_old": 4
+    },
+    {
+      "address": "7803 Lazy Ln, Austin, TX 78757",
+      "bedrooms": 3,
+      "bathrooms": 2,
+      "square_feet": 1515,
+      "rent": 2295,
+      "distance_miles": 0.177,
+      "days_old": 193
+    },
+    {
+      "address": "7711 Lazy Ln, Austin, TX 78757",
+      "bedrooms": 3,
+      "bathrooms": 2,
+      "square_feet": 1685,
+      "rent": 2250,
+      "distance_miles": 0.2062,
+      "days_old": 58
+    }
+  ],
+  "climate": {
+    "latitude": 30.352537,
+    "longitude": -97.720681,
+    "floodZone": null,
+    "floodRisk": "unknown",
+    "floodInsuranceRequired": false,
+    "estimatedAnnualInsurance": 13200,
+    "insuranceBreakdown": {
+      "baseStatePremium": 13200,
+      "dwellingScaleFactor": 3,
+      "floodZoneAddOn": 0
+    },
+    "climateScores": {
+      "hurricane": 4,
+      "wildfire": 0,
+      "heat": 4,
+      "drought": 4,
+      "tornado": 4
+    },
+    "summary": "TX has elevated exposure to hurricane / tropical storm and extreme heat. Budget $13,200/yr for insurance — higher than the national average ($1,800).",
+    "topConcerns": [
+      "Hurricane / tropical storm",
+      "Extreme heat",
+      "Drought / water scarcity"
+    ]
+  },
+  "valueTriangulation": {
+    "signals": [
+      {
+        "label": "Rentcast AVM",
+        "value": 27476547,
+        "source": "Tax assessment × 1.15"
+      }
+    ],
+    "primaryValue": 27476547,
+    "valueSource": "tax-assessment",
+    "spreadPct": 0,
+    "confidence": "high"
+  },
+  "rentWarnings": [],
+  "crossCheckLinks": {
+    "zillow": "https://www.google.com/search?q=zillow%201500%20W%20Anderson%20Ln",
+    "redfin": "https://www.google.com/search?q=redfin%201500%20W%20Anderson%20Ln",
+    "realtor": "https://www.google.com/search?q=realtor.com%201500%20W%20Anderson%20Ln"
+  },
+  "ltr": {
+    "monthlyMortgagePayment": 140579,
+    "loanAmount": 20607410,
+    "monthlyNetCashFlow": -181742,
+    "annualNetCashFlow": -2180908,
+    "capRate": -1.8,
+    "cashOnCashReturn": -31.75,
+    "noiAnnual": -493962,
+    "dscr": -0.29,
+    "ltv": 0.75,
+    "renewalSurvivalRate": 0.07250000000000001,
+    "renewalScenarios": [
+      {
+        "rate": 0.05,
+        "monthlyPayment": 113697,
+        "monthlyCashFlow": -154861,
+        "viable": false
+      },
+      {
+        "rate": 0.055,
+        "monthlyPayment": 119434,
+        "monthlyCashFlow": -160598,
+        "viable": false
+      },
+      {
+        "rate": 0.06,
+        "monthlyPayment": 125310,
+        "monthlyCashFlow": -166474,
+        "viable": false
+      },
+      {
+        "rate": 0.065,
+        "monthlyPayment": 131321,
+        "monthlyCashFlow": -172485,
+        "viable": false
+      },
+      {
+        "rate": 0.07,
+        "monthlyPayment": 137462,
+        "monthlyCashFlow": -178625,
+        "viable": false
+      },
+      {
+        "rate": 0.075,
+        "monthlyPayment": 143727,
+        "monthlyCashFlow": -184890,
+        "viable": false
+      },
+      {
+        "rate": 0.08,
+        "monthlyPayment": 150111,
+        "monthlyCashFlow": -191274,
+        "viable": false
+      }
+    ],
+    "annualDepreciation": 799318,
+    "estimatedTaxSaving": 223809,
+    "afterTaxCashFlow": 907213,
+    "verdict": "PASS",
+    "primaryFailureMode": "NEGATIVE_CASHFLOW",
+    "dealScore": 0
+  },
+  "dealDoctor": {
+    "diagnosis": "Test diagnosis for fixture replay.",
+    "tonePositive": false,
+    "bottomLine": "Bottom line: stubbed for pressure test.",
+    "pros": [
+      "stub pro 1",
+      "stub pro 2"
+    ],
+    "cons": [
+      "stub con 1",
+      "stub con 2"
+    ],
+    "negotiationLevers": [
+      {
+        "lever": "Price reduction",
+        "script": "Stub script."
+      },
+      {
+        "lever": "Closing credit",
+        "script": "Stub script."
+      }
+    ],
+    "inspectionRedFlags": [
+      {
+        "area": "Roof",
+        "why": "Stub reason."
+      },
+      {
+        "area": "HVAC",
+        "why": "Stub reason."
+      }
+    ],
+    "fixes": [
+      {
+        "title": "Fix 1",
+        "subtitle": "stub",
+        "difficulty": "easy",
+        "resultValue": "$0",
+        "resultLabel": "stub",
+        "detailRows": [
+          {
+            "label": "stub",
+            "value": "stub"
+          }
+        ]
+      }
+    ]
+  },
+  "dealDoctorError": null,
+  "dealDoctorErrorDetail": null,
+  "comparableSales": [],
+  "stateRules": {
+    "state": "TX",
+    "rentControl": false,
+    "landlordFriendly": true,
+    "strNotes": "No statewide STR restrictions. Check municipal rules.",
+    "propertyTaxRate": 0.018
+  }
+}

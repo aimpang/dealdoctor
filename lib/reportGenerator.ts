@@ -1,12 +1,22 @@
 import { prisma } from './db'
+import type { Report } from '@prisma/client'
 import {
   searchProperty,
   getRentEstimate,
   getComparableSales,
   getRentComps,
   getMarketSnapshot,
+  type PropertyData,
+  type RentEstimate,
+  type MarketSnapshot,
 } from './propertyApi'
-import { getCurrentRates, applyInvestorPremium, INVESTOR_PREMIUM, type Strategy } from './rates'
+import {
+  getCurrentRates,
+  applyInvestorPremium,
+  INVESTOR_PREMIUM,
+  type Strategy,
+  type CurrentRates,
+} from './rates'
 import {
   calculateDealMetrics,
   calculateBreakEvenPrice,
@@ -20,59 +30,68 @@ import {
   getStatePropertyTaxGrowth,
   STATE_RULES,
 } from './calculations'
-import { generateDealDoctor, estimateSTRRevenue } from './dealDoctor'
-import { getClimateAndInsurance } from './climateRisk'
-import { getLocationSignals } from './locationSignals'
+import { generateDealDoctor, estimateSTRRevenue, type DealDoctorOutput } from './dealDoctor'
+import { getClimateAndInsurance, type ClimateAndInsurance } from './climateRisk'
+import { getLocationSignals, type LocationSignals } from './locationSignals'
 import { applyStudentHousingHeuristic } from './studentHousing'
 
-export async function generateFullReport(uuid: string): Promise<void> {
-  const report = await prisma.report.findUnique({ where: { id: uuid } })
-  if (!report || !report.teaserData) return
+/**
+ * The inputs composeFullReport needs. All external-service calls happen in
+ * generateFullReport; compose is a pure function of these results + the
+ * Report row. `PromiseSettledResult` preserves rejection info so compose can
+ * log per-endpoint failures and degrade gracefully.
+ */
+export interface ReportFetchResults {
+  property: PropertyData
+  rates: CurrentRates
+  rentEstimate: PromiseSettledResult<RentEstimate | null>
+  saleComps: PromiseSettledResult<any[]>
+  rentComps: PromiseSettledResult<any[]>
+  marketSnapshot: PromiseSettledResult<MarketSnapshot | null>
+  climate: PromiseSettledResult<ClimateAndInsurance | null>
+  locationSignals: PromiseSettledResult<LocationSignals | null>
+}
 
-  const rates = await getCurrentRates()
-  const property = await searchProperty(report.address)
-  if (!property) return
+/**
+ * AI narration factory — injected into composeFullReport so tests can pass a
+ * deterministic stub instead of calling Anthropic. Default wires to the real
+ * Claude Haiku generator.
+ */
+export type AiGenerator = typeof generateDealDoctor
 
-  // Use Rentcast-provided lat/lng for proximity-based comp search — address-
-  // adjacent comps (≤1mi) are far more predictive than city-wide bedroom medians.
-  const coords =
-    typeof property.latitude === 'number' && typeof property.longitude === 'number'
-      ? { lat: property.latitude, lng: property.longitude }
+/**
+ * Pure composition — all the math, warnings, triangulation, and data assembly
+ * that used to live inside generateFullReport. Takes already-fetched external
+ * data and produces the fullReportData object that gets persisted + rendered.
+ *
+ * The Claude call is the one async operation still inside; it's injected so
+ * scenario tests can use a stub. The function never touches Prisma — fixture-
+ * testable end-to-end without a test DB.
+ */
+export async function composeFullReport(
+  report: Report,
+  results: ReportFetchResults,
+  aiGenerator: AiGenerator = generateDealDoctor
+): Promise<Record<string, any>> {
+  const { property, rates } = results
+  const rentEstimate =
+    results.rentEstimate.status === 'fulfilled' ? results.rentEstimate.value : null
+  const saleComps =
+    results.saleComps.status === 'fulfilled' ? results.saleComps.value : []
+  const rentComps =
+    results.rentComps.status === 'fulfilled' ? results.rentComps.value : []
+  const marketSnapshot =
+    results.marketSnapshot.status === 'fulfilled' ? results.marketSnapshot.value : null
+  const climate =
+    results.climate.status === 'fulfilled' && results.climate.value
+      ? results.climate.value
       : null
-
-  // Fetch rent estimate, sale comps, rent comps, and market snapshot in parallel.
-  // Use allSettled so one failing endpoint (e.g., /markets quota-exhausted)
-  // doesn't nuke the entire report. Each getter already returns null/[] on
-  // failure, so the .reason branch here catches the rare thrown case
-  // (RentcastQuotaError). The report degrades gracefully — a missing market
-  // snapshot just hides that sidebar card, rather than failing the whole gen.
-  const [rentRes, salesRes, rentCompsRes, marketRes] = await Promise.allSettled([
-    getRentEstimate(report.address, property.bedrooms),
-    getComparableSales(report.city, report.state, property.bedrooms, coords, 1.0),
-    getRentComps(report.address, property.bedrooms),
-    getMarketSnapshot(report.zipCode),
-  ])
-  const rentEstimate = rentRes.status === 'fulfilled' ? rentRes.value : null
-  const saleComps = salesRes.status === 'fulfilled' ? salesRes.value : []
-  const rentComps = rentCompsRes.status === 'fulfilled' ? rentCompsRes.value : []
-  const marketSnapshot = marketRes.status === 'fulfilled' ? marketRes.value : null
-
-  // Log per-endpoint failures so we can tell which Rentcast call failed in
-  // diagnostics without the whole report tanking.
-  for (const [name, result] of [
-    ['rentEstimate', rentRes],
-    ['saleComps', salesRes],
-    ['rentComps', rentCompsRes],
-    ['marketSnapshot', marketRes],
-  ] as const) {
-    if (result.status === 'rejected') {
-      console.warn(`[reportGenerator] ${name} failed:`, result.reason?.message ?? result.reason)
-    }
-  }
+  const locationSignals =
+    results.locationSignals.status === 'fulfilled' ? results.locationSignals.value : null
 
   const askPrice = property.estimated_value
   const offerPrice = report.offerPrice ?? askPrice
-  const downPaymentPct = report.downPaymentPct ?? 0.20
+  const downPaymentPct = report.downPaymentPct ?? 0.2
   const rehabBudget = report.rehabBudget ?? 0
 
   // Apply investor-rate premium based on strategy. PMMS is owner-occupied;
@@ -94,28 +113,6 @@ export async function generateFullReport(uuid: string): Promise<void> {
   const monthlyRent = rentAdjustment.effectiveRent
   const stateRules = STATE_RULES[report.state] || STATE_RULES['TX']
 
-  // Climate + insurance (flood zone + state insurance + hazard scores)
-  // + Location quality (walkability from Mapbox Tilequery) — run in parallel
-  // since they're both network-bound on coordinates/address.
-  // Run climate + location in parallel with resilient failure handling.
-  // Climate must succeed (it drives insurance cost which drives cash flow);
-  // if it throws, fall back to state averages via the null-safe branches.
-  const [climateRes, locationRes] = await Promise.allSettled([
-    getClimateAndInsurance(report.address, report.state, report.zipCode, offerPrice),
-    coords ? getLocationSignals(coords.lat, coords.lng) : Promise.resolve(null),
-  ])
-  const climate =
-    climateRes.status === 'fulfilled' && climateRes.value ? climateRes.value : null
-  const locationSignals =
-    locationRes.status === 'fulfilled' ? locationRes.value : null
-
-  if (climateRes.status === 'rejected') {
-    console.warn('[reportGenerator] climate lookup failed:', climateRes.reason?.message)
-  }
-  if (locationRes.status === 'rejected') {
-    console.warn('[reportGenerator] location signals failed:', locationRes.reason?.message)
-  }
-
   // If climate is entirely unavailable (rare — it has its own null-safe paths),
   // fall back to $1,800/yr national-average homeowners insurance. Report still
   // generates; the climate section just won't render.
@@ -124,7 +121,6 @@ export async function generateFullReport(uuid: string): Promise<void> {
     : Math.round(1800 / 12)
 
   // Property tax: prefer actual county record from Rentcast, fall back to state avg × price.
-  // Source label lets the UI attribute the number honestly.
   let monthlyPropertyTax: number
   let propertyTaxSource: 'county-record' | 'state-average'
   if (property.annual_property_tax && property.annual_property_tax > 0) {
@@ -135,8 +131,6 @@ export async function generateFullReport(uuid: string): Promise<void> {
     propertyTaxSource = 'state-average'
   }
 
-  // HOA: only included if Rentcast returned it. Condo/townhome without captured HOA
-  // is a known gap — flagged in the UI so the user adds it manually if needed.
   const monthlyHOA = property.hoa_fee_monthly ?? 0
   const monthlyMaintenance = 150
   const monthlyExpenses = monthlyPropertyTax + monthlyInsurance + monthlyMaintenance + monthlyHOA
@@ -145,7 +139,7 @@ export async function generateFullReport(uuid: string): Promise<void> {
     {
       purchasePrice: offerPrice,
       downPaymentPct,
-      annualRate: investorRate, // was owner-occupied PMMS — now strategy-adjusted
+      annualRate: investorRate,
       amortizationYears: 30,
       state: report.state,
       rehabBudget,
@@ -160,24 +154,25 @@ export async function generateFullReport(uuid: string): Promise<void> {
     .filter((v: number) => Number.isFinite(v) && v > 0)
     .sort((a: number, b: number) => a - b)
   const arvEstimate =
-    compValues.length > 0
-      ? compValues[Math.floor(compValues.length / 2)]
-      : undefined
+    compValues.length > 0 ? compValues[Math.floor(compValues.length / 2)] : undefined
 
   // Value triangulation — build a list of every independent signal we have
-  // for the property's value. If they diverge by >25%, we flag low confidence
-  // so buyers know the AVM is uncertain for this property.
+  // for the property's value. If they diverge by >25%, we flag low confidence.
   type ValueSignal = { label: string; value: number; source: string }
   const valueSignals: ValueSignal[] = []
   valueSignals.push({
     label: property.value_source === 'listing' ? 'Active listing price' : 'Rentcast AVM',
     value: property.estimated_value,
     source:
-      property.value_source === 'listing' ? 'Current MLS listing' :
-      property.value_source === 'avm' ? 'Rentcast automated value model' :
-      property.value_source === 'tax-assessment' ? 'Tax assessment × 1.15' :
-      property.value_source === 'last-sale-grown' ? 'Last sale grown at 3%/yr' :
-      'Unknown source',
+      property.value_source === 'listing'
+        ? 'Current MLS listing'
+        : property.value_source === 'avm'
+        ? 'Rentcast automated value model'
+        : property.value_source === 'tax-assessment'
+        ? 'Tax assessment × 1.15'
+        : property.value_source === 'last-sale-grown'
+        ? 'Last sale grown at 3%/yr'
+        : 'Unknown source',
   })
   if (arvEstimate) {
     valueSignals.push({
@@ -205,12 +200,6 @@ export async function generateFullReport(uuid: string): Promise<void> {
     }
   }
 
-  // Confidence band: spread / primary value. <10% = high, <25% = medium,
-  // else low. Include the AVM's own confidence range (priceRangeLow/High
-  // from Rentcast) as additional values in the spread — otherwise an AVM
-  // with a wide uncertainty band like $1.97M-$3.25M reads as "high
-  // confidence" just because it has one signal. Grok caught this on
-  // 216 W Escalones where the AVM spanned 49% but we showed it as precise.
   const allValues = valueSignals.map((s) => s.value)
   if (property.value_range_low) allValues.push(property.value_range_low)
   if (property.value_range_high) allValues.push(property.value_range_high)
@@ -219,13 +208,8 @@ export async function generateFullReport(uuid: string): Promise<void> {
       ? (Math.max(...allValues) - Math.min(...allValues)) / property.estimated_value
       : 0
   const valueConfidence: 'high' | 'medium' | 'low' =
-    valueSpread < 0.10 ? 'high' : valueSpread < 0.25 ? 'medium' : 'low'
+    valueSpread < 0.1 ? 'high' : valueSpread < 0.25 ? 'medium' : 'low'
 
-  // Cross-check rent vs sale-comps. Our rent AVM can mis-fire on student-
-  // rental / per-room comps; if the annual rent yield is way off the
-  // typical-for-this-market range, flag it. Note: the existing preview-side
-  // rent-suspect warning handles the absolute-yield case. This is an
-  // additional signal focused on the AVM vs manual-comps spread.
   const rentWarnings: string[] = []
   if (rentComps && rentComps.length >= 3) {
     const rentCompMedian = [...rentComps]
@@ -239,37 +223,25 @@ export async function generateFullReport(uuid: string): Promise<void> {
     }
   }
 
-  // Student-housing / known-bad patterns. Small curated list — grows as we
-  // find cases. When matched, downgrades confidence hard because rent AVMs
-  // almost always return per-bedroom rates for these.
   const KNOWN_STUDENT_COMPLEXES = [
-    'HUNTERS RIDGE',    // JMU, Harrisonburg VA
-    'ASHBY CROSSING',   // JMU, Harrisonburg VA
-    'SUNCHASE',         // JMU, Harrisonburg VA
-    'COPPER BEECH',     // national student-housing brand
-    'UNIVERSITY',       // often student-oriented
+    'HUNTERS RIDGE',
+    'ASHBY CROSSING',
+    'SUNCHASE',
+    'COPPER BEECH',
+    'UNIVERSITY',
     'CAMPUS',
   ]
   const subdivisionUpper = (property.subdivision || '').toUpperCase()
-  const isStudentHousing = KNOWN_STUDENT_COMPLEXES.some((p) =>
-    subdivisionUpper.includes(p)
-  )
+  const isStudentHousing = KNOWN_STUDENT_COMPLEXES.some((p) => subdivisionUpper.includes(p))
   if (isStudentHousing) {
     rentWarnings.push(
       `Property is in "${property.subdivision}" — a known student-rental complex. Rent AVMs typically return per-bedroom rates here; whole-property rent is often 3-5× the reported figure.`
     )
   }
 
-  // Cash-to-close: the full capital required to walk into closing.
-  // monthlyPITI = principal-interest + tax + insurance (ignoring HOA/maint for reserves,
-  // matching standard lender reserve calc which uses PITI not PITIA).
   const monthlyPITI = ltrMetrics.monthlyMortgagePayment + monthlyPropertyTax + monthlyInsurance
   const cashToClose = calculateCashToClose(offerPrice, downPaymentPct, rehabBudget, monthlyPITI)
 
-  // 5-year wealth projection — cash flow + paydown + appreciation + tax shield.
-  // When we have zip-level market data from Rentcast, use the actual 12-month
-  // rent and price growth instead of hardcoded 3%. Clamped to a sane band so
-  // a single wild data point can't produce an $8M projection.
   const clampGrowth = (x: number | null | undefined, fallback: number): number => {
     if (x == null || !Number.isFinite(x)) return fallback
     return Math.max(-0.05, Math.min(0.15, x))
@@ -277,9 +249,6 @@ export async function generateFullReport(uuid: string): Promise<void> {
   const rentGrowthRate = clampGrowth(marketSnapshot?.rentGrowth12mo, 0.03)
   const appreciationRate = clampGrowth(marketSnapshot?.salePriceGrowth12mo, 0.03)
 
-  // Blended expense growth: property tax grows at state-specific rate (Prop 13
-  // in CA, no cap in TX, etc), insurance at ~6%/yr (recent trend), maintenance
-  // at ~2.5%/yr. Weight by each component's share of total monthly expenses.
   const stateTaxGrowth = getStatePropertyTaxGrowth(report.state)
   const taxWeight = monthlyPropertyTax / monthlyExpenses
   const insWeight = monthlyInsurance / monthlyExpenses
@@ -304,7 +273,6 @@ export async function generateFullReport(uuid: string): Promise<void> {
   const year5 = projections[projections.length - 1]
   const irr5yr = calculateHoldPeriodIRR(cashToClose.totalCashToClose, projections)
 
-  // Financing alternatives — same property, 3 capital structures side-by-side
   const financingAlternatives = calculateFinancingAlternatives({
     offerPrice,
     pmmsRate: rates.mortgage30yr,
@@ -314,7 +282,6 @@ export async function generateFullReport(uuid: string): Promise<void> {
     rehabBudget,
   })
 
-  // Sensitivity — rent, rate, expenses, and appreciation swings vs base
   const sensitivity = calculateSensitivity({
     offerPrice,
     downPaymentPct,
@@ -327,8 +294,6 @@ export async function generateFullReport(uuid: string): Promise<void> {
     cashToClose: cashToClose.totalCashToClose,
   })
 
-  // STR projection — compares Airbnb/VRBO P&L against LTR using our bedroom-aware
-  // STR revenue estimate and STR-specific opex ratios (management + cleaning + utilities).
   const strRevenue = estimateSTRRevenue(report.city, report.state, property.bedrooms)
   const strProjection = calculateSTRProjection({
     monthlyGrossRevenue: strRevenue,
@@ -338,7 +303,6 @@ export async function generateFullReport(uuid: string): Promise<void> {
     monthlyLTRCashFlow: ltrMetrics.monthlyNetCashFlow,
   })
 
-  // Recommended max offers for three target outcomes
   const recommendedOffers = calculateRecommendedOffers({
     monthlyRent,
     vacancyRate: 0.05,
@@ -350,39 +314,61 @@ export async function generateFullReport(uuid: string): Promise<void> {
     monthlyMaintenance,
     monthlyHOA,
     targetCoC: 0.08,
-    targetIRR: 0.10,
+    targetIRR: 0.1,
   })
 
   // Deal Doctor AI narration. If the model fails (rate limit, quota exhausted,
   // network), we still return the rest of the report — the math and climate
   // sections stand on their own. Only the "3 fixes" section goes missing.
-  let dealDoctor = null
+  let dealDoctor: DealDoctorOutput | null = null
   let dealDoctorError: string | null = null
+  let dealDoctorErrorDetail: string | null = null
   try {
-    dealDoctor = await generateDealDoctor(
-      report.address, report.city, report.state,
+    dealDoctor = await aiGenerator(
+      report.address,
+      report.city,
+      report.state,
       strategy as 'LTR' | 'STR' | 'FLIP',
-      ltrMetrics, offerPrice, monthlyRent, investorRate,
+      ltrMetrics,
+      offerPrice,
+      monthlyRent,
+      investorRate,
       climate ?? undefined,
       property.bedrooms,
       arvEstimate,
       rehabBudget || undefined
     )
   } catch (err: any) {
-    console.error('Deal Doctor AI failed (report still generated):', err?.message)
-    dealDoctorError = err?.message?.includes('429') || err?.message?.includes('quota')
+    const status = err?.status ?? err?.response?.status
+    const apiError = err?.error ? JSON.stringify(err.error) : null
+    const detail = [
+      err?.constructor?.name,
+      status ? `status=${status}` : null,
+      err?.message,
+      apiError,
+    ]
+      .filter(Boolean)
+      .join(' · ')
+    console.error('Deal Doctor AI failed (report still generated):', detail)
+    dealDoctorErrorDetail = detail
+    const isRateLimit =
+      status === 429 || err?.message?.includes('429') || err?.message?.includes('quota')
+    const isAuth = status === 401 || status === 403
+    dealDoctorError = isRateLimit
       ? 'AI diagnosis temporarily unavailable — rate limit reached. Numbers below are unaffected.'
+      : isAuth
+      ? 'AI diagnosis unavailable — API credential issue. Numbers below are unaffected.'
       : 'AI diagnosis could not be generated. Numbers below are unaffected.'
   }
 
-  const fullReportData = {
+  return {
     generatedAt: new Date().toISOString(),
     property: {
       address: report.address,
       city: report.city,
       state: report.state,
-      askPrice,                 // listing price — for reference
-      offerPrice,                // user's actual offer
+      askPrice,
+      offerPrice,
       downPaymentPct,
       rehabBudget,
       strategy: report.strategy ?? 'LTR',
@@ -395,14 +381,13 @@ export async function generateFullReport(uuid: string): Promise<void> {
       longitude: property.longitude,
     },
     rates: {
-      mortgage30yr: rates.mortgage30yr,          // owner-occupied PMMS (reference)
-      mortgage30yrInvestor: investorRate,        // strategy-adjusted, used by the math
+      mortgage30yr: rates.mortgage30yr,
+      mortgage30yrInvestor: investorRate,
       investorPremiumBps: Math.round(INVESTOR_PREMIUM[strategy] * 10000),
       mortgage15yr: rates.mortgage15yr,
       fedFunds: rates.fedFundsRate,
     },
     breakeven: {
-      // Breakeven must use the investor rate — otherwise the "walk-away price" is a lie.
       price: calculateBreakEvenPrice(monthlyRent, investorRate),
       yourOffer: offerPrice,
       delta: calculateBreakEvenPrice(monthlyRent, investorRate) - offerPrice,
@@ -413,13 +398,9 @@ export async function generateFullReport(uuid: string): Promise<void> {
       monthlyMaintenance,
       monthlyHOA,
       monthlyTotal: monthlyExpenses,
-      propertyTaxSource,              // 'county-record' | 'state-average'
+      propertyTaxSource,
       hoaSource: monthlyHOA > 0 ? 'listing' : 'not-captured',
     },
-    // Student-housing rent transformation metadata — UI shows BOTH the raw
-    // per-bed AVM and the multiplied whole-property figure so users see what
-    // happened and can judge. When rentMultiplied is false, these fields are
-    // null/undefined and the UI renders nothing.
     rentAdjustment: {
       applied: rentAdjustment.isMultiplied,
       perBedroomRent: rentAdjustment.perBedroomRent,
@@ -427,8 +408,6 @@ export async function generateFullReport(uuid: string): Promise<void> {
       effectiveRent: rentAdjustment.effectiveRent,
       reason: rentAdjustment.reason,
     },
-    // Raw underwriting inputs — needed by interactive UI (rehab estimator, what-if tools)
-    // so they can re-run calculations without re-deriving from NOI.
     inputs: {
       monthlyRent,
       vacancyRate: 0.05,
@@ -436,7 +415,7 @@ export async function generateFullReport(uuid: string): Promise<void> {
       annualRate: investorRate,
       amortYears: 30,
     },
-    cashToClose,                      // down + closing + inspection + reserves + rehab
+    cashToClose,
     wealthProjection: {
       years: projections,
       hero: {
@@ -456,7 +435,8 @@ export async function generateFullReport(uuid: string): Promise<void> {
         effectiveTaxRate: 0.28,
         saleCostPct: 0.06,
         rentGrowthSource: marketSnapshot?.rentGrowth12mo != null ? 'zip-12mo' : 'default-3pct',
-        appreciationSource: marketSnapshot?.salePriceGrowth12mo != null ? 'zip-12mo' : 'default-3pct',
+        appreciationSource:
+          marketSnapshot?.salePriceGrowth12mo != null ? 'zip-12mo' : 'default-3pct',
       },
     },
     financingAlternatives,
@@ -467,14 +447,13 @@ export async function generateFullReport(uuid: string): Promise<void> {
     locationSignals,
     rentComps,
     climate,
-    // Multi-source value triangulation + data-quality signals
     valueTriangulation: {
       signals: valueSignals,
       primaryValue: property.estimated_value,
       valueSource: property.value_source,
       valueRangeLow: property.value_range_low,
       valueRangeHigh: property.value_range_high,
-      spreadPct: Math.round(valueSpread * 1000) / 10, // as percentage
+      spreadPct: Math.round(valueSpread * 1000) / 10,
       confidence: valueConfidence,
     },
     rentWarnings,
@@ -486,6 +465,7 @@ export async function generateFullReport(uuid: string): Promise<void> {
     ltr: ltrMetrics,
     dealDoctor,
     dealDoctorError,
+    dealDoctorErrorDetail,
     comparableSales: saleComps.slice(0, 4),
     stateRules: {
       state: report.state,
@@ -493,11 +473,76 @@ export async function generateFullReport(uuid: string): Promise<void> {
       landlordFriendly: stateRules.landlordFriendly,
       strNotes: stateRules.strNotes,
       propertyTaxRate: stateRules.propertyTaxRate,
+    },
+  }
+}
+
+/**
+ * Orchestrator — reads the report row, fires all external fetches in
+ * parallel, calls composeFullReport, and persists the result. This is the
+ * function the payment webhook + debug-mode report endpoint call.
+ */
+export async function generateFullReport(uuid: string): Promise<void> {
+  const report = await prisma.report.findUnique({ where: { id: uuid } })
+  if (!report || !report.teaserData) return
+
+  const rates = await getCurrentRates()
+  const property = await searchProperty(report.address)
+  if (!property) return
+
+  const coords =
+    typeof property.latitude === 'number' && typeof property.longitude === 'number'
+      ? { lat: property.latitude, lng: property.longitude }
+      : null
+
+  const offerPriceForTax = report.offerPrice ?? property.estimated_value
+
+  const [rentRes, salesRes, rentCompsRes, marketRes] = await Promise.allSettled([
+    getRentEstimate(report.address, property.bedrooms),
+    getComparableSales(report.city, report.state, property.bedrooms, coords, 1.0, {
+      sqft: property.square_feet,
+      value: property.estimated_value,
+    }),
+    getRentComps(report.address, property.bedrooms),
+    getMarketSnapshot(report.zipCode),
+  ])
+
+  for (const [name, result] of [
+    ['rentEstimate', rentRes],
+    ['saleComps', salesRes],
+    ['rentComps', rentCompsRes],
+    ['marketSnapshot', marketRes],
+  ] as const) {
+    if (result.status === 'rejected') {
+      console.warn(`[reportGenerator] ${name} failed:`, result.reason?.message ?? result.reason)
     }
   }
 
+  const [climateRes, locationRes] = await Promise.allSettled([
+    getClimateAndInsurance(report.address, report.state, report.zipCode, offerPriceForTax),
+    coords ? getLocationSignals(coords.lat, coords.lng) : Promise.resolve(null),
+  ])
+
+  if (climateRes.status === 'rejected') {
+    console.warn('[reportGenerator] climate lookup failed:', climateRes.reason?.message)
+  }
+  if (locationRes.status === 'rejected') {
+    console.warn('[reportGenerator] location signals failed:', locationRes.reason?.message)
+  }
+
+  const fullReportData = await composeFullReport(report, {
+    property,
+    rates,
+    rentEstimate: rentRes,
+    saleComps: salesRes,
+    rentComps: rentCompsRes,
+    marketSnapshot: marketRes,
+    climate: climateRes,
+    locationSignals: locationRes,
+  })
+
   await prisma.report.update({
     where: { id: uuid },
-    data: { fullReportData: JSON.stringify(fullReportData) }
+    data: { fullReportData: JSON.stringify(fullReportData) },
   })
 }

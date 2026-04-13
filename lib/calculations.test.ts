@@ -331,6 +331,23 @@ describe('findIRR', () => {
     const r = findIRR([-1000, 500])
     expect(r).toBeLessThan(0)
   })
+
+  // Regression: deep-loss scenarios used to return the clamp ceiling of 10
+  // (rendering as "1000.0%") when Newton-Raphson failed to converge — caught
+  // on the Fort Myers high-rise condo audit 2026-04-12. Now NaN so the UI can
+  // show "N/A" rather than a nonsense rate.
+  it('returns NaN when all flows are negative (no sign change → undefined IRR)', () => {
+    expect(Number.isNaN(findIRR([-1000, -200, -200, -200]))).toBe(true)
+  })
+  it('returns NaN when all flows are positive (no investment → undefined IRR)', () => {
+    expect(Number.isNaN(findIRR([1000, 200, 200]))).toBe(true)
+  })
+  it('returns NaN on deeply-negative-equity 5yr hold instead of the 1000% clamp ceiling', () => {
+    // Invest $100k, lose every year, net-negative sale proceeds. Old code hit
+    // the rate=10 clamp and rendered as 1000%.
+    const deepLoss = findIRR([-100_000, -10_000, -10_000, -10_000, -10_000, -200_000])
+    expect(Number.isNaN(deepLoss)).toBe(true)
+  })
 })
 
 describe('calculateHoldPeriodIRR', () => {

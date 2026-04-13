@@ -1,0 +1,239 @@
+{
+  "recordedAt": "2026-04-13T04:25:29.053Z",
+  "args": {
+    "slug": "escalones",
+    "address": "216 W Escalones, San Clemente, CA 92672",
+    "city": "San Clemente",
+    "state": "CA",
+    "zip": "92672",
+    "strategy": "LTR",
+    "downPct": 0.25,
+    "rehab": 0
+  },
+  "reportRow": {
+    "id": "fixture-escalones",
+    "address": "216 W Escalones, San Clemente, CA 92672",
+    "city": "San Clemente",
+    "state": "CA",
+    "zipCode": "92672",
+    "strategy": "LTR",
+    "offerPrice": null,
+    "downPaymentPct": 0.25,
+    "rehabBudget": 0,
+    "teaserData": "{}",
+    "paid": false,
+    "fullReportData": null,
+    "photoFindings": null,
+    "customerId": null,
+    "createdAt": "2026-04-13T04:25:29.052Z",
+    "updatedAt": "2026-04-13T04:25:29.053Z"
+  },
+  "fetchResults": {
+    "property": {
+      "property_id": "216-W-Escalones,-San-Clemente,-CA-92672",
+      "address": "216 W Escalones, San Clemente, CA 92672",
+      "city": "San Clemente",
+      "state": "CA",
+      "zip_code": "92672",
+      "bedrooms": 3,
+      "bathrooms": 4,
+      "property_type": "Multi-Family",
+      "estimated_value": 2710000,
+      "year_built": 1977,
+      "square_feet": 2862,
+      "lot_size": 5227,
+      "latitude": 33.426929,
+      "longitude": -117.622696,
+      "annual_property_tax": 6004,
+      "value_source": "avm",
+      "value_range_low": 2068000,
+      "value_range_high": 3352000,
+      "last_sale_price": 400000,
+      "last_sale_date": "2000-07-21T00:00:00.000Z",
+      "latest_tax_assessment": 590913,
+      "subdivision": "794"
+    },
+    "rates": {
+      "fedFundsRate": 0.045,
+      "treasuryYield10yr": 0.042,
+      "mortgage30yr": 0.065,
+      "mortgage15yr": 0.058
+    },
+    "rentEstimate": {
+      "status": "fulfilled",
+      "value": {
+        "estimated_rent": 7070,
+        "rent_low": 2990,
+        "rent_high": 11150
+      }
+    },
+    "saleComps": {
+      "status": "fulfilled",
+      "value": [
+        {
+          "address": "115 Boca De Ln, Playa # B, San Clemente, CA 92672",
+          "estimated_value": 1804000,
+          "bedrooms": 3,
+          "bathrooms": 4,
+          "square_feet": 3274,
+          "price_per_sqft": 551,
+          "days_on_market": null,
+          "sold_date": "2019-08-19T00:00:00.000Z"
+        },
+        {
+          "address": "115 Boca De Ln, Playa # A, San Clemente, CA 92672",
+          "estimated_value": 2750000,
+          "bedrooms": 3,
+          "bathrooms": 3,
+          "square_feet": 2858,
+          "price_per_sqft": 962,
+          "days_on_market": null,
+          "sold_date": "2022-05-11T00:00:00.000Z"
+        },
+        {
+          "address": "117 Boca De Ln, Playa Unit 1, San Clemente, CA 92672",
+          "estimated_value": 2725000,
+          "bedrooms": 3,
+          "bathrooms": 3,
+          "square_feet": 2409,
+          "price_per_sqft": 1131,
+          "days_on_market": null,
+          "sold_date": "2023-05-09T00:00:00.000Z"
+        },
+        {
+          "address": "119 Boca De Ln, Playa Apt B, San Clemente, CA 92672",
+          "estimated_value": 2385000,
+          "bedrooms": 3,
+          "bathrooms": 3.5,
+          "square_feet": 2941,
+          "price_per_sqft": 811,
+          "days_on_market": null,
+          "sold_date": "2020-02-26T00:00:00.000Z"
+        }
+      ]
+    },
+    "rentComps": {
+      "status": "fulfilled",
+      "value": [
+        {
+          "address": "911 Buena Vis, Apt 1, San Clemente, CA 92672",
+          "bedrooms": 3,
+          "bathrooms": 3.5,
+          "square_feet": 3287,
+          "rent": 10500,
+          "distance_miles": 0.2362,
+          "days_old": 136
+        },
+        {
+          "address": "412 Arenoso Ln, San Clemente, CA 92672",
+          "bedrooms": 3,
+          "bathrooms": 3,
+          "square_feet": 2682,
+          "rent": 6995,
+          "distance_miles": 0.2761,
+          "days_old": 68
+        },
+        {
+          "address": "158 Avenida Miramar, San Clemente, CA 92672",
+          "bedrooms": 3,
+          "bathrooms": 2.5,
+          "square_feet": 1240,
+          "rent": 4000,
+          "distance_miles": 0.3788,
+          "days_old": 169
+        },
+        {
+          "address": "117 Avenida Del Reposo Unit F, San Clemente, CA 92672",
+          "bedrooms": 3,
+          "bathrooms": 3.5,
+          "square_feet": 2143,
+          "rent": 6750,
+          "distance_miles": 0.3227,
+          "days_old": 168
+        },
+        {
+          "address": "211 Avenida Serra Apt A, San Clemente, CA 92672",
+          "bedrooms": 3,
+          "bathrooms": 2,
+          "square_feet": 1200,
+          "rent": 3995,
+          "distance_miles": 0.3567,
+          "days_old": 168
+        }
+      ]
+    },
+    "marketSnapshot": {
+      "status": "fulfilled",
+      "value": {
+        "zipCode": "92672",
+        "salePriceMedian": 2266839,
+        "rentMedian": 4098,
+        "pricePerSqft": 1024.63,
+        "rentPerSqft": 3.93,
+        "avgDaysOnMarket": 57.1,
+        "salePriceGrowth12mo": -0.0818,
+        "rentGrowth12mo": -0.1423
+      }
+    },
+    "climate": {
+      "status": "fulfilled",
+      "value": {
+        "latitude": 33.426948,
+        "longitude": -117.622681,
+        "floodZone": null,
+        "floodRisk": "unknown",
+        "floodInsuranceRequired": false,
+        "estimatedAnnualInsurance": 4200,
+        "insuranceBreakdown": {
+          "baseStatePremium": 4200,
+          "dwellingScaleFactor": 3,
+          "floodZoneAddOn": 0
+        },
+        "climateScores": {
+          "hurricane": 0,
+          "wildfire": 5,
+          "heat": 3,
+          "drought": 5,
+          "tornado": 0
+        },
+        "summary": "CA has elevated exposure to wildfire and drought / water scarcity. Budget $4,200/yr for insurance — higher than the national average ($1,800).",
+        "topConcerns": [
+          "Wildfire",
+          "Drought / water scarcity",
+          "Extreme heat"
+        ]
+      }
+    },
+    "locationSignals": {
+      "status": "fulfilled",
+      "value": {
+        "walkabilityScore": 35,
+        "walkabilityLabel": "Car-Dependent",
+        "radiusMeters": 800,
+        "dataConfidence": "low",
+        "amenities": {
+          "restaurants": {
+            "count": 2,
+            "nearestMeters": 383
+          },
+          "groceries": {
+            "count": 0,
+            "nearestMeters": null
+          },
+          "schools": {
+            "count": 1,
+            "nearestMeters": 207
+          },
+          "parks": {
+            "count": 0,
+            "nearestMeters": null
+          },
+          "transit": {
+            "count": 3,
+            "nearestMeters": 461
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { DealDoctorSection } from './DealDoctor'
@@ -21,6 +22,7 @@ import {
   EyeOffIcon,
   EyeIcon,
   BarChart3Icon,
+  RefreshCwIcon,
 } from 'lucide-react'
 
 interface FullReportProps {
@@ -344,7 +346,13 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
         {wealthProjection && (
           <HeroCell
             label="5-Year Hold IRR"
-            value={<span>{(wealthProjection.hero.irr5yr * 100).toFixed(1)}%</span>}
+            value={
+              <span>
+                {Number.isFinite(wealthProjection.hero.irr5yr)
+                  ? `${(wealthProjection.hero.irr5yr * 100).toFixed(1)}%`
+                  : 'N/A'}
+              </span>
+            }
             sub="Incl. sale at Y5 (6% selling costs)"
           />
         )}
@@ -465,15 +473,7 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
           {dealDoctor ? (
             <DealDoctorSection dealDoctor={dealDoctor} verdict={ltr.verdict} />
           ) : dealDoctorError ? (
-            <Card>
-              <div className="flex items-start gap-2">
-                <AlertTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
-                <div>
-                  <p className="text-sm font-semibold text-foreground">AI diagnosis unavailable</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{dealDoctorError}</p>
-                </div>
-              </div>
-            </Card>
+            <AiDiagnosisUnavailableCard uuid={uuid} error={dealDoctorError} />
           ) : null}
 
           {/* Financing Alternatives — wide table, fits the main column */}
@@ -592,7 +592,7 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
                           </td>
                           <td className="py-2 text-right">{fmt(s.fiveYrWealth)}</td>
                           <td className="py-2 text-right font-medium">
-                            {(s.fiveYrIRR * 100).toFixed(1)}%
+                            {Number.isFinite(s.fiveYrIRR) ? `${(s.fiveYrIRR * 100).toFixed(1)}%` : 'N/A'}
                           </td>
                         </tr>
                       )
@@ -902,12 +902,23 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
               <CardHeader label="Location Quality" />
               <div className="mt-2 flex items-baseline justify-between">
                 <div>
-                  <p className="font-[family-name:var(--font-playfair)] text-3xl font-bold tabular-nums text-foreground">
-                    {locationSignals.walkabilityScore}
-                  </p>
+                  {locationSignals.dataConfidence === 'insufficient' ? (
+                    <p className="font-[family-name:var(--font-playfair)] text-xl font-bold text-muted-foreground">
+                      —
+                    </p>
+                  ) : (
+                    <p className="font-[family-name:var(--font-playfair)] text-3xl font-bold tabular-nums text-foreground">
+                      {locationSignals.walkabilityScore}
+                    </p>
+                  )}
                   <p className="text-[11px] font-medium text-muted-foreground">
                     {locationSignals.walkabilityLabel}
                   </p>
+                  {locationSignals.dataConfidence === 'low' && (
+                    <p className="mt-0.5 text-[10px] text-amber-600 dark:text-amber-400">
+                      Low POI coverage — score may understate walkability
+                    </p>
+                  )}
                 </div>
                 <p className="text-[10px] text-muted-foreground">
                   ~½ mile radius
@@ -1282,6 +1293,61 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
 }
 
 /* ───── Compositional helpers ───── */
+
+function AiDiagnosisUnavailableCard({ uuid, error }: { uuid?: string; error: string }) {
+  const [state, setState] = useState<'idle' | 'retrying' | 'failed'>('idle')
+
+  const retry = async () => {
+    if (!uuid || state === 'retrying') return
+    setState('retrying')
+    try {
+      const res = await fetch(`/api/report/${uuid}/retry-ai`, { method: 'POST' })
+      if (res.ok) {
+        // Successful retry wrote new dealDoctor into fullReportData; reload to
+        // pick up the fresh payload. Simpler than threading mutated state back
+        // through the report page's polling loop.
+        window.location.reload()
+        return
+      }
+      setState('failed')
+    } catch {
+      setState('failed')
+    }
+  }
+
+  return (
+    <Card>
+      <div className="flex items-start gap-2">
+        <AlertTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+        <div className="flex-1">
+          <p className="text-sm font-semibold text-foreground">AI diagnosis unavailable</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">{error}</p>
+          {uuid && (
+            <button
+              onClick={retry}
+              disabled={state === 'retrying'}
+              className={cn(
+                'mt-2 inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1 text-[11px] font-medium transition-colors',
+                state === 'retrying'
+                  ? 'cursor-not-allowed text-muted-foreground'
+                  : 'hover:bg-muted hover:text-foreground'
+              )}
+            >
+              <RefreshCwIcon
+                className={cn('h-3 w-3', state === 'retrying' && 'animate-spin')}
+              />
+              {state === 'retrying'
+                ? 'Retrying…'
+                : state === 'failed'
+                ? 'Retry failed — try again'
+                : 'Retry AI analysis'}
+            </button>
+          )}
+        </div>
+      </div>
+    </Card>
+  )
+}
 
 function Eyebrow({ children }: { children: React.ReactNode }) {
   return (

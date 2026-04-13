@@ -310,9 +310,21 @@ export function projectWealth(params: {
 // --- IRR (internal rate of return) ---
 // Newton-Raphson on NPV. Returns the annualized rate (as a decimal, e.g. 0.124 = 12.4%)
 // at which the sum of discounted cash flows equals zero. Standard institutional metric.
+//
+// Returns NaN when the scenario has no meaningful IRR — no sign change in flows,
+// non-convergence, or Newton pinning at the wild-swing guardrail. Callers must use
+// Number.isFinite() to gate display; previously we returned the clamp ceiling of 10
+// which rendered as "1000%" on deeply-negative-equity scenarios.
 export function findIRR(flows: number[], guess: number = 0.10): number {
   if (flows.length < 2) return 0
+  // IRR requires at least one sign change — without it no rate zeros the NPV.
+  // This is the first gate deeply-negative-equity scenarios fail.
+  const hasPositive = flows.some((f) => f > 0)
+  const hasNegative = flows.some((f) => f < 0)
+  if (!hasPositive || !hasNegative) return NaN
+
   let rate = guess
+  let converged = false
   for (let iter = 0; iter < 200; iter++) {
     let npv = 0
     let dnpv = 0
@@ -321,12 +333,18 @@ export function findIRR(flows: number[], guess: number = 0.10): number {
       npv += flows[t] / denom
       if (t > 0) dnpv -= (t * flows[t]) / (denom * (1 + rate))
     }
-    if (Math.abs(npv) < 0.01) break
+    if (Math.abs(npv) < 0.01) {
+      converged = true
+      break
+    }
     if (Math.abs(dnpv) < 1e-10) break // avoid divide by zero
     const next = rate - npv / dnpv
     if (!Number.isFinite(next)) break
     rate = Math.max(-0.99, Math.min(10, next)) // clamp wild swings
   }
+  if (!converged) return NaN
+  // If Newton pinned at the guardrail, that's numerical failure, not a real answer.
+  if (rate >= 9.99 || rate <= -0.98) return NaN
   return Math.round(rate * 10000) / 10000
 }
 

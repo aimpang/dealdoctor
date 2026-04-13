@@ -13,6 +13,14 @@ export interface LocationSignals {
   walkabilityScore: number     // 0-100, weighted amenity density
   walkabilityLabel: string     // "Walker's Paradise" → "Very Car-Dependent"
   radiusMeters: number
+  /**
+   * Confidence in the walkability score. "insufficient" means Mapbox's
+   * streets-v8 tileset returned so few POIs that we can't honestly judge —
+   * UI should show "Limited amenity data" rather than confidently claiming
+   * "Very Car-Dependent" (which we saw misfire on a downtown Fort Myers
+   * high-rise condo with river views + nearby amenities).
+   */
+  dataConfidence: 'high' | 'low' | 'insufficient'
   amenities: {
     restaurants: AmenityStat
     groceries: AmenityStat
@@ -125,10 +133,28 @@ export async function getLocationSignals(
     // Normalize: ~60 raw points = 100 (dense urban core)
     const walkabilityScore = Math.min(100, Math.max(0, Math.round((raw / 60) * 100)))
 
+    // Data confidence — if Mapbox's tileset returned very few features, we're
+    // not seeing the real amenity density, we're seeing the tileset's coverage
+    // gap. Previously we'd then confidently label the area "Very Car-Dependent"
+    // which is worse than saying nothing. Buckets:
+    //   >= 10 features → "high"        (call it)
+    //   4–9             → "low"         (show the score + a caveat)
+    //   < 4             → "insufficient" (hide the label, say "Limited data")
+    const totalFeatures =
+      amenities.groceries.count +
+      amenities.transit.count +
+      amenities.restaurants.count +
+      amenities.schools.count +
+      amenities.parks.count
+    const dataConfidence: LocationSignals['dataConfidence'] =
+      totalFeatures >= 10 ? 'high' : totalFeatures >= 4 ? 'low' : 'insufficient'
+
     return {
       walkabilityScore,
-      walkabilityLabel: labelFor(walkabilityScore),
+      walkabilityLabel:
+        dataConfidence === 'insufficient' ? 'Limited amenity data' : labelFor(walkabilityScore),
       radiusMeters,
+      dataConfidence,
       amenities,
     }
   } catch {

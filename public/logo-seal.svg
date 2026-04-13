@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="200" height="200" role="img" aria-label="DealDoctor seal">
+  <!-- Official DealDoctor seal — for PDF footers, certificates, print collateral -->
+  <circle cx="50" cy="50" r="49" fill="none" stroke="#18181b" stroke-opacity="0.55" stroke-width="0.35"/>
+  <circle cx="50" cy="50" r="44.5" fill="none" stroke="#18181b" stroke-opacity="0.4" stroke-width="0.25"/>
+  <circle cx="50" cy="50" r="30" fill="none" stroke="#18181b" stroke-opacity="0.25" stroke-width="0.22"/>
+
+  <defs>
+    <path id="seal-arc-top" d="M 13,50 A 37,37 0 0,1 87,50" fill="none"/>
+    <path id="seal-arc-bot" d="M 15,50 A 35,35 0 0,0 85,50" fill="none"/>
+  </defs>
+
+  <text fill="#18181b" font-family="'Playfair Display', Georgia, serif" font-size="7.5" font-weight="600" letter-spacing="3.1">
+    <textPath href="#seal-arc-top" startOffset="50%" text-anchor="middle">DEAL DOCTOR</textPath>
+  </text>
+  <text fill="#18181b" fill-opacity="0.65" font-family="'Playfair Display', Georgia, serif" font-size="4.8" font-weight="500" letter-spacing="1.8">
+    <textPath href="#seal-arc-bot" startOffset="50%" text-anchor="middle">EST · MMXXVI</textPath>
+  </text>
+
+  <path d="M 8,50 l 2,-2 l 2,2 l -2,2 Z" fill="#18181b" fill-opacity="0.55"/>
+  <path d="M 92,50 l -2,-2 l -2,2 l 2,2 Z" fill="#18181b" fill-opacity="0.55"/>
+
+  <g transform="translate(50 50) scale(0.55) translate(-32 -14)">
+    <path d="M0 22 L18 22 M46 22 L64 22" stroke="#18181b" stroke-opacity="0.32" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+    <path d="M18 22 L22 26 L32 6 L42 26 L46 22" stroke="#18181b" stroke-width="3.1" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <circle cx="32" cy="6" r="2.4" fill="#e34a1c"/>
+  </g>
+</svg>

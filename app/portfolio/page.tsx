@@ -93,7 +93,7 @@ export default function PortfolioPage() {
               label="Best IRR"
               value={
                 deals.length
-                  ? `${((Math.max(...deals.map((d) => d.fiveYrIRR ?? 0))) * 100).toFixed(1)}%`
+                  ? `${((Math.max(...deals.map((d) => (Number.isFinite(d.fiveYrIRR) ? d.fiveYrIRR! : 0)))) * 100).toFixed(1)}%`
                   : '—'
               }
             />
@@ -161,7 +161,7 @@ export default function PortfolioPage() {
                         <p className="text-sm font-bold text-foreground">{fmt(d.fiveYrWealth)}</p>
                       </div>
                     )}
-                    {d.fiveYrIRR != null && (
+                    {d.fiveYrIRR != null && Number.isFinite(d.fiveYrIRR) && (
                       <div>
                         <p className="text-[9px] uppercase tracking-wider text-muted-foreground">
                           IRR

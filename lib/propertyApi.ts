@@ -397,12 +397,19 @@ export async function getRentEstimate(address: string, bedrooms: number): Promis
 // Get comparable sales in area. If lat/lng are provided, we filter by radius
 // around the subject property (much more useful than city-wide bedroom-median).
 // Falls back to city+bedroom when coordinates aren't available.
+//
+// `subject` — the subject property's sqft + estimated value. Used to filter
+// out non-residential Rentcast records that otherwise poison the comp median:
+// parking spaces, storage units, boat slips, tax-auction outcomes, and
+// assessor-only records with nonsense prices (we saw a $21,500 median once
+// for a $275k high-rise condo because the API returned a parking deed).
 export async function getComparableSales(
   city: string,
   state: string,
   bedrooms: number,
   coords?: { lat: number; lng: number } | null,
-  radiusMiles: number = 1.0
+  radiusMiles: number = 1.0,
+  subject?: { sqft?: number | null; value?: number | null } | null
 ) {
   if (API_KEY && API_KEY !== 'your_key_here') {
     try {
@@ -416,7 +423,8 @@ export async function getComparableSales(
         url.searchParams.set('state', state)
       }
       url.searchParams.set('bedrooms', bedrooms.toString())
-      url.searchParams.set('limit', '8')
+      // Request more than we'll show — we're about to filter aggressively.
+      url.searchParams.set('limit', '20')
       url.searchParams.set('status', 'Sold')
 
       const res = await fetch(url.toString(), {
@@ -426,6 +434,9 @@ export async function getComparableSales(
       if (!res.ok) return []
 
       const data = await res.json()
+      const subjectSqft = subject?.sqft && subject.sqft > 0 ? subject.sqft : null
+      const subjectValue = subject?.value && subject.value > 0 ? subject.value : null
+
       return (Array.isArray(data) ? data : [])
         .map((p: any) => {
           // Rentcast sold records use lastSalePrice; active listings use price;
@@ -447,9 +458,28 @@ export async function getComparableSales(
             sold_date: p.lastSaleDate || p.soldDate || null,
           }
         })
-        // Drop comps without any price signal — showing "$0" erodes trust faster
-        // than showing fewer comps does.
-        .filter((c: any) => c.estimated_value > 0)
+        .filter((c: any) => {
+          // Price floor: any residential unit sold for under $30k is almost
+          // certainly a parking deed, storage unit, tax-auction, or data glitch.
+          if (!(c.estimated_value > 30_000)) return false
+          // Comps with no sqft can't be scale-validated — drop when we have a
+          // subject sqft to compare against; keep otherwise.
+          if (subjectSqft && (!c.square_feet || c.square_feet < 200)) return false
+          // Sqft similarity: within 0.5× – 2.0× of the subject filters out
+          // studios-mixed-with-penthouses and tiny parking-style records.
+          if (subjectSqft && c.square_feet) {
+            const ratio = c.square_feet / subjectSqft
+            if (ratio < 0.5 || ratio > 2.0) return false
+          }
+          // Value similarity: 0.25× – 4.0× of the subject. Wide enough to
+          // accept reasonable market variation, narrow enough to exclude
+          // outliers that skew the median.
+          if (subjectValue) {
+            const ratio = c.estimated_value / subjectValue
+            if (ratio < 0.25 || ratio > 4.0) return false
+          }
+          return true
+        })
         .slice(0, 4)
     } catch {
       return []
