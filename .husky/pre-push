@@ -1,0 +1,6 @@
+#!/usr/bin/env sh
+# Pre-push guard: runs lint + tests before sending commits to remote.
+# Prevents build-blocking errors (unescaped JSX entities, TS errors Next
+# catches but tsc doesn't) from silently failing on Railway.
+# ~4 seconds total for lint + 131 tests — worth paying before every push.
+npm run check
