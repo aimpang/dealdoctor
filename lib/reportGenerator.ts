@@ -40,12 +40,34 @@ export async function generateFullReport(uuid: string): Promise<void> {
       : null
 
   // Fetch rent estimate, sale comps, rent comps, and market snapshot in parallel.
-  const [rentEstimate, saleComps, rentComps, marketSnapshot] = await Promise.all([
+  // Use allSettled so one failing endpoint (e.g., /markets quota-exhausted)
+  // doesn't nuke the entire report. Each getter already returns null/[] on
+  // failure, so the .reason branch here catches the rare thrown case
+  // (RentcastQuotaError). The report degrades gracefully — a missing market
+  // snapshot just hides that sidebar card, rather than failing the whole gen.
+  const [rentRes, salesRes, rentCompsRes, marketRes] = await Promise.allSettled([
     getRentEstimate(report.address, property.bedrooms),
     getComparableSales(report.city, report.state, property.bedrooms, coords, 1.0),
     getRentComps(report.address, property.bedrooms),
     getMarketSnapshot(report.zipCode),
   ])
+  const rentEstimate = rentRes.status === 'fulfilled' ? rentRes.value : null
+  const saleComps = salesRes.status === 'fulfilled' ? salesRes.value : []
+  const rentComps = rentCompsRes.status === 'fulfilled' ? rentCompsRes.value : []
+  const marketSnapshot = marketRes.status === 'fulfilled' ? marketRes.value : null
+
+  // Log per-endpoint failures so we can tell which Rentcast call failed in
+  // diagnostics without the whole report tanking.
+  for (const [name, result] of [
+    ['rentEstimate', rentRes],
+    ['saleComps', salesRes],
+    ['rentComps', rentCompsRes],
+    ['marketSnapshot', marketRes],
+  ] as const) {
+    if (result.status === 'rejected') {
+      console.warn(`[reportGenerator] ${name} failed:`, result.reason?.message ?? result.reason)
+    }
+  }
 
   const askPrice = property.estimated_value
   const offerPrice = report.offerPrice ?? askPrice
@@ -62,11 +84,31 @@ export async function generateFullReport(uuid: string): Promise<void> {
   // Climate + insurance (flood zone + state insurance + hazard scores)
   // + Location quality (walkability from Mapbox Tilequery) — run in parallel
   // since they're both network-bound on coordinates/address.
-  const [climate, locationSignals] = await Promise.all([
+  // Run climate + location in parallel with resilient failure handling.
+  // Climate must succeed (it drives insurance cost which drives cash flow);
+  // if it throws, fall back to state averages via the null-safe branches.
+  const [climateRes, locationRes] = await Promise.allSettled([
     getClimateAndInsurance(report.address, report.state, report.zipCode, offerPrice),
     coords ? getLocationSignals(coords.lat, coords.lng) : Promise.resolve(null),
   ])
-  const monthlyInsurance = Math.round(climate.estimatedAnnualInsurance / 12)
+  const climate =
+    climateRes.status === 'fulfilled' && climateRes.value ? climateRes.value : null
+  const locationSignals =
+    locationRes.status === 'fulfilled' ? locationRes.value : null
+
+  if (climateRes.status === 'rejected') {
+    console.warn('[reportGenerator] climate lookup failed:', climateRes.reason?.message)
+  }
+  if (locationRes.status === 'rejected') {
+    console.warn('[reportGenerator] location signals failed:', locationRes.reason?.message)
+  }
+
+  // If climate is entirely unavailable (rare — it has its own null-safe paths),
+  // fall back to $1,800/yr national-average homeowners insurance. Report still
+  // generates; the climate section just won't render.
+  const monthlyInsurance = climate
+    ? Math.round(climate.estimatedAnnualInsurance / 12)
+    : Math.round(1800 / 12)
 
   // Property tax: prefer actual county record from Rentcast, fall back to state avg × price.
   // Source label lets the UI attribute the number honestly.

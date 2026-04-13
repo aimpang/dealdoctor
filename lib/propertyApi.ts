@@ -98,7 +98,7 @@ async function fetchValueAvm(address: string): Promise<{
     url.searchParams.set('address', address)
     const res = await fetch(url.toString(), {
       headers: { 'X-Api-Key': API_KEY },
-      next: { revalidate: 3600 },
+      next: { revalidate: 86_400 }, // 24h cache — property data barely changes day-to-day; dramatically reduces API burn on repeat addresses
     })
     const diag = diagnoseRentcastResponse(res)
     if (diag === 'quota' || diag === 'rate-limit') {
@@ -129,7 +129,7 @@ async function searchPropertyRentcast(address: string): Promise<PropertyData | n
     const [propRes, avm] = await Promise.all([
       fetch(url.toString(), {
         headers: { 'X-Api-Key': API_KEY },
-        next: { revalidate: 3600 },
+        next: { revalidate: 86_400 }, // 24h cache — property data barely changes day-to-day; dramatically reduces API burn on repeat addresses
       }),
       fetchValueAvm(address),
     ])
@@ -281,7 +281,7 @@ export async function getMarketSnapshot(zipCode: string): Promise<MarketSnapshot
 
     const res = await fetch(url.toString(), {
       headers: { 'X-Api-Key': API_KEY },
-      next: { revalidate: 86_400 }, // once per day per zip is plenty
+      next: { revalidate: 604_800 }, // 7d — market stats move slowly at the zip level
     })
     if (!res.ok) return null
     const data = await res.json()
@@ -337,7 +337,7 @@ export async function getRentComps(address: string, bedrooms: number): Promise<R
 
     const res = await fetch(url.toString(), {
       headers: { 'X-Api-Key': API_KEY },
-      next: { revalidate: 3600 },
+      next: { revalidate: 86_400 }, // 24h cache — property data barely changes day-to-day; dramatically reduces API burn on repeat addresses
     })
     if (!res.ok) return []
     const data = await res.json()
@@ -368,7 +368,7 @@ export async function getRentEstimate(address: string, bedrooms: number): Promis
 
       const res = await fetch(url.toString(), {
         headers: { 'X-Api-Key': API_KEY },
-        next: { revalidate: 3600 },
+        next: { revalidate: 86_400 }, // 24h cache — property data barely changes day-to-day; dramatically reduces API burn on repeat addresses
       })
       if (!res.ok) return null
 
@@ -421,7 +421,7 @@ export async function getComparableSales(
 
       const res = await fetch(url.toString(), {
         headers: { 'X-Api-Key': API_KEY },
-        next: { revalidate: 3600 },
+        next: { revalidate: 86_400 }, // 24h cache — property data barely changes day-to-day; dramatically reduces API burn on repeat addresses
       })
       if (!res.ok) return []
 
