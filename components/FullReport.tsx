@@ -24,6 +24,12 @@ import {
 interface FullReportProps {
   data: any
   uuid?: string
+  addressFlags?: {
+    total: number
+    ok: number
+    value_off: number
+    rent_off: number
+  }
 }
 
 /* ───── Formatters ───── */
@@ -60,7 +66,7 @@ const VERDICT = {
   },
 } as const
 
-export function FullReport({ data, uuid }: FullReportProps) {
+export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
   const searchParams = useSearchParams()
   const router = useRouter()
   const pathname = usePathname()
@@ -191,6 +197,45 @@ export function FullReport({ data, uuid }: FullReportProps) {
           Print / Save PDF
         </button>
       </div>
+
+      {/* Address-level flag banner: if ≥2 previous buyers flagged value or
+          rent as "off" for THIS property, surface a prominent warning.
+          Protects the fifth buyer from the same bad data that caught the
+          first two. Doesn't block the report — just warns. */}
+      {addressFlags &&
+        (addressFlags.value_off >= 2 || addressFlags.rent_off >= 2) && (
+          <div className="mb-4 rounded-md border-2 border-red-500/40 bg-red-500/5 px-4 py-3">
+            <div className="flex items-start gap-2">
+              <AlertTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-red-600 dark:text-red-400" />
+              <div>
+                <p className="text-sm font-semibold text-foreground">
+                  Previous buyers flagged this property
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {addressFlags.value_off >= 2 && (
+                    <>
+                      <span className="font-medium text-foreground">
+                        {addressFlags.value_off}
+                      </span>{' '}
+                      past buyers reported the value estimate as inaccurate.
+                    </>
+                  )}
+                  {addressFlags.value_off >= 2 && addressFlags.rent_off >= 2 && ' · '}
+                  {addressFlags.rent_off >= 2 && (
+                    <>
+                      <span className="font-medium text-foreground">
+                        {addressFlags.rent_off}
+                      </span>{' '}
+                      past buyers reported the rent estimate as inaccurate.
+                    </>
+                  )}
+                  {' '}Treat those numbers with extra caution and verify with a local
+                  agent before relying on them.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
       {/* Lender-view banner */}
       {isLenderView && (

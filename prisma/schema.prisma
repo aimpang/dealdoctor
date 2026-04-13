@@ -31,6 +31,38 @@ model Customer {
   @@index([accessToken])
 }
 
+// Feedback on a specific report. Users click thumbs-up/off after viewing.
+// addressKey is a normalized form of the address (uppercase, non-alphanumeric
+// stripped) so we can aggregate across MULTIPLE reports for the same property
+// and surface "other buyers flagged this" warnings on future generations.
+model ReportFeedback {
+  id           String   @id @default(cuid())
+  reportId     String
+  addressKey   String   // normalized; indexed for cross-report aggregation
+  verdict      String   // 'ok' | 'value_off' | 'rent_off' | 'both_off'
+  customerId   String?
+  submittedAt  DateTime @default(now())
+
+  report       Report   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId])
+  @@index([addressKey, verdict])
+}
+
+// Periodic accuracy backtests. Each run samples N historical reports, pulls
+// current Rentcast data for those addresses, compares what we predicted vs
+// what shows up now. Stored so /methodology can display the latest numbers.
+model BacktestRun {
+  id              String    @id @default(cuid())
+  runAt           DateTime  @default(now())
+  sampleSize      Int
+  valueMedianErr  Float?    // median absolute % error of value predictions
+  valueWithin10   Float?    // fraction of predictions within 10% of current AVM
+  rentMedianErr   Float?
+  rentWithin10    Float?
+  notes           String?
+}
+
 model Report {
   id              String   @id @default(uuid())
   address         String
@@ -38,6 +70,7 @@ model Report {
   state           String
   zipCode         String
   country         String   @default("US")
+  feedback        ReportFeedback[]
 
   // Link back to the customer whose entitlement paid for this report.
   // Null for reports that haven't been paid yet (or were paid before the

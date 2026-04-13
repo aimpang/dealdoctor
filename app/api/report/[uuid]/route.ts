@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { generateFullReport } from '@/lib/reportGenerator'
 import { CUSTOMER_COOKIE, setCustomerCookie } from '@/lib/entitlements'
+import { addressKey } from '@/lib/addressKey'
 
 export async function GET(
   req: NextRequest,
@@ -33,6 +34,25 @@ export async function GET(
     }
 
     const r = report as any
+
+    // Aggregate feedback across ALL reports for this same address. If enough
+    // past buyers flagged the value/rent, we surface a warning banner.
+    const key = addressKey(report.address)
+    const allFeedback = await prisma.reportFeedback.findMany({
+      where: { addressKey: key },
+      select: { verdict: true },
+    })
+    const addressFlags = {
+      total: allFeedback.length,
+      ok: allFeedback.filter((f) => f.verdict === 'ok').length,
+      value_off: allFeedback.filter(
+        (f) => f.verdict === 'value_off' || f.verdict === 'both_off'
+      ).length,
+      rent_off: allFeedback.filter(
+        (f) => f.verdict === 'rent_off' || f.verdict === 'both_off'
+      ).length,
+    }
+
     const response = NextResponse.json({
       id: report.id,
       address: report.address,
@@ -43,6 +63,7 @@ export async function GET(
       teaserData: report.teaserData,
       fullReportData: report.fullReportData,
       photoFindings: r.photoFindings ?? null,
+      addressFlags,
       createdAt: report.createdAt,
     })
 

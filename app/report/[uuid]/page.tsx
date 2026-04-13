@@ -5,6 +5,7 @@ import { useParams, useSearchParams } from 'next/navigation'
 import { FullReport } from '@/components/FullReport'
 import { BlurredReport } from '@/components/BlurredReport'
 import { PhotoAnalysis } from '@/components/PhotoAnalysis'
+import { ReportFeedback } from '@/components/ReportFeedback'
 import { Logo } from '@/components/Logo'
 import { LoaderIcon, CheckCircle2Icon, MapPinIcon } from 'lucide-react'
 
@@ -145,13 +146,18 @@ export default function ReportPage() {
       <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
         {report.paid && fullData ? (
           <div className="space-y-6">
-            <FullReport data={fullData} uuid={uuid} />
+            <FullReport
+              data={fullData}
+              uuid={uuid}
+              addressFlags={report.addressFlags}
+            />
             <PhotoAnalysis
               uuid={uuid}
               initialFindings={
                 report.photoFindings ? JSON.parse(report.photoFindings) : null
               }
             />
+            <ReportFeedback uuid={uuid} />
           </div>
         ) : (
           <div className="flex flex-col items-center gap-6">

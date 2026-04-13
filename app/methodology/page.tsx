@@ -15,7 +15,23 @@ export const metadata = {
     'Transparent breakdown of every calculation and data source used in a DealDoctor report.',
 }
 
-export default function MethodologyPage() {
+import { prisma } from '@/lib/db'
+
+// Server component so we can hit Prisma directly for the latest backtest run
+// without spinning up another route / client fetch.
+async function getLatestBacktest() {
+  try {
+    return await prisma.backtestRun.findFirst({
+      orderBy: { runAt: 'desc' },
+    })
+  } catch {
+    return null
+  }
+}
+
+export default async function MethodologyPage() {
+  const backtest = await getLatestBacktest()
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-16 sm:py-24">
       <Link
@@ -114,6 +130,66 @@ export default function MethodologyPage() {
           Fix 1 = lowest-effort path. Fix 2 = value-add or structural change. Fix 3 =
           strategic pivot.
         </p>
+      </Section>
+
+      <Section icon={ShieldCheckIcon} title="Accuracy — what we measure and publish">
+        <p>
+          We can&apos;t tell you any single report is correct — no AVM-based tool
+          honestly can. What we can tell you:
+        </p>
+        <ol className="list-inside list-decimal space-y-1 pl-2">
+          <li>The math is exact (131 automated tests).</li>
+          <li>Every input is sourced and dated in the report footer.</li>
+          <li>
+            We flag divergence via our multi-source value triangulation — when
+            estimates span more than 25%, confidence is marked low.
+          </li>
+          <li>
+            We surface known-bad property patterns (student rentals, multi-unit
+            zoning, yield outliers) before the paywall, not after.
+          </li>
+          <li>
+            Every paid report links to Zillow, Redfin, and Realtor for the same
+            address so you can cross-check in one click.
+          </li>
+        </ol>
+
+        {backtest ? (
+          <div className="mt-4 rounded-lg border bg-card p-4">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
+              Latest Accuracy Backtest
+            </p>
+            <p className="mt-1 text-sm text-foreground">
+              Run {new Date(backtest.runAt).toLocaleDateString('en-US', {
+                year: 'numeric', month: 'short', day: 'numeric',
+              })}{' '}· sample of {backtest.sampleSize} reports
+            </p>
+            {backtest.valueWithin10 != null && (
+              <p className="mt-1 text-sm text-foreground">
+                <span className="font-semibold">
+                  {(backtest.valueWithin10 * 100).toFixed(0)}%
+                </span>{' '}
+                of value predictions are within 10% of the current market AVM.
+              </p>
+            )}
+            {backtest.valueMedianErr != null && (
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Median absolute value error: {(backtest.valueMedianErr * 100).toFixed(1)}%
+              </p>
+            )}
+            {backtest.notes && (
+              <p className="mt-2 text-[11px] text-muted-foreground">{backtest.notes}</p>
+            )}
+          </div>
+        ) : (
+          <div className="mt-4 rounded-lg border border-dashed bg-background/40 p-4">
+            <p className="text-[11px] text-muted-foreground">
+              Accuracy backtest results will publish here once we have enough
+              historical reports to run a meaningful sample (target: quarterly
+              after launch).
+            </p>
+          </div>
+        )}
       </Section>
 
       <Section icon={ShieldCheckIcon} title="What DealDoctor is not">
