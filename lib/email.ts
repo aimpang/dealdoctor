@@ -9,7 +9,10 @@ interface SendEmailParams {
   text?: string
 }
 
-const FROM_DEFAULT = process.env.EMAIL_FROM || 'DealDoctor <noreply@dealdoctor.app>'
+// Default to Resend's onboarding address which works on any account without
+// domain verification. For production, set EMAIL_FROM to a verified domain
+// on Resend — otherwise emails may go to spam or fail to render cleanly.
+const FROM_DEFAULT = process.env.EMAIL_FROM || 'DealDoctor <onboarding@resend.dev>'
 const REPLY_TO = process.env.EMAIL_REPLY_TO
 
 export async function sendEmail(params: SendEmailParams): Promise<{ sent: boolean; id?: string; error?: string }> {
