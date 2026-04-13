@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { searchProperty, getRentEstimate } from '@/lib/propertyApi'
+import { searchProperty, getRentEstimate, RentcastQuotaError } from '@/lib/propertyApi'
 import { getCurrentRates, applyInvestorPremium } from '@/lib/rates'
 import { getStateFromZipCode, calculateBreakEvenPrice } from '@/lib/calculations'
 import { prisma } from '@/lib/db'
@@ -207,6 +207,20 @@ export async function POST(req: NextRequest) {
       autopaid, // null when no entitlement; present when auto-unlocked
     })
   } catch (err: any) {
+    // Distinguish data-provider quota / rate-limit from other failures so we
+    // don't silently 500 when Rentcast is just over budget.
+    if (err instanceof RentcastQuotaError) {
+      console.error('[preview] Rentcast quota/auth failure', err.status)
+      return NextResponse.json(
+        {
+          error:
+            "Our property data provider is temporarily over quota. Try again in a few minutes, or contact support if this persists.",
+          code: 'data-provider-quota',
+          debug: `Rentcast ${err.status}`,
+        },
+        { status: 503 }
+      )
+    }
     console.error('Preview error:', err)
     return NextResponse.json({
       error: 'Something went wrong. Please try again.',

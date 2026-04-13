@@ -57,11 +57,32 @@ export interface RentComp {
 // In production (API key configured) we return null on miss — the caller surfaces
 // a real "property not found" error. Stub data is dev-mode only (no API key set)
 // so we never charge a user for a report synthesized from random numbers.
+//
+// Quota / rate-limit errors from Rentcast bubble up as RentcastQuotaError so
+// the preview route can show a specific "data service over quota — try later"
+// message instead of the misleading "property not found."
 export async function searchProperty(address: string): Promise<PropertyData | null> {
   if (API_KEY && API_KEY !== 'your_key_here') {
     return await searchPropertyRentcast(address)
   }
   return generateStubProperty(address)
+}
+
+// Custom error thrown when Rentcast rejects the API key or quota is exhausted.
+// Caught by the preview route and surfaced to the user with a specific
+// "data service unavailable" message instead of the generic "not found."
+export class RentcastQuotaError extends Error {
+  constructor(public status: number) {
+    super(`Rentcast API ${status}: auth or quota failure`)
+    this.name = 'RentcastQuotaError'
+  }
+}
+
+function diagnoseRentcastResponse(res: Response): 'ok' | 'quota' | 'rate-limit' | 'error' {
+  if (res.ok) return 'ok'
+  if (res.status === 401 || res.status === 403) return 'quota'
+  if (res.status === 429) return 'rate-limit'
+  return 'error'
 }
 
 // Rentcast's dedicated value AVM endpoint. Returns a real estimate with a
@@ -79,6 +100,10 @@ async function fetchValueAvm(address: string): Promise<{
       headers: { 'X-Api-Key': API_KEY },
       next: { revalidate: 3600 },
     })
+    const diag = diagnoseRentcastResponse(res)
+    if (diag === 'quota' || diag === 'rate-limit') {
+      throw new RentcastQuotaError(res.status)
+    }
     if (!res.ok) return null
     const d = await res.json()
     const price = Number(d?.price)
@@ -88,7 +113,8 @@ async function fetchValueAvm(address: string): Promise<{
       low: Number(d?.priceRangeLow) || price,
       high: Number(d?.priceRangeHigh) || price,
     }
-  } catch {
+  } catch (err) {
+    if (err instanceof RentcastQuotaError) throw err // bubble up quota issues
     return null
   }
 }
@@ -107,6 +133,10 @@ async function searchPropertyRentcast(address: string): Promise<PropertyData | n
       }),
       fetchValueAvm(address),
     ])
+    const diag = diagnoseRentcastResponse(propRes)
+    if (diag === 'quota' || diag === 'rate-limit') {
+      throw new RentcastQuotaError(propRes.status)
+    }
     if (!propRes.ok) return null
 
     const data = await propRes.json()
