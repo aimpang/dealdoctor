@@ -205,8 +205,15 @@ export async function generateFullReport(uuid: string): Promise<void> {
     }
   }
 
-  // Confidence band: spread / primary value. <10% = high, <25% = medium, else low.
+  // Confidence band: spread / primary value. <10% = high, <25% = medium,
+  // else low. Include the AVM's own confidence range (priceRangeLow/High
+  // from Rentcast) as additional values in the spread — otherwise an AVM
+  // with a wide uncertainty band like $1.97M-$3.25M reads as "high
+  // confidence" just because it has one signal. Grok caught this on
+  // 216 W Escalones where the AVM spanned 49% but we showed it as precise.
   const allValues = valueSignals.map((s) => s.value)
+  if (property.value_range_low) allValues.push(property.value_range_low)
+  if (property.value_range_high) allValues.push(property.value_range_high)
   const valueSpread =
     allValues.length > 1
       ? (Math.max(...allValues) - Math.min(...allValues)) / property.estimated_value

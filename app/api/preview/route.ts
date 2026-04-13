@@ -119,6 +119,37 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    // Duplex / triplex / quadruplex / multi-family: Rentcast often returns
+    // one side's bedroom/bathroom counts but whole-property value. The math
+    // misaligns. We can't split the data programmatically — but we can tell
+    // the buyer to verify unit configuration against the listing.
+    if (/duplex|triplex|quadruplex|multi[\s-]?family/i.test(property.property_type || '')) {
+      warnings.push({
+        code: 'multi-unit-property',
+        message: `Property type is "${property.property_type}". Rentcast often returns one unit's bed/bath count combined with whole-property value, producing an inconsistent picture. Verify the listing's unit configuration and split the rent/value between units before relying on these numbers.`,
+      })
+    }
+
+    // Wide AVM confidence range: Rentcast's /avm/value returns price_low
+    // and price_high. When the range spans more than 30% of the midpoint,
+    // the AVM itself is uncertain. Grok caught this on 216 W Escalones
+    // where the range was $1.97M-$3.25M (49% spread) but we showed $2.61M
+    // as if it were precise.
+    if (
+      property.value_range_low &&
+      property.value_range_high &&
+      property.estimated_value > 0
+    ) {
+      const rangeSpread =
+        (property.value_range_high - property.value_range_low) / property.estimated_value
+      if (rangeSpread > 0.30) {
+        warnings.push({
+          code: 'avm-wide-range',
+          message: `Value AVM has a wide confidence band ($${property.value_range_low.toLocaleString()}-$${property.value_range_high.toLocaleString()}, ±${Math.round((rangeSpread / 2) * 100)}%). The midpoint is uncertain; cross-check against Zillow / Redfin / a local agent before trusting.`,
+        })
+      }
+    }
+
     // Known-bad subdivision / student-housing patterns. Small curated list —
     // add more as we find cases. AVMs for these almost always pull per-bedroom
     // rents, so flagging pre-paywall is important.

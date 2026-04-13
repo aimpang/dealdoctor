@@ -91,6 +91,32 @@ describe('applyStudentHousingHeuristic — yield anomaly', () => {
     expect(r.isMultiplied).toBe(false)
   })
 
+  it('does NOT multiply luxury low-yield markets (San Clemente case)', () => {
+    // 216 W Escalones: 3BR, $2.61M, $7,070/mo = 3.25% yield (low)
+    // BUT California coastal yields are structurally low, not per-bedroom.
+    // Multiplied yield = 9.75% — would be "plausible" by yield math alone,
+    // but the property-value + bedroom gates should block the multiplier.
+    const r = applyStudentHousingHeuristic({
+      rentAvm: 7070,
+      propertyValue: 2_610_000,
+      bedrooms: 3,
+      subdivision: 'San Clemente',
+    })
+    expect(r.isMultiplied).toBe(false)
+  })
+
+  it('does NOT multiply high-value 4BR either (luxury, not student housing)', () => {
+    // 4BR at $1.5M @ low yield is probably a luxury home, not student housing.
+    // The propertyValue < $800k gate blocks this.
+    const r = applyStudentHousingHeuristic({
+      rentAvm: 3500,
+      propertyValue: 1_500_000,
+      bedrooms: 4,
+      subdivision: 'Luxury Heights',
+    })
+    expect(r.isMultiplied).toBe(false)
+  })
+
   it('handles zero / invalid inputs safely', () => {
     const r = applyStudentHousingHeuristic({
       rentAvm: 0,

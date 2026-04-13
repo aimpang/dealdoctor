@@ -65,7 +65,8 @@ export function applyStudentHousingHeuristic(params: {
   if (!Number.isFinite(propertyValue) || propertyValue <= 0) return defaultResult
   if (!Number.isFinite(bedrooms) || bedrooms < 3) return defaultResult
 
-  // Signal A: subdivision match — highest confidence
+  // Signal A: subdivision match — highest confidence. Allows bedrooms >= 3
+  // because some Hunters-Ridge-style townhomes are 3BR.
   if (matchesKnownStudentComplex(subdivision)) {
     return {
       effectiveRent: Math.round(rentAvm * bedrooms),
@@ -76,14 +77,20 @@ export function applyStudentHousingHeuristic(params: {
     }
   }
 
-  // Signal B: yield-anomaly. Current implied yield is impossibly low for a
-  // rental (< 4%/yr gross) AND multiplying by bedroom count produces a
-  // plausible yield (4-15%). If the multiplied version would also be
-  // implausible, DON'T multiply — the data is just broken and a warning
-  // (handled elsewhere) is the right response.
+  // Signal B: yield-anomaly. Stricter requirements than subdivision-match
+  // because this is the path most likely to mis-fire on legitimate low-yield
+  // markets (California coastal, Manhattan, etc.). We require:
+  //   - bedrooms >= 4 (student rentals typically lease 4+ rooms; 3BR at low
+  //     yield in an expensive market is normal, not per-bedroom data)
+  //   - propertyValue < $800k (prices this high are structurally low-yield;
+  //     the 216 W Escalones San Clemente case is $2.6M @ 3BR — should NEVER
+  //     trigger the multiplier)
+  //   - current yield < 4% AND multiplied yield in normal 4-15% range
   const currentYield = (rentAvm * 12) / propertyValue
   const multipliedYield = (rentAvm * bedrooms * 12) / propertyValue
   if (
+    bedrooms >= 4 &&
+    propertyValue < 800_000 &&
     currentYield < 0.04 &&
     multipliedYield >= 0.04 &&
     multipliedYield <= 0.15
