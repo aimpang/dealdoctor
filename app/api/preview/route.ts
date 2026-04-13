@@ -100,6 +100,25 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    // Known-bad subdivision / student-housing patterns. Small curated list —
+    // add more as we find cases. AVMs for these almost always pull per-bedroom
+    // rents, so flagging pre-paywall is important.
+    const KNOWN_STUDENT_COMPLEXES = [
+      'HUNTERS RIDGE',
+      'ASHBY CROSSING',
+      'SUNCHASE',
+      'COPPER BEECH',
+      'UNIVERSITY',
+      'CAMPUS',
+    ]
+    const subdivisionUpper = (property.subdivision || '').toUpperCase()
+    if (KNOWN_STUDENT_COMPLEXES.some((p) => subdivisionUpper.includes(p))) {
+      warnings.push({
+        code: 'student-housing',
+        message: `Property is in "${property.subdivision}" — a known student-rental complex. Rent AVMs usually return per-bedroom rates here; whole-property rent is typically 3-5× the reported figure. Verify with a local property manager before trusting any cash-flow numbers.`,
+      })
+    }
+
     // Breakeven hook uses the investor rate (PMMS + LTR premium). DealDoctor's
     // audience is investors, so the pre-paywall walk-away number must reflect
     // what they'll actually pay to finance the deal — not an owner-occupied rate.

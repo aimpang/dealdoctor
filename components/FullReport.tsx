@@ -18,6 +18,7 @@ import {
   DownloadIcon,
   EyeOffIcon,
   EyeIcon,
+  BarChart3Icon,
 } from 'lucide-react'
 
 interface FullReportProps {
@@ -98,6 +99,9 @@ export function FullReport({ data, uuid }: FullReportProps) {
     marketSnapshot,
     locationSignals,
     rentComps,
+    valueTriangulation,
+    rentWarnings,
+    crossCheckLinks,
   } = data
 
   const v = VERDICT[ltr.verdict as keyof typeof VERDICT] || VERDICT.PASS
@@ -282,6 +286,79 @@ export function FullReport({ data, uuid }: FullReportProps) {
           />
         )}
       </section>
+
+      {/* Value triangulation — show every independent signal we have for
+          the property's value so the buyer can judge confidence themselves.
+          Appears right after the hero so it's visible before they scroll. */}
+      {valueTriangulation && valueTriangulation.signals?.length > 1 && (
+        <section
+          className={cn(
+            'mb-5 rounded-lg border p-5',
+            valueTriangulation.confidence === 'low'
+              ? 'border-amber-500/40 bg-amber-500/5'
+              : 'border-border/70 bg-card'
+          )}
+        >
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <BarChart3Icon className="h-4 w-4 text-primary" />
+              <Eyebrow>Value Triangulation</Eyebrow>
+            </div>
+            <span
+              className={cn(
+                'rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider',
+                valueTriangulation.confidence === 'high' &&
+                  'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400',
+                valueTriangulation.confidence === 'medium' &&
+                  'bg-amber-500/15 text-amber-700 dark:text-amber-400',
+                valueTriangulation.confidence === 'low' &&
+                  'bg-red-500/15 text-red-700 dark:text-red-400'
+              )}
+            >
+              {valueTriangulation.confidence} confidence · {valueTriangulation.spreadPct}% spread
+            </span>
+          </div>
+          <div className="space-y-2 text-sm">
+            {valueTriangulation.signals.map((s: any, i: number) => (
+              <div
+                key={i}
+                className="flex items-start justify-between gap-3 border-b border-border/40 pb-2 last:border-b-0 last:pb-0"
+              >
+                <div className="min-w-0">
+                  <p className="font-medium text-foreground">{s.label}</p>
+                  <p className="text-[11px] text-muted-foreground">{s.source}</p>
+                </div>
+                <p className="shrink-0 font-bold tabular-nums text-foreground">
+                  {formatCurrency(s.value)}
+                </p>
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 text-[11px] text-muted-foreground">
+            {valueTriangulation.confidence === 'low' &&
+              'These estimates diverge by more than 25% — treat the headline number with caution and cross-check with a local agent.'}
+            {valueTriangulation.confidence === 'medium' &&
+              'Estimates agree within 10-25%. The headline value is reasonable but not precise.'}
+            {valueTriangulation.confidence === 'high' &&
+              'Multiple independent signals agree within 10% — this value is well-supported.'}
+          </p>
+        </section>
+      )}
+
+      {/* Rent warnings — data-quality flags specific to rent estimates */}
+      {rentWarnings && rentWarnings.length > 0 && (
+        <section className="mb-5 space-y-2">
+          {rentWarnings.map((w: string, i: number) => (
+            <div
+              key={i}
+              className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 px-4 py-3"
+            >
+              <AlertTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+              <p className="text-xs leading-relaxed text-foreground">{w}</p>
+            </div>
+          ))}
+        </section>
+      )}
 
       {/* Recommended Offer Prices — three actionable target prices */}
       {recommendedOffers && (
@@ -1081,6 +1158,42 @@ export function FullReport({ data, uuid }: FullReportProps) {
           )}
         </aside>
       </div>
+
+      {/* Cross-check links — signals confidence (we're not afraid to link
+          competitors) and gives buyers a one-click path to verify our numbers
+          against Zillow / Redfin / Realtor. Via Google search-redirect because
+          Zillow doesn't expose direct address URLs programmatically. */}
+      {crossCheckLinks && (
+        <div className="rounded-lg border border-dashed border-border/60 bg-background/40 p-4">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-foreground">
+            Cross-check this property
+          </p>
+          <p className="mb-3 text-[11px] leading-relaxed text-muted-foreground">
+            Every AVM has error bars. Click through to verify our numbers against the majors —
+            we&apos;d rather you trust our math because you checked, than because we said so.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {[
+              { href: crossCheckLinks.zillow, label: 'Zillow' },
+              { href: crossCheckLinks.redfin, label: 'Redfin' },
+              { href: crossCheckLinks.realtor, label: 'Realtor.com' },
+            ].map((link) => (
+              <a
+                key={link.label}
+                href={link.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-md border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+              >
+                {link.label}
+                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Data Sources footer */}
       <footer className="mt-8 rounded-lg border border-dashed border-border/60 bg-background/40 p-4 text-[11px] leading-relaxed text-muted-foreground">

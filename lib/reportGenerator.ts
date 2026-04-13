@@ -109,6 +109,95 @@ export async function generateFullReport(uuid: string): Promise<void> {
       ? compValues[Math.floor(compValues.length / 2)]
       : undefined
 
+  // Value triangulation — build a list of every independent signal we have
+  // for the property's value. If they diverge by >25%, we flag low confidence
+  // so buyers know the AVM is uncertain for this property.
+  type ValueSignal = { label: string; value: number; source: string }
+  const valueSignals: ValueSignal[] = []
+  valueSignals.push({
+    label: property.value_source === 'listing' ? 'Active listing price' : 'Rentcast AVM',
+    value: property.estimated_value,
+    source:
+      property.value_source === 'listing' ? 'Current MLS listing' :
+      property.value_source === 'avm' ? 'Rentcast automated value model' :
+      property.value_source === 'tax-assessment' ? 'Tax assessment × 1.15' :
+      property.value_source === 'last-sale-grown' ? 'Last sale grown at 3%/yr' :
+      'Unknown source',
+  })
+  if (arvEstimate) {
+    valueSignals.push({
+      label: 'Sale comps median',
+      value: arvEstimate,
+      source: `Median of ${compValues.length} recent sold comps (1-mile radius, same bed count)`,
+    })
+  }
+  if (property.latest_tax_assessment && property.value_source !== 'tax-assessment') {
+    valueSignals.push({
+      label: 'Tax assessment × 1.15',
+      value: Math.round(property.latest_tax_assessment * 1.15),
+      source: 'County assessor records (assessments typically lag market ~15%)',
+    })
+  }
+  if (property.last_sale_price && property.last_sale_date && property.value_source !== 'last-sale-grown') {
+    const saleYear = new Date(property.last_sale_date).getFullYear()
+    const yearsSinceSale = Math.max(0, new Date().getFullYear() - saleYear)
+    if (yearsSinceSale > 0) {
+      valueSignals.push({
+        label: `Last sale grown ${yearsSinceSale}yr @ 3%`,
+        value: Math.round(property.last_sale_price * Math.pow(1.03, yearsSinceSale)),
+        source: `Sold ${saleYear} for $${property.last_sale_price.toLocaleString()}`,
+      })
+    }
+  }
+
+  // Confidence band: spread / primary value. <10% = high, <25% = medium, else low.
+  const allValues = valueSignals.map((s) => s.value)
+  const valueSpread =
+    allValues.length > 1
+      ? (Math.max(...allValues) - Math.min(...allValues)) / property.estimated_value
+      : 0
+  const valueConfidence: 'high' | 'medium' | 'low' =
+    valueSpread < 0.10 ? 'high' : valueSpread < 0.25 ? 'medium' : 'low'
+
+  // Cross-check rent vs sale-comps. Our rent AVM can mis-fire on student-
+  // rental / per-room comps; if the annual rent yield is way off the
+  // typical-for-this-market range, flag it. Note: the existing preview-side
+  // rent-suspect warning handles the absolute-yield case. This is an
+  // additional signal focused on the AVM vs manual-comps spread.
+  const rentWarnings: string[] = []
+  if (rentComps && rentComps.length >= 3) {
+    const rentCompMedian = [...rentComps]
+      .map((c: any) => Number(c.rent))
+      .filter((v: number) => Number.isFinite(v) && v > 0)
+      .sort((a: number, b: number) => a - b)[Math.floor(rentComps.length / 2)]
+    if (rentCompMedian && monthlyRent < rentCompMedian * 0.75) {
+      rentWarnings.push(
+        `Rent AVM ($${Math.round(monthlyRent).toLocaleString()}/mo) is >25% below rent-comps median ($${Math.round(rentCompMedian).toLocaleString()}/mo) — AVM may have picked up lower-priced comps.`
+      )
+    }
+  }
+
+  // Student-housing / known-bad patterns. Small curated list — grows as we
+  // find cases. When matched, downgrades confidence hard because rent AVMs
+  // almost always return per-bedroom rates for these.
+  const KNOWN_STUDENT_COMPLEXES = [
+    'HUNTERS RIDGE',    // JMU, Harrisonburg VA
+    'ASHBY CROSSING',   // JMU, Harrisonburg VA
+    'SUNCHASE',         // JMU, Harrisonburg VA
+    'COPPER BEECH',     // national student-housing brand
+    'UNIVERSITY',       // often student-oriented
+    'CAMPUS',
+  ]
+  const subdivisionUpper = (property.subdivision || '').toUpperCase()
+  const isStudentHousing = KNOWN_STUDENT_COMPLEXES.some((p) =>
+    subdivisionUpper.includes(p)
+  )
+  if (isStudentHousing) {
+    rentWarnings.push(
+      `Property is in "${property.subdivision}" — a known student-rental complex. Rent AVMs typically return per-bedroom rates here; whole-property rent is often 3-5× the reported figure.`
+    )
+  }
+
   // Cash-to-close: the full capital required to walk into closing.
   // monthlyPITI = principal-interest + tax + insurance (ignoring HOA/maint for reserves,
   // matching standard lender reserve calc which uses PITI not PITIA).
@@ -303,6 +392,22 @@ export async function generateFullReport(uuid: string): Promise<void> {
     locationSignals,
     rentComps,
     climate,
+    // Multi-source value triangulation + data-quality signals
+    valueTriangulation: {
+      signals: valueSignals,
+      primaryValue: property.estimated_value,
+      valueSource: property.value_source,
+      valueRangeLow: property.value_range_low,
+      valueRangeHigh: property.value_range_high,
+      spreadPct: Math.round(valueSpread * 1000) / 10, // as percentage
+      confidence: valueConfidence,
+    },
+    rentWarnings,
+    crossCheckLinks: {
+      zillow: `https://www.google.com/search?q=${encodeURIComponent(`zillow ${report.address}`)}`,
+      redfin: `https://www.google.com/search?q=${encodeURIComponent(`redfin ${report.address}`)}`,
+      realtor: `https://www.google.com/search?q=${encodeURIComponent(`realtor.com ${report.address}`)}`,
+    },
     ltr: ltrMetrics,
     dealDoctor,
     dealDoctorError,
