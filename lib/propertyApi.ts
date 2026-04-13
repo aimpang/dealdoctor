@@ -23,6 +23,18 @@ export interface PropertyData {
   // Optional county-record fields — present when Rentcast has them
   annual_property_tax?: number     // actual most-recent-year tax (not state avg × price)
   hoa_fee_monthly?: number         // monthly HOA dues if captured
+  // Value attribution — so the UI can show buyers where the number came from
+  // and what the confidence range looks like. Critical for AVM-based reports.
+  value_source?: 'avm' | 'listing' | 'tax-assessment' | 'last-sale-grown' | 'unknown'
+  value_range_low?: number
+  value_range_high?: number
+  last_sale_price?: number
+  last_sale_date?: string | null
+  latest_tax_assessment?: number   // most-recent assessed value
+  // Zoning / classification hints — flag properties where rent AVMs are unreliable
+  // (student rentals leased per-room, multi-unit, etc.)
+  zoning?: string
+  subdivision?: string
 }
 
 export interface RentEstimate {
@@ -52,19 +64,52 @@ export async function searchProperty(address: string): Promise<PropertyData | nu
   return generateStubProperty(address)
 }
 
+// Rentcast's dedicated value AVM endpoint. Returns a real estimate with a
+// confidence band. The property lookup endpoint (/properties) doesn't include
+// a price in most responses — you need /avm/value for that.
+async function fetchValueAvm(address: string): Promise<{
+  price: number
+  low: number
+  high: number
+} | null> {
+  try {
+    const url = new URL('https://api.rentcast.io/v1/avm/value')
+    url.searchParams.set('address', address)
+    const res = await fetch(url.toString(), {
+      headers: { 'X-Api-Key': API_KEY },
+      next: { revalidate: 3600 },
+    })
+    if (!res.ok) return null
+    const d = await res.json()
+    const price = Number(d?.price)
+    if (!Number.isFinite(price) || price <= 0) return null
+    return {
+      price,
+      low: Number(d?.priceRangeLow) || price,
+      high: Number(d?.priceRangeHigh) || price,
+    }
+  } catch {
+    return null
+  }
+}
+
 // Rentcast API integration
 async function searchPropertyRentcast(address: string): Promise<PropertyData | null> {
   try {
     const url = new URL('https://api.rentcast.io/v1/properties')
     url.searchParams.set('address', address)
 
-    const res = await fetch(url.toString(), {
-      headers: { 'X-Api-Key': API_KEY },
-      next: { revalidate: 3600 },
-    })
-    if (!res.ok) return null
+    // Fire the AVM call in parallel so we don't serialize two Rentcast round-trips
+    const [propRes, avm] = await Promise.all([
+      fetch(url.toString(), {
+        headers: { 'X-Api-Key': API_KEY },
+        next: { revalidate: 3600 },
+      }),
+      fetchValueAvm(address),
+    ])
+    if (!propRes.ok) return null
 
-    const data = await res.json()
+    const data = await propRes.json()
     if (!data || (Array.isArray(data) && data.length === 0)) return null
 
     const prop = Array.isArray(data) ? data[0] : data
@@ -93,6 +138,63 @@ async function searchPropertyRentcast(address: string): Promise<PropertyData | n
       }
     }
 
+    // Value cascade — use the best signal we have, tagged with its source so
+    // the UI can show buyers where the number came from + confidence band.
+    // NEVER silently fall back to a magic $350k placeholder (previous bug).
+    let estimatedValue = 0
+    let valueSource: PropertyData['value_source'] = 'unknown'
+    let valueRangeLow: number | undefined
+    let valueRangeHigh: number | undefined
+
+    // Priority 1: active listing price if present
+    if (prop.price && Number(prop.price) > 0) {
+      estimatedValue = Number(prop.price)
+      valueSource = 'listing'
+    }
+    // Priority 2: Rentcast value AVM (with confidence range)
+    else if (avm) {
+      estimatedValue = avm.price
+      valueSource = 'avm'
+      valueRangeLow = avm.low
+      valueRangeHigh = avm.high
+    }
+    // Priority 3: most-recent tax assessment × 1.15 (assessments typically
+    // lag market by ~15% in fair-market areas; varies by state but better
+    // than nothing)
+    else if (prop.taxAssessments) {
+      const years = Object.keys(prop.taxAssessments).sort().reverse()
+      for (const y of years) {
+        const v = Number(prop.taxAssessments[y]?.value)
+        if (Number.isFinite(v) && v > 0) {
+          estimatedValue = Math.round(v * 1.15)
+          valueSource = 'tax-assessment'
+          break
+        }
+      }
+    }
+    // Priority 4: last sale price grown at 3%/yr since sale date
+    if (!estimatedValue && prop.lastSalePrice && prop.lastSaleDate) {
+      const saleYear = new Date(prop.lastSaleDate).getFullYear()
+      const currentYear = new Date().getFullYear()
+      const years = Math.max(0, currentYear - saleYear)
+      estimatedValue = Math.round(Number(prop.lastSalePrice) * Math.pow(1.03, years))
+      valueSource = 'last-sale-grown'
+    }
+
+    // If we genuinely have no value signal, return null — caller surfaces
+    // a real "property not found" error rather than a fabricated report.
+    if (!estimatedValue || estimatedValue <= 0) return null
+
+    // Capture latest tax assessment for UI display even if not the chosen value
+    let latestTaxAssessment: number | undefined
+    if (prop.taxAssessments && typeof prop.taxAssessments === 'object') {
+      const years = Object.keys(prop.taxAssessments).sort().reverse()
+      for (const y of years) {
+        const v = Number(prop.taxAssessments[y]?.value)
+        if (Number.isFinite(v) && v > 0) { latestTaxAssessment = v; break }
+      }
+    }
+
     return {
       property_id: prop.id || prop.addressHash || address,
       address: prop.formattedAddress || prop.addressLine1 || address.split(',')[0],
@@ -102,7 +204,7 @@ async function searchPropertyRentcast(address: string): Promise<PropertyData | n
       bedrooms: prop.bedrooms || 3,
       bathrooms: prop.bathrooms || 2,
       property_type: prop.propertyType || 'Single Family',
-      estimated_value: prop.price || prop.estimatedValue || 350000,
+      estimated_value: estimatedValue,
       year_built: prop.yearBuilt || 2000,
       square_feet: prop.squareFootage || 1800,
       lot_size: prop.lotSize,
@@ -110,6 +212,14 @@ async function searchPropertyRentcast(address: string): Promise<PropertyData | n
       longitude: typeof prop.longitude === 'number' ? prop.longitude : undefined,
       annual_property_tax: annualPropertyTax,
       hoa_fee_monthly: hoaMonthly,
+      value_source: valueSource,
+      value_range_low: valueRangeLow,
+      value_range_high: valueRangeHigh,
+      last_sale_price: prop.lastSalePrice ? Number(prop.lastSalePrice) : undefined,
+      last_sale_date: prop.lastSaleDate || null,
+      latest_tax_assessment: latestTaxAssessment,
+      zoning: typeof prop.zoning === 'string' ? prop.zoning : undefined,
+      subdivision: typeof prop.subdivision === 'string' ? prop.subdivision : undefined,
     }
   } catch {
     return null

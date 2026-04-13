@@ -52,6 +52,54 @@ export async function POST(req: NextRequest) {
     const state = property.state || getStateFromZipCode(property.zip_code)
     const estimatedRent = rentEstimate?.estimated_rent || Math.round(property.estimated_value * 0.005)
 
+    // Data-quality warnings — shown in the teaser so buyers don't pay for a
+    // report based on bad data. The two common failure modes:
+    //   (a) value comes from tax assessment or grown sale price (less precise
+    //       than live AVM — e.g. remote markets where Rentcast has thin data)
+    //   (b) rent / value ratio is implausibly low: typical US rentals clear
+    //       4-12% gross annual yield. <4% usually means the rent AVM picked
+    //       up per-room student-rental comps, or the property is in a
+    //       distressed market. Either way, verify before trusting.
+    const annualYield = (estimatedRent * 12) / property.estimated_value
+    const warnings: Array<{ code: string; message: string }> = []
+    if (property.value_source === 'tax-assessment') {
+      warnings.push({
+        code: 'value-from-tax',
+        message:
+          "Value derived from county tax assessment × 1.15 (no live AVM available). Less precise than a market estimate — verify with a local agent.",
+      })
+    } else if (property.value_source === 'last-sale-grown') {
+      warnings.push({
+        code: 'value-from-sale',
+        message:
+          "Value derived from the last sale price grown at 3%/yr (no live AVM or recent assessment). Treat as a rough anchor only.",
+      })
+    }
+    if (annualYield < 0.04) {
+      warnings.push({
+        code: 'rent-suspect',
+        message:
+          "Rent estimate is unusually low vs property value — may be a per-room / student-rental figure or stale data. Verify with a local property manager.",
+      })
+    } else if (annualYield > 0.18) {
+      warnings.push({
+        code: 'rent-high',
+        message:
+          'Rent estimate is unusually high vs value — verify with local comps before relying on it.',
+      })
+    }
+    if (
+      property.zoning &&
+      /MULTI|APT|APARTMENT/i.test(property.zoning) &&
+      property.property_type !== 'Single Family'
+    ) {
+      warnings.push({
+        code: 'multi-unit-zoning',
+        message:
+          "Zoning indicates multi-unit residential. Whole-property economics may differ from per-unit comps Rentcast picks up.",
+      })
+    }
+
     // Breakeven hook uses the investor rate (PMMS + LTR premium). DealDoctor's
     // audience is investors, so the pre-paywall walk-away number must reflect
     // what they'll actually pay to finance the deal — not an owner-occupied rate.
@@ -74,6 +122,12 @@ export async function POST(req: NextRequest) {
       yearBuilt: property.year_built,
       currentRate: investorRate, // display the rate our math actually used
       pmmsRate: rates.mortgage30yr, // reference: owner-occupied PMMS
+      valueSource: property.value_source,
+      valueRangeLow: property.value_range_low,
+      valueRangeHigh: property.value_range_high,
+      rentRangeLow: rentEstimate?.rent_low,
+      rentRangeHigh: rentEstimate?.rent_high,
+      warnings, // data-quality flags — shown BEFORE paywall
     }
 
     // If the user has an active customer cookie with remaining quota, auto-pay
