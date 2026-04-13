@@ -391,6 +391,8 @@ export async function generateFullReport(uuid: string): Promise<void> {
       sqft: property.square_feet,
       yearBuilt: property.year_built,
       propertyType: property.property_type,
+      latitude: property.latitude,
+      longitude: property.longitude,
     },
     rates: {
       mortgage30yr: rates.mortgage30yr,          // owner-occupied PMMS (reference)

@@ -6,6 +6,8 @@ import { DealDoctorSection } from './DealDoctor'
 import { WealthAreaChart, WealthCompositionPie, SensitivityTornado } from './ReportCharts'
 import { RehabEstimator } from './RehabEstimator'
 import { PortfolioButton } from './PortfolioButton'
+import { PropertyViews } from './PropertyViews'
+import { ShareButton } from './ShareButton'
 import {
   CheckCircle2Icon,
   XCircleIcon,
@@ -138,6 +140,7 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
 
       {/* Top utility bar — all hidden in print */}
       <div className="no-print mb-3 flex flex-wrap items-center justify-end gap-2">
+        {uuid && <ShareButton uuid={uuid} address={property?.address ?? ''} />}
         {uuid && (
           <PortfolioButton
             deal={{
@@ -296,6 +299,21 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
           </div>
         </div>
       </header>
+
+      {/* Property visual context — aerial + street maps. We can't pull MLS
+          listing photos without a broker license; aerial/street context is
+          what's actually useful for diligence anyway. */}
+      {property?.latitude != null && property?.longitude != null && (
+        <section className="mb-5">
+          <PropertyViews
+            address={property.address}
+            city={property.city}
+            state={property.state}
+            lat={property.latitude}
+            lng={property.longitude}
+          />
+        </section>
+      )}
 
       {/* Hero 3-card strip — the three numbers that matter most */}
       <section className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-3">
