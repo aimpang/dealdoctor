@@ -343,7 +343,7 @@ export async function generateFullReport(uuid: string): Promise<void> {
       report.address, report.city, report.state,
       strategy as 'LTR' | 'STR' | 'FLIP',
       ltrMetrics, offerPrice, monthlyRent, investorRate,
-      climate,
+      climate ?? undefined,
       property.bedrooms,
       arvEstimate,
       rehabBudget || undefined

@@ -374,7 +374,7 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
                   <p className="text-[11px] text-muted-foreground">{s.source}</p>
                 </div>
                 <p className="shrink-0 font-bold tabular-nums text-foreground">
-                  {formatCurrency(s.value)}
+                  {fmt(s.value)}
                 </p>
               </div>
             ))}
