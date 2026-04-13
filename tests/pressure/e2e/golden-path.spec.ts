@@ -54,10 +54,11 @@ test.describe('golden-path pressure test', () => {
     await addressInput.fill('1500 W Anderson Ln, Austin, TX 78757')
     await addressInput.press('Enter')
 
-    // Teaser renders in-place — the hero "Your walk-away number" block and
-    // the "Breakeven" metric tile both come from TeaserMetrics.tsx
-    await expect(page.getByText(/your walk-away number/i)).toBeVisible({ timeout: 15_000 })
-    await expect(page.getByText(/breakeven/i).first()).toBeVisible()
+    // Teaser renders in-place — the four SubStat tiles (Est. Value, Est. Rent,
+    // Breakeven, Investor Rate) now constitute the whole teaser (the verdict
+    // hero was removed intentionally — data without interpretation).
+    await expect(page.getByText(/breakeven/i).first()).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByText(/investor rate/i).first()).toBeVisible()
 
     // Paywall renders below the teaser
     await expect(page.getByRole('heading', { name: /unlock full report/i })).toBeVisible()

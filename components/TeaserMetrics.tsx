@@ -1,6 +1,5 @@
 'use client'
 
-import { cn } from '@/lib/utils'
 import { TrendingUpIcon, HomeIcon, TargetIcon, PercentIcon, AlertTriangleIcon } from 'lucide-react'
 
 interface TeaserWarning { code: string; message: string }
@@ -46,26 +45,7 @@ const fmt = (n: number) =>
     maximumFractionDigits: 0,
   }).format(n)
 
-const valueSourceLabel = (s?: string): string => {
-  switch (s) {
-    case 'listing': return 'Active listing price'
-    case 'avm': return 'Rentcast AVM estimate'
-    case 'tax-assessment': return 'From tax assessment'
-    case 'last-sale-grown': return 'Grown from last sale'
-    default: return 'Estimated'
-  }
-}
-
-// When the value isn't an actual listing, "Listing is above/below breakeven"
-// is misleading. Use accurate wording based on where the value came from.
-const valueNounFor = (s?: string): string => {
-  if (s === 'listing') return 'Listing'
-  return 'Est. value'
-}
-
 export function TeaserMetrics({ teaser, property }: TeaserMetricsProps) {
-  const listingAbove = teaser.listingVsBreakeven < 0
-  const valueNoun = valueNounFor(teaser.valueSource)
   const warnings = teaser.warnings ?? []
 
   return (
@@ -94,56 +74,11 @@ export function TeaserMetrics({ teaser, property }: TeaserMetricsProps) {
         </div>
       )}
 
-      {/* Breakeven hero — the hook */}
-      <div
-        className={cn(
-          'rounded-2xl border-2 p-6 sm:p-8 text-center',
-          'animate-in fade-in slide-in-from-bottom-4 duration-500',
-          listingAbove
-            ? 'border-red-500/40 bg-red-500/5'
-            : 'border-emerald-500/40 bg-emerald-500/5'
-        )}
-      >
-        <div className="mb-2 flex items-center justify-center gap-2 text-muted-foreground">
-          <TargetIcon className="h-4 w-4 text-primary" />
-          <span className="text-xs font-medium uppercase tracking-wider">
-            Your walk-away number
-          </span>
-        </div>
-        <p className="font-[family-name:var(--font-playfair)] text-3xl font-bold text-foreground sm:text-4xl">
-          {listingAbove ? (
-            <>
-              {valueNoun} is{' '}
-              <span className="text-red-600 dark:text-red-400">
-                {fmt(-teaser.listingVsBreakeven)} above breakeven
-              </span>
-            </>
-          ) : (
-            <>
-              {valueNoun} is{' '}
-              <span className="text-emerald-600 dark:text-emerald-400">
-                {fmt(teaser.listingVsBreakeven)} below breakeven
-              </span>
-            </>
-          )}
-        </p>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {valueNoun} {fmt(teaser.estimatedValue)}
-          {teaser.valueRangeLow && teaser.valueRangeHigh && (
-            <span className="text-muted-foreground/70">
-              {' '}({fmt(teaser.valueRangeLow)}–{fmt(teaser.valueRangeHigh)})
-            </span>
-          )}
-          {' · '}Breakeven {fmt(teaser.breakevenPrice)} · Rate{' '}
-          {(teaser.currentRate * 100).toFixed(2)}%
-        </p>
-        <p className="mt-0.5 text-[10px] text-muted-foreground/70">
-          Source: {valueSourceLabel(teaser.valueSource)}
-        </p>
-      </div>
-
-      {/* Sub-metrics */}
-      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {/* Sub-metrics — these four tiles ARE the teaser. No hero verdict line
+          intentionally: the reader gets raw data (breakeven, value, rent, rate)
+          but not an interpretation. Interpretation (stress test, IRR, offer
+          targets, AI diagnosis) is what the $8.99 full report sells. */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <SubStat
           icon={HomeIcon}
           label="Est. Value"
