@@ -137,17 +137,21 @@ export function BlurredReport({ uuid, address }: BlurredReportProps) {
             </div>
 
             <div className="flex flex-col gap-1.5 text-xs text-muted-foreground">
-              <div className="flex items-center gap-2">
-                <ZapIcon className="h-3.5 w-3.5 text-primary" />
-                <span>Claude-powered Deal Doctor diagnosis</span>
+              <div className="flex items-start gap-2">
+                <ZapIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                <span>Exact breakeven offer price + 3 recommended offer tiers</span>
               </div>
-              <div className="flex items-center gap-2">
-                <FileTextIcon className="h-3.5 w-3.5 text-primary" />
-                <span>DSCR, refi scenarios, depreciation benefits</span>
+              <div className="flex items-start gap-2">
+                <FileTextIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                <span>5-year wealth + IRR, sensitivity stress test, financing alternatives</span>
               </div>
-              <div className="flex items-center gap-2">
-                <ShieldCheckIcon className="h-3.5 w-3.5 text-primary" />
-                <span>Shareable URL — access anytime, forever</span>
+              <div className="flex items-start gap-2">
+                <ZapIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                <span>Claude diagnosis with negotiation scripts + inspection red flags</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <ShieldCheckIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                <span>Climate, comps, walkability + Excel &amp; PDF export</span>
               </div>
             </div>
 

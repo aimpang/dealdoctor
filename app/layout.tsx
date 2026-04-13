@@ -39,8 +39,77 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <title>DealDoctor - US Real Estate Deal Analyzer</title>
-        <meta name="description" content="Paste a property address, get instant investment analysis. US mortgage math, DSCR analysis, and AI-powered deal diagnosis. First look free." />
+        <title>DealDoctor — Know if a real-estate deal is worth it before you offer</title>
+        <meta
+          name="description"
+          content="Paste a US property address. Get the exact breakeven price, 5-year wealth projection + IRR, DSCR stress test, climate risk, and a Claude-powered diagnosis with specific negotiation scripts. First look free · $8.99 single · 7-day refund."
+        />
+        <meta
+          name="keywords"
+          content="real estate investment analysis, breakeven price calculator, DSCR calculator, rental property analyzer, real estate investor tools, cash flow analysis, BRRRR calculator, cap rate calculator, IRR projection, DealDoctor"
+        />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+        {/* Open Graph */}
+        <meta property="og:type" content="website" />
+        <meta property="og:site_name" content="DealDoctor" />
+        <meta
+          property="og:title"
+          content="DealDoctor — Know if a real-estate deal is worth it before you offer"
+        />
+        <meta
+          property="og:description"
+          content="Exact breakeven offer price, 5-year wealth projection, DSCR stress test, climate risk, and a Claude-powered diagnosis — for any US property. First look free."
+        />
+        <meta property="og:image" content="/logo.svg" />
+
+        {/* Twitter */}
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta
+          name="twitter:title"
+          content="DealDoctor — Real-estate deal analyzer for investors"
+        />
+        <meta
+          name="twitter:description"
+          content="Exact breakeven price, 5-year IRR, DSCR stress test, climate risk, and Claude-powered negotiation scripts. First look free."
+        />
+
+        {/* JSON-LD structured data — helps Google surface pricing tiers + product info */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              '@context': 'https://schema.org',
+              '@type': 'SoftwareApplication',
+              name: 'DealDoctor',
+              applicationCategory: 'FinanceApplication',
+              description:
+                'Real-estate investment analyzer for US properties. Breakeven offer price, 5-year wealth projection, DSCR stress test, climate risk, and Claude-powered diagnosis.',
+              operatingSystem: 'Any',
+              offers: [
+                {
+                  '@type': 'Offer',
+                  name: 'Single Report',
+                  price: '8.99',
+                  priceCurrency: 'USD',
+                },
+                {
+                  '@type': 'Offer',
+                  name: '5-Pack Bundle',
+                  price: '28.99',
+                  priceCurrency: 'USD',
+                },
+                {
+                  '@type': 'Offer',
+                  name: 'Pro Unlimited',
+                  price: '48.99',
+                  priceCurrency: 'USD',
+                  billingDuration: 'P1M',
+                },
+              ],
+            }),
+          }}
+        />
       </head>
       <body
         className={`${playfair.variable} ${inter.variable} font-sans antialiased`}
