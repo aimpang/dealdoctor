@@ -57,6 +57,9 @@ export interface InvariantGateInput {
   avm?: number | null
   propertyType?: string | null
   monthlyHOA?: number | null
+  // Composite dealScore (0–100). Passed in *after* the composite is set in
+  // reportGenerator so this field reflects what users actually see.
+  dealScore?: number | null
 }
 
 export interface InvariantGateResult {
@@ -151,6 +154,28 @@ export function runInvariantCheck(input: InvariantGateInput): InvariantGateResul
         message: `Year-${y.year} principal paydown is negative — principal paydown is always ≥ 0`,
         actual: `$${y.equityFromPaydown}`,
         expected: '≥ 0',
+      })
+    }
+  }
+
+  // ── FAIL: dealScore contradicts final-year wealth ──
+  // If the classifier lands on dealScore === 0 ("reject this deal") but the
+  // five-year projection shows positive total wealth built, the two signals
+  // directly contradict. Seen in batch pressure testing — either scoring
+  // bands are miscalibrated or wealth composition has a sign bug. Either
+  // way the report should not ship until resolved.
+  if (finite(input.dealScore) && input.dealScore === 0 && years.length > 0) {
+    const lastYear = years[years.length - 1]
+    const finalWealth = lastYear?.totalWealthBuilt
+    if (finite(finalWealth) && finalWealth > 0) {
+      failures.push({
+        code: 'deal-score-wealth-contradiction',
+        severity: 'FAIL',
+        message:
+          `Deal score is 0 (reject) but year-${lastYear.year} total wealth is positive — ` +
+          `scoring bands and wealth composition disagree on direction.`,
+        actual: `score=0, year-${lastYear.year} wealth=$${Math.round(finalWealth).toLocaleString()}`,
+        expected: `score=0 ⇒ final-year wealth ≤ 0`,
       })
     }
   }

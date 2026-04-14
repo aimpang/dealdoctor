@@ -55,9 +55,9 @@ export default async function MethodologyPage() {
         </p>
         <p>
           Assumptions baked in: 20% down, 30-year amortization, 1.5% annual
-          tax/insurance load on purchase price, $250/mo operating buffer, 5%
-          vacancy. Jurisdiction-specific property tax overrides the flat load
-          where we model it (see § 06).
+          tax/insurance load on purchase price, $150/mo maintenance reserve,
+          5% vacancy. Jurisdiction-specific property tax overrides the flat
+          load where we model it (see § 05).
         </p>
         <p className="text-[12px] text-foreground/50 font-mono">
           <code>lib/calculations.ts#calculateBreakEvenPrice</code>
@@ -104,9 +104,27 @@ export default async function MethodologyPage() {
           attaches a visible warning so you can verify whole-unit rent with a
           local property manager before trusting the cash-flow math.
         </p>
+        <p>
+          Signals that stale out of the cascade: sales older than <em>seven
+          years</em> are dropped entirely (a 2012 sale projected forward at
+          today&apos;s zip trend is not a credible current-value anchor), and
+          for qualifying older sales we cap extrapolation at <em>five years
+          </em> of compounded growth. Tax-assessment readings are excluded
+          when <code>assessment / AVM &gt; 10×</code> — this guard catches
+          building-level assessments that Rentcast occasionally tags to
+          individual NYC units (e.g., a $14M building-roll assessment on a
+          $223K Bronx apartment).
+        </p>
+        <p>
+          Trend-divergence cap: when the zip-level rent growth is{' '}
+          <em>negative</em> but price growth is bullish, the five-year wealth
+          projection clamps annual appreciation at <em>3%</em>. Contradictory
+          trends rarely coexist for long; extrapolating both at face value
+          ships an unrealistic wealth number.
+        </p>
       </Section>
 
-      <Section number="05" eyebrow="State + city overlays" title="Jurisdictional Property Tax">
+      <Section number="05" eyebrow="State + city overlays" title="Jurisdictional Overlays">
         <p>
           Flat &quot;1.2% of value&quot; tax math is the single biggest source
           of cash-flow error in generic calculators. We model state and city
@@ -117,9 +135,20 @@ export default async function MethodologyPage() {
           and NYC class-2 overlays for certain boroughs.
         </p>
         <p>
+          Assessment-to-market-value ratio varies by state. Most states
+          assess below full market (roughly 85%); we apply a{' '}
+          <em>1.15× multiplier</em> to Rentcast&apos;s <code>latest_tax_
+          assessment</code> to back out the implied market value. Florida is
+          the exception — it assesses at 100% of <em>just value</em> by
+          statute, so the FL multiplier is <em>1.0×</em> to avoid
+          overstating market value by 15%.
+        </p>
+        <p>
+          DC is handled specially for short-term-rental math (see § 08 —
+          90-night cap reshapes STR occupancy), not property-tax math.
           States without a modeled rule fall back to the national average,
-          and the report footer surfaces the caveat so you can verify against
-          the county assessor.
+          and the report footer surfaces the caveat so you can verify
+          against the county assessor.
         </p>
       </Section>
 
@@ -127,19 +156,60 @@ export default async function MethodologyPage() {
         <p>
           Rentcast HOA captures are noisy at the unit level — one listing
           shows $400/mo, the unit next door shows $1,200, both in the same
-          building. For known condominium buildings we maintain a small
-          reference table of the building&apos;s observed monthly HOA range,
-          and flag a listing HOA as an outlier when it reads more than 15%
-          above the building average.
+          building. For a short pilot list of known condominium buildings
+          (currently Jefferson House in DC and Spinnaker Bay in Baltimore)
+          we carry an observed monthly HOA average in a reference table and
+          flag the listing HOA as an outlier when it reads more than 15%
+          above that average. The pilot list grows as we verify additional
+          buildings from first-hand filings; until then, most addresses
+          still rely on the per-listing Rentcast figure.
         </p>
         <p>
           When Rentcast returns an &quot;Apartment&quot; property type for a
-          known condo building, we normalize it to &quot;Condo&quot; — you are
-          buying a deeded unit, not a leasehold.
+          pilot-list condo building, we normalize it to &quot;Condo&quot; —
+          you are buying a deeded unit, not a leasehold.
         </p>
       </Section>
 
-      <Section number="07" eyebrow="Carrying costs" title="Insurance & Climate Risk">
+      <Section number="07" eyebrow="NYC heuristic" title="Co-Op Detection">
+        <p>
+          Co-operative units are a different asset class from condos — buyers
+          hold shares in a corporation, not a deeded unit, and building boards
+          gate sublets, down-payment minimums, and renovation scope. None of
+          the numbers we compute model those constraints, so we detect the
+          pattern and warn rather than pretend otherwise.
+        </p>
+        <p>
+          Heuristic fires on a NYC-borough address with an apartment/condo
+          property type and either <em>(a)</em> a tax-assessment-to-AVM ratio
+          above 10× (co-op shares routinely carry building-level
+          assessments), or <em>(b)</em> a pre-1970 build year (most NYC
+          pre-war &quot;apartments&quot; are co-ops by default). When either
+          triggers, the report surfaces a co-op warning asking you to verify
+          the building&apos;s bylaws and sublet policy before underwriting.
+        </p>
+      </Section>
+
+      <Section number="08" eyebrow="Where STR is legally capped" title="STR Jurisdictional Caps">
+        <p>
+          Generic short-term-rental estimators assume a 60% stabilized
+          occupancy rate. That fits most markets; it does not fit the few
+          where the local government caps STR nights. Washington DC is the
+          clearest example: the STR Regulation Act caps non-primary-residence
+          listings at <em>90 nights per year</em>, which is roughly{' '}
+          <em>24.7% occupancy</em> — less than half the default assumption.
+        </p>
+        <p>
+          For DC addresses we scale STR revenue and occupancy together down
+          to the 90-night ceiling so the fixes card, the STR-vs-LTR monthly
+          gross, and the annualized figure all agree. Other jurisdictions
+          where STR is outright prohibited for non-owner-occupants (NYC
+          Local Law 18, several CA coastal cities) surface a warning
+          instead of a number.
+        </p>
+      </Section>
+
+      <Section number="09" eyebrow="Carrying costs" title="Insurance & Climate Risk">
         <p>
           Insurance estimate uses NAIC state-level homeowners premium
           averages, scaled linearly by dwelling value. A flood-zone add-on
@@ -154,7 +224,7 @@ export default async function MethodologyPage() {
         </p>
       </Section>
 
-      <Section number="08" eyebrow="Live feeds" title="Rates & Market Data">
+      <Section number="10" eyebrow="Live feeds" title="Rates & Market Data">
         <p>
           30-year and 15-year fixed rates are pulled from the Freddie Mac
           Primary Mortgage Market Survey, refreshed weekly. Fed funds rate
@@ -170,27 +240,35 @@ export default async function MethodologyPage() {
         </p>
       </Section>
 
-      <Section number="09" eyebrow="Post-math contradiction check" title="The Invariant Gate">
+      <Section number="11" eyebrow="Post-math contradiction check" title="The Invariant Gate">
         <p>
-          Before any AI touches the report, we run a pure-code gate over the
-          structured output: does DSCR agree with the NOI and debt service we
-          just computed? Does the breakeven delta equal{' '}
-          <code>price − yourOffer</code>? Does deal score sit in [0, 100]? Is
-          GRM in a plausible band?
+          After the math finishes and the composite score is set — but
+          before any AI touches the report — we run a pure-code gate over
+          the structured output. Each rule is a deterministic contradiction
+          check the code would otherwise let slip through:
         </p>
+        <ul className="mt-2 list-disc space-y-1 pl-5">
+          <li><em>IRR contradiction</em> — summary IRR and sensitivity base-case IRR must agree within ±0.5%.</li>
+          <li><em>Cash-flow contradiction</em> — summary monthly cash flow and sensitivity base-case cash flow must agree within $2.</li>
+          <li><em>Breakeven single-source-of-truth</em> — teaser, canonical, and full-report breakeven prices must all match within $100.</li>
+          <li><em>Wealth-component math</em> — year-N total wealth must equal cash flow + tax shield + principal paydown + appreciation.</li>
+          <li><em>Equity paydown non-negative</em> — principal paydown is monotonic; a negative reading is a sign bug.</li>
+          <li><em>Deal score vs wealth</em> — <code>dealScore === 0</code> (reject) with positive final-year wealth contradicts itself and blocks the report.</li>
+        </ul>
         <p>
-          Contradictions at <em>FAIL</em> severity block report delivery — the
-          API returns a 502 and the report is not shown. Suspicious-but-not-
-          contradictory signals (<em>WARN</em>) are attached to the report as
-          visible flags so you can see the model&apos;s own uncertainty.
-          Zero API cost. Runs in under a millisecond.
+          Rules above at <em>FAIL</em> severity block report delivery — the
+          API returns a 502 and the report is not shown. Separately, two
+          <em> WARN</em>-severity rules (DSCR outside the 0.4–3.0 band, GRM
+          outside 4–40, or HOA = $0 on a condo) attach visible flags without
+          blocking so you can see the model&apos;s own uncertainty. Zero API
+          cost. Runs in under a millisecond.
         </p>
         <p className="text-[12px] text-foreground/50 font-mono">
           <code>lib/invariantCheck.ts#runInvariantCheck</code>
         </p>
       </Section>
 
-      <Section number="10" eyebrow="Narrative layer" title="The Anthropic Layer">
+      <Section number="12" eyebrow="Narrative layer" title="The Anthropic Layer">
         <p>
           The 3-fix diagnosis, negotiation scripts, and inspection red flags
           are written by Anthropic. The AI never calculates numbers — every
@@ -201,7 +279,7 @@ export default async function MethodologyPage() {
         </p>
         <p>
           By the time Anthropic sees the data, it has already cleared the
-          invariant gate (§ 09) and every value has been clamp-corrected
+          invariant gate (§ 11) and every value has been clamp-corrected
           against the triangulation cascade (§ 04). The narrator is
           effectively reviewing a pre-validated report before shaping it into
           prose — so a contradictory number can never reach the narrative,
@@ -218,7 +296,7 @@ export default async function MethodologyPage() {
         </p>
       </Section>
 
-      <Section number="11" eyebrow="Honesty" title="Accuracy — what we measure and publish">
+      <Section number="13" eyebrow="Honesty" title="Accuracy — what we measure and publish">
         <p>
           We can&apos;t tell you any single report is correct — no AVM-based
           tool honestly can. What we can tell you:
@@ -226,7 +304,7 @@ export default async function MethodologyPage() {
         <ol className="mt-2 space-y-2 border-l border-foreground/15 pl-5">
           <li>
             <span className="font-mono text-[11px] tabular-nums tracking-widest text-[hsl(var(--primary))]">01</span>
-            {'  '}The math is exact and covered by the full test suite (currently 407 automated tests).
+            {'  '}The math is exact and covered by hundreds of automated tests.
           </li>
           <li>
             <span className="font-mono text-[11px] tabular-nums tracking-widest text-[hsl(var(--primary))]">02</span>
@@ -285,7 +363,7 @@ export default async function MethodologyPage() {
         )}
       </Section>
 
-      <Section number="12" eyebrow="The plain truth" title="What DealDoctor is not">
+      <Section number="14" eyebrow="The plain truth" title="What DealDoctor is not">
         <p>
           Not financial advice. Not an appraisal. Not a substitute for a
           licensed inspection, a full underwriting review, or consultation

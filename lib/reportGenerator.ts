@@ -1461,6 +1461,26 @@ export async function composeFullReport(
   const sensitivityBase = (sensitivity as Array<{ scenario: string; fiveYrIRR?: number; monthlyCashFlow?: number }>)?.find?.(
     (r) => String(r.scenario || '').toLowerCase().includes('base')
   )
+  // ── Composite score (batch pressure test item #3) ────────────────────
+  // The old dealScore was cash-flow / cap-rate / CoC only, so
+  // appreciation-driven deals scored 0/100 even with 17.5% IRR and +$630K
+  // wealth (Chicago Bucktown audit) AND the label could contradict the
+  // verdict (Arlington 100/100 but "Marginal"). Replace with a composite
+  // weighting cash flow, DSCR, IRR, value confidence, and breakeven
+  // position — computed now that all five inputs are available.
+  const compositeScore = computeCompositeScore({
+    monthlyNetCashFlow: cappedLtrMetrics.monthlyNetCashFlow,
+    dscr: cappedLtrMetrics.dscr,
+    irr5yr,
+    valueConfidence,
+    offerPrice,
+    breakevenPrice: canonicalBreakEven,
+  })
+  cappedLtrMetrics.dealScore = compositeScore
+  ltrMetrics.dealScore = compositeScore
+
+  // Invariant gate runs AFTER the composite score so the dealScore-vs-wealth
+  // contradiction rule sees the final score users will actually see.
   const invariantResult = runInvariantCheck({
     summaryIrr: irr5yr,
     sensitivityBaseIrr: finiteOrNull(sensitivityBase?.fiveYrIRR),
@@ -1482,6 +1502,7 @@ export async function composeFullReport(
     avm: property.estimated_value,
     propertyType: property.property_type,
     monthlyHOA,
+    dealScore: cappedLtrMetrics.dealScore,
   })
   if (!invariantResult.ok) {
     console.error(
@@ -1496,24 +1517,6 @@ export async function composeFullReport(
       invariantResult.warnings.map((w: InvariantFailure) => w.code).join(', ')
     )
   }
-
-  // ── Composite score (batch pressure test item #3) ────────────────────
-  // The old dealScore was cash-flow / cap-rate / CoC only, so
-  // appreciation-driven deals scored 0/100 even with 17.5% IRR and +$630K
-  // wealth (Chicago Bucktown audit) AND the label could contradict the
-  // verdict (Arlington 100/100 but "Marginal"). Replace with a composite
-  // weighting cash flow, DSCR, IRR, value confidence, and breakeven
-  // position — computed now that all five inputs are available.
-  const compositeScore = computeCompositeScore({
-    monthlyNetCashFlow: cappedLtrMetrics.monthlyNetCashFlow,
-    dscr: cappedLtrMetrics.dscr,
-    irr5yr,
-    valueConfidence,
-    offerPrice,
-    breakevenPrice: canonicalBreakEven,
-  })
-  cappedLtrMetrics.dealScore = compositeScore
-  ltrMetrics.dealScore = compositeScore
 
   // Deal Doctor AI narration. If the model fails (rate limit, quota exhausted,
   // network), we still return the rest of the report — the math and climate
