@@ -124,3 +124,16 @@ model Report {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
+
+// Durable rate-limit buckets. Replaces the prior in-memory Map which reset
+// on every cold start and didn't share state across serverless instances.
+// The key embeds both bucket name (e.g. 'preview', 'retry-ai') and a
+// windowId derived from `floor(now / windowMs)`, so each time window gets
+// its own row. Old rows are GC'd opportunistically by lib/rateLimit.ts.
+model RateLimitBucket {
+  key         String   @id
+  count       Int      @default(1)
+  windowStart DateTime @default(now())
+
+  @@index([windowStart])
+}

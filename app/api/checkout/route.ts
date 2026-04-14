@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { lemonSqueezySetup, createCheckout } from '@lemonsqueezy/lemonsqueezy.js'
 import { prisma } from '@/lib/db'
+import { absoluteUrl } from '@/lib/seo'
 
 lemonSqueezySetup({
   apiKey: process.env.LEMONSQUEEZY_API_KEY!,
@@ -27,7 +28,7 @@ export async function POST(req: NextRequest) {
   if (report.paid) {
     return NextResponse.json({
       alreadyPaid: true,
-      url: `${process.env.NEXT_PUBLIC_BASE_URL}/report/${uuid}`
+      url: absoluteUrl(`/report/${uuid}`)
     })
   }
 
@@ -46,7 +47,7 @@ export async function POST(req: NextRequest) {
           },
         },
         productOptions: {
-          redirectUrl: `${process.env.NEXT_PUBLIC_BASE_URL}/report/${uuid}?success=true`,
+          redirectUrl: absoluteUrl(`/report/${uuid}?success=true`),
           receiptButtonText: 'View Your Report',
           receiptThankYouNote: 'Your DealDoctor report is being generated now.',
         },

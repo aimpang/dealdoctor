@@ -17,6 +17,8 @@ import { lookupBuildingHoa } from '@/lib/buildingHoa'
 import { prisma } from '@/lib/db'
 import { randomUUID } from 'crypto'
 import { rateLimit } from '@/lib/rateLimit'
+import { getClientIp } from '@/lib/clientIp'
+import { logger } from '@/lib/logger'
 import {
   getCurrentCustomer,
   hasActiveEntitlement,
@@ -26,9 +28,12 @@ import {
 import { generateFullReport } from '@/lib/reportGenerator'
 
 export async function POST(req: NextRequest) {
-  // Rate limit: 3 previews per IP per day
-  const ip = req.headers.get('x-forwarded-for') || 'unknown'
-  const limited = await rateLimit(ip)
+  // Rate limit: 3 previews per IP per day. IP resolution uses
+  // platform-trusted headers — trusting the raw X-Forwarded-For chain would
+  // let any caller rotate a spoofed value per request to create fresh
+  // buckets and drain Rentcast / Anthropic budget.
+  const ip = getClientIp(req)
+  const limited = await rateLimit(ip, 3, { bucket: 'preview' })
   if (limited) {
     return NextResponse.json({ error: 'Too many requests. Try again tomorrow.' }, { status: 429 })
   }
@@ -378,6 +383,17 @@ export async function POST(req: NextRequest) {
     const reusedExisting = !!recentMatch
     const finalUuid = recentMatch?.id ?? uuid
 
+    // Debit BEFORE marking the report paid. A concurrent pair of previews on
+    // a 5-pack customer's last credit used to race: both reads saw
+    // reportsRemaining=1, both created paid reports, and only one debit
+    // succeeded — user got 2 reports for 1 credit. debitForNewReport now
+    // uses an atomic conditional update; paid status follows the debit.
+    let debitResult: { debited: boolean; newRemaining?: number } = { debited: false }
+    if (!reusedExisting && customer && entitlement.active) {
+      debitResult = await debitForNewReport(customer)
+    }
+    const effectivelyPaid = debitResult.debited
+
     if (!reusedExisting) {
       await prisma.report.create({
         data: {
@@ -387,7 +403,7 @@ export async function POST(req: NextRequest) {
           state,
           zipCode: property.zip_code,
           teaserData: JSON.stringify(teaserData),
-          ...(entitlement.active && customer
+          ...(effectivelyPaid && customer
             ? {
                 paid: true,
                 customerId: customer.id,
@@ -405,11 +421,10 @@ export async function POST(req: NextRequest) {
       until?: string
     } = null
 
-    if (entitlement.active && customer && !reusedExisting) {
-      const debit = await debitForNewReport(customer)
+    if (effectivelyPaid && customer && !reusedExisting) {
       autopaid = {
         entitlement: entitlement.type!,
-        remaining: debit.newRemaining,
+        remaining: debitResult.newRemaining,
         until: entitlement.until?.toISOString(),
       }
       // Generate full report async — don't block preview response
@@ -442,15 +457,15 @@ export async function POST(req: NextRequest) {
           error:
             "Our property data provider is temporarily over quota. Try again in a few minutes, or contact support if this persists.",
           code: 'data-provider-quota',
-          debug: `Rentcast ${err.status}`,
+          ...(process.env.NODE_ENV !== 'production' ? { debug: `Rentcast ${err.status}` } : {}),
         },
         { status: 503 }
       )
     }
-    console.error('Preview error:', err)
+    logger.error('preview.failed', { error: err })
     return NextResponse.json({
       error: 'Something went wrong. Please try again.',
-      debug: err?.message
+      ...(process.env.NODE_ENV !== 'production' ? { debug: err?.message } : {}),
     }, { status: 500 })
   }
 }

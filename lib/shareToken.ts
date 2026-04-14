@@ -18,19 +18,25 @@
 
 import crypto from 'node:crypto'
 
-const TOKEN_SECRET =
-  process.env.SHARE_LINK_SECRET ||
-  // Dev default so the feature works without env config. Deploys MUST set
-  // a real secret — we log a warning once so it's discoverable.
-  (() => {
-    if (process.env.NODE_ENV === 'production') {
-      console.error(
-        '[shareToken] SHARE_LINK_SECRET is not set in production! ' +
-          'Share links will use an insecure default — rotate immediately.'
-      )
-    }
-    return 'dev-default-share-secret-change-in-production'
-  })()
+const DEV_DEFAULT_SECRET = 'dev-default-share-secret-change-in-production'
+
+// In production, refuse to start with an unset or default SHARE_LINK_SECRET.
+// Prior behavior logged a warning and fell through to the dev default — but
+// the default is a string anyone who can read the repo source knows, so an
+// attacker could forge share tokens for any UUID. Fail loud at module load
+// instead so a misconfigured deploy never reaches production traffic.
+const envSecret = process.env.SHARE_LINK_SECRET
+if (process.env.NODE_ENV === 'production') {
+  if (!envSecret || envSecret === DEV_DEFAULT_SECRET) {
+    throw new Error(
+      '[shareToken] SHARE_LINK_SECRET must be set to a strong random value ' +
+        'in production (e.g. `openssl rand -hex 32`). The dev default is ' +
+        'checked into source and would let anyone forge share tokens.'
+    )
+  }
+}
+
+const TOKEN_SECRET = envSecret || DEV_DEFAULT_SECRET
 
 /**
  * Produce a short base64url HMAC over the report UUID. Deterministic — the

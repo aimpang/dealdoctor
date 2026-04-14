@@ -5,6 +5,7 @@ import { CUSTOMER_COOKIE, setCustomerCookie } from '@/lib/entitlements'
 import { addressKey } from '@/lib/addressKey'
 import { verifyShareToken } from '@/lib/shareToken'
 import { isDebugAccessAuthorized } from '@/lib/debugAccess'
+import { logger } from '@/lib/logger'
 
 // Single-process in-flight tracker. Keys are report UUIDs; values are the
 // promise of the in-flight generateFullReport. Concurrent requests for the
@@ -27,8 +28,8 @@ export async function GET(
   req: NextRequest,
   { params }: { params: { uuid: string } }
 ) {
+  const { uuid } = params
   try {
-    const { uuid } = params
     const { searchParams } = new URL(req.url)
 
     // Debug bypass — dev-only, AND requires a secondary secret match. Both
@@ -212,8 +213,12 @@ export async function GET(
   } catch (err: any) {
     // The outer catch covers anything — DB, AI, network, climate lookup, etc.
     // "DB error" as a label was misleading; upstream bubbles up the real message.
+    logger.error('report.fetch_failed', { uuid, error: err })
     return NextResponse.json(
-      { error: 'Report generation failed', debug: err?.message },
+      {
+        error: 'Report generation failed',
+        ...(process.env.NODE_ENV !== 'production' ? { debug: err?.message } : {}),
+      },
       { status: 500 }
     )
   }

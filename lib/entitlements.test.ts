@@ -120,9 +120,11 @@ describe('hasActiveEntitlement', () => {
 describe('debitForNewReport', () => {
   it('returns debited:false when customer has no active entitlement', async () => {
     const c = baseCustomer()
+    ;(prisma.customer.updateMany as any).mockResolvedValue({ count: 0 })
     const r = await debitForNewReport(c)
     expect(r.debited).toBe(false)
     expect(prisma.customer.update).not.toHaveBeenCalled()
+    expect(prisma.customer.findUnique).not.toHaveBeenCalled()
   })
 
   it('returns debited:true and does NOT decrement for unlimited', async () => {
@@ -132,19 +134,33 @@ describe('debitForNewReport', () => {
     expect(r.debited).toBe(true)
     expect(r.newRemaining).toBeUndefined()
     expect(prisma.customer.update).not.toHaveBeenCalled()
+    expect(prisma.customer.updateMany).not.toHaveBeenCalled()
   })
 
-  it('decrements reportsRemaining by 1 for 5pack', async () => {
+  it('decrements reportsRemaining by 1 for 5pack via conditional updateMany', async () => {
     const c = baseCustomer({ reportsRemaining: 4 })
-    ;(prisma.customer.update as any).mockResolvedValue({ reportsRemaining: 3 })
+    ;(prisma.customer.updateMany as any).mockResolvedValue({ count: 1 })
+    ;(prisma.customer.findUnique as any).mockResolvedValue({ reportsRemaining: 3 })
     const r = await debitForNewReport(c)
     expect(r.debited).toBe(true)
     expect(r.newRemaining).toBe(3)
-    expect(prisma.customer.update).toHaveBeenCalledWith({
-      where: { id: c.id },
+    expect(prisma.customer.updateMany).toHaveBeenCalledWith({
+      where: { id: c.id, reportsRemaining: { gt: 0 } },
       data: { reportsRemaining: { decrement: 1 } },
+    })
+    expect(prisma.customer.findUnique).toHaveBeenCalledWith({
+      where: { id: c.id },
       select: { reportsRemaining: true },
     })
+  })
+
+  it('returns debited:false when updateMany finds no rows (lost race on last credit)', async () => {
+    const c = baseCustomer({ reportsRemaining: 1 })
+    ;(prisma.customer.updateMany as any).mockResolvedValue({ count: 0 })
+    const r = await debitForNewReport(c)
+    expect(r.debited).toBe(false)
+    expect(r.newRemaining).toBeUndefined()
+    expect(prisma.customer.findUnique).not.toHaveBeenCalled()
   })
 })
 

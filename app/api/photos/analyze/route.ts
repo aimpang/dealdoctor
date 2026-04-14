@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { prisma } from '@/lib/db'
+import { rateLimit } from '@/lib/rateLimit'
+import { CUSTOMER_COOKIE } from '@/lib/entitlements'
+import { logger } from '@/lib/logger'
 
 // Post-payment photo analysis. Users can drop 1-5 listing photos and Gemini Vision
 // flags observable condition concerns. We never claim this replaces a licensed
@@ -28,11 +31,39 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Max ${MAX_IMAGES} images per analysis` }, { status: 400 })
     }
 
-    // Auth: only paid reports can analyze photos
+    // Auth-first: resolve owner from cookie BEFORE report lookup so an
+    // unauthenticated caller can't distinguish "UUID exists" from "UUID
+    // unknown" and can't burn Anthropic vision quota by pointing at a
+    // leaked paid UUID. Share-token recipients are read-only — only the
+    // buyer themselves can mutate photoFindings.
+    const cookieToken = req.cookies.get(CUSTOMER_COOKIE)?.value
+    const cookieCustomer = cookieToken
+      ? await prisma.customer.findUnique({
+          where: { accessToken: cookieToken },
+          select: { id: true },
+        })
+      : null
+
     const report = await prisma.report.findUnique({ where: { id: uuid } })
-    if (!report) return NextResponse.json({ error: 'Report not found' }, { status: 404 })
+    const isOwner = !!(
+      cookieCustomer && report?.customerId && cookieCustomer.id === report.customerId
+    )
+    if (!isOwner || !report) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
     if (!report.paid) {
       return NextResponse.json({ error: 'Photo analysis is a paid-report feature' }, { status: 402 })
+    }
+
+    // Cap photo-analysis cost per report: 20/hour. Photos call Gemini Vision
+    // on every image; a paid customer running a loop could rack up real
+    // bills on a single $24.99 entitlement. 20/hr is comfortably above any
+    // legitimate use.
+    if (await rateLimit(uuid, 20, { bucket: 'photos', windowMs: 60 * 60 * 1000 })) {
+      return NextResponse.json(
+        { error: 'Too many photo analyses for this report. Try again in an hour.' },
+        { status: 429 }
+      )
     }
 
     // Validate each image
@@ -142,9 +173,12 @@ Return STRICT JSON with no markdown fences, no prose outside the JSON:
 
     return NextResponse.json(parsed)
   } catch (err: any) {
-    console.error('Photo analyze error:', err)
+    logger.error('photos.analyze_failed', { error: err })
     return NextResponse.json(
-      { error: 'Something went wrong', debug: err?.message },
+      {
+        error: 'Something went wrong',
+        ...(process.env.NODE_ENV !== 'production' ? { debug: err?.message } : {}),
+      },
       { status: 500 }
     )
   }

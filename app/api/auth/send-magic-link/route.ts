@@ -3,14 +3,16 @@ import { rotateAccessTokenByEmail } from '@/lib/entitlements'
 import { sendEmail, buildMagicLinkEmail } from '@/lib/email'
 import { prisma } from '@/lib/db'
 import { rateLimit } from '@/lib/rateLimit'
+import { getClientIp } from '@/lib/clientIp'
+import { BASE_URL } from '@/lib/seo'
 
 // Retrieve-my-access flow. User enters email; if we know them, rotate their
 // access token and email the magic link. We don't leak whether the email is
 // in our system (always return 200) — standard anti-enumeration.
 
 export async function POST(req: NextRequest) {
-  const ip = req.headers.get('x-forwarded-for') || 'unknown'
-  if (await rateLimit(ip)) {
+  const ip = getClientIp(req)
+  if (await rateLimit(ip, 3, { bucket: 'magic-link' })) {
     return NextResponse.json({ error: 'Too many requests. Try again later.' }, { status: 429 })
   }
 
@@ -24,7 +26,7 @@ export async function POST(req: NextRequest) {
   const customer = await rotateAccessTokenByEmail(email.toLowerCase().trim())
 
   if (customer) {
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || ''
+    const baseUrl = BASE_URL
     const magicLinkUrl = `${baseUrl}/api/auth/claim?token=${customer.accessToken}`
 
     // Build a friendly description of what they'll restore

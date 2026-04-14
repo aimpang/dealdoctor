@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx'
 import { isDebugAccessAuthorized } from '@/lib/debugAccess'
 import { verifyShareToken } from '@/lib/shareToken'
 import { CUSTOMER_COOKIE } from '@/lib/entitlements'
+import { logger } from '@/lib/logger'
 
 // Multi-sheet Excel export of the full report. Everything comes from
 // fullReportData — no new computations — so this is a pure transformation job.
@@ -228,9 +229,12 @@ export async function GET(
       },
     })
   } catch (err: any) {
-    console.error('Excel export error:', err)
+    logger.error('report.export_failed', { error: err })
     return NextResponse.json(
-      { error: 'Export failed', debug: err?.message },
+      {
+        error: 'Export failed',
+        ...(process.env.NODE_ENV !== 'production' ? { debug: err?.message } : {}),
+      },
       { status: 500 }
     )
   }

@@ -20,12 +20,18 @@ export const maxDuration = 60 // give it time to fetch many properties
 
 const SAMPLE_SIZE = 30
 
-export async function POST(req: NextRequest) {
+function requireAdmin(req: NextRequest): NextResponse | null {
   const adminKey = process.env.ADMIN_KEY
   const provided = req.headers.get('X-Admin-Key')
   if (!adminKey || provided !== adminKey) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+  return null
+}
+
+export async function POST(req: NextRequest) {
+  const denied = requireAdmin(req)
+  if (denied) return denied
 
   // Sample paid reports with generated fullReportData — skip if none
   const reports = await prisma.report.findMany({
@@ -112,8 +118,12 @@ export async function POST(req: NextRequest) {
   })
 }
 
-// GET: returns latest backtest run for /methodology page
-export async function GET() {
+// GET: returns latest backtest run. Admin-only — the /methodology page
+// reads BacktestRun directly from Prisma (server component) rather than
+// calling this endpoint, so locking it down doesn't break the public page.
+export async function GET(req: NextRequest) {
+  const denied = requireAdmin(req)
+  if (denied) return denied
   const latest = await prisma.backtestRun.findFirst({
     orderBy: { runAt: 'desc' },
   })

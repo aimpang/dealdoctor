@@ -4,6 +4,8 @@ import { prisma } from '@/lib/db'
 import { generateFullReport } from '@/lib/reportGenerator'
 import { creditPurchase, revokeEntitlement } from '@/lib/entitlements'
 import { sendEmail, buildPurchaseReceiptEmail } from '@/lib/email'
+import { BASE_URL } from '@/lib/seo'
+import { logger } from '@/lib/logger'
 
 // LemonSqueezy webhook handler.
 // Events we handle:
@@ -64,7 +66,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ received: true, duplicate: true })
     }
     // Other DB errors bubble up — we want to retry those.
-    console.error('[webhook] dedup insert failed:', err?.message)
+    logger.error('webhook.dedup_insert_failed', { error: err })
     return NextResponse.json({ error: 'Dedup insert failed' }, { status: 500 })
   }
 
@@ -105,7 +107,7 @@ export async function POST(req: NextRequest) {
         console.log('[webhook] unhandled event:', eventName)
     }
   } catch (err: any) {
-    console.error('[webhook] processing error:', err?.message)
+    logger.error('webhook.processing_error', { error: err })
     // Return 200 so LS doesn't spam retries on our bugs; we log and move on.
   }
 
@@ -135,7 +137,7 @@ async function handleOrderCreated(payload: any, customData: any, email: string |
 
   // Purchase receipt email with report link + magic link
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || ''
+    const baseUrl = BASE_URL
     const report = uuid ? await prisma.report.findUnique({ where: { id: uuid } }) : null
     const { html, text } = buildPurchaseReceiptEmail({
       plan,
@@ -147,7 +149,7 @@ async function handleOrderCreated(payload: any, customData: any, email: string |
     await sendEmail({ to: email, subject: 'Your DealDoctor report is ready', html, text })
   } catch (err) {
     // Email failures are non-blocking — the entitlement is still credited.
-    console.error('[webhook] receipt email failed:', err)
+    logger.error('webhook.receipt_email_failed', { error: err })
   }
 }
 
@@ -197,6 +199,6 @@ async function markReportPaid(
   })
   // Fire and forget — don't block webhook response on report generation
   generateFullReport(uuid).catch((err) =>
-    console.error('[webhook] report generation failed for', uuid, err)
+    logger.error('webhook.report_generation_failed', { uuid, error: err })
   )
 }

@@ -57,20 +57,30 @@ export function hasActiveEntitlement(customer: CustomerRecord): {
  * Debit one report from the customer's quota. Unlimited subscribers are a no-op
  * (no debit). 5-pack holders decrement by 1. Returns true if a debit succeeded.
  * Called by /api/preview when auto-paying a freshly-created report.
+ *
+ * Atomicity: 5-pack debit uses a conditional `updateMany` with a
+ * `reportsRemaining > 0` predicate so two concurrent requests on a customer's
+ * last credit can't both succeed (check-then-act race previously let a user
+ * burn 2 reports against 1 credit). `updateMany` returns the affected-row
+ * count — zero means we lost the race and the caller must treat the report
+ * as unpaid.
  */
 export async function debitForNewReport(
   customer: CustomerRecord
 ): Promise<{ debited: boolean; newRemaining?: number }> {
-  const check = hasActiveEntitlement(customer)
-  if (!check.active) return { debited: false }
-  if (check.type === 'unlimited') return { debited: true }
-  // 5-pack: decrement
-  const updated = await prisma.customer.update({
-    where: { id: customer.id },
+  if (customer.unlimitedUntil && customer.unlimitedUntil > new Date()) {
+    return { debited: true }
+  }
+  const result = await prisma.customer.updateMany({
+    where: { id: customer.id, reportsRemaining: { gt: 0 } },
     data: { reportsRemaining: { decrement: 1 } },
+  })
+  if (result.count === 0) return { debited: false }
+  const after = await prisma.customer.findUnique({
+    where: { id: customer.id },
     select: { reportsRemaining: true },
   })
-  return { debited: true, newRemaining: updated.reportsRemaining }
+  return { debited: true, newRemaining: after?.reportsRemaining }
 }
 
 /** Attach the customer cookie to an outgoing response. */

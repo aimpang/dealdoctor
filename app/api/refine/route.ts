@@ -6,6 +6,7 @@ import {
   STATE_RULES,
 } from '@/lib/calculations'
 import { estimateInsuranceFast } from '@/lib/climateRisk'
+import { logger } from '@/lib/logger'
 
 const STRATEGIES = ['LTR', 'STR', 'FLIP'] as const
 type Strategy = typeof STRATEGIES[number]
@@ -110,9 +111,12 @@ export async function POST(req: NextRequest) {
       dealScore: metrics.dealScore,
     })
   } catch (err: any) {
-    console.error('Refine error:', err)
+    logger.error('refine.failed', { error: err })
     return NextResponse.json(
-      { error: 'Something went wrong', debug: err?.message },
+      {
+        error: 'Something went wrong',
+        ...(process.env.NODE_ENV !== 'production' ? { debug: err?.message } : {}),
+      },
       { status: 500 }
     )
   }
