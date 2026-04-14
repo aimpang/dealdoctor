@@ -47,6 +47,8 @@ export const EXPECTED_FULL_REPORT_KEYS = [
   'valueTriangulation',
   'rentWarnings',
   'warnings',
+  'invariantWarnings',
+  'reviewOutcome',
   'crossCheckLinks',
   'ltr',
   'dealDoctor',

@@ -75,6 +75,12 @@ export async function generateDealDoctor(
   // injected into the prompt so the second-pass generator knows what NOT to
   // repeat. Empty / undefined on the first pass.
   reviewCorrections?: Array<{ section: string; claim: string; reason: string; correction?: string }>,
+  // Invariant-gate WARN flags. Deterministic contradictions caught pre-AI
+  // by runInvariantCheck — forwarded here as hard constraints so the
+  // narrative doesn't re-assert math the gate already flagged as suspect
+  // (e.g. DSCR outside plausible band, implausible GRM, HOA/rent ratio).
+  // FAIL-severity flags never reach this function — they throw upstream.
+  validationFlags?: Array<{ code: string; message: string; actual?: string; expected?: string }>,
 ): Promise<DealDoctorOutput> {
 
   // Use the city-aware jurisdiction rules so Baltimore's 2.248% tax and §5A
@@ -131,8 +137,23 @@ export async function generateDealDoctor(
           .join('\n')}\n`
       : ''
 
+  // Pre-AI invariant WARN flags. These are hard constraints, not suggestions:
+  // the deterministic gate already found these figures suspect. The narrative
+  // must not re-assert them confidently.
+  const validationFlagsBlock =
+    validationFlags && validationFlags.length > 0
+      ? `\nVALIDATION FLAGS (hard constraints — the math gate flagged these before you ran. Do NOT narrate past them, do NOT restate the flagged figure as a strength, and surface the caveat in diagnosis / cons where it materially affects the recommendation):\n${validationFlags
+          .map(
+            (f, i) =>
+              `  ${i + 1}. [${f.code}] ${f.message}${
+                f.actual ? ` (actual: ${f.actual}${f.expected ? `, expected: ${f.expected}` : ''})` : ''
+              }`
+          )
+          .join('\n')}\n`
+      : ''
+
   const prompt = `You are the Deal Doctor for DealDoctor, a US real estate investment analyzer.
-${correctionsBlock}
+${correctionsBlock}${validationFlagsBlock}
 HARD LOCK — NEGOTIATION / TARGET PRICE:
 The ONLY valid price-reduction target is the breakeven: $${breakEvenPrice.toLocaleString()}.
 Whenever you mention a target price, offer ceiling, "drop to $X", "price reduction to $X",

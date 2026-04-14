@@ -21,15 +21,20 @@ const REVIEWER_MODEL_ID = 'claude-sonnet-4-6'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
+// Section values intentionally match DealDoctorOutput's JSON keys so a
+// future partial-rewrite path can look up `result[concern.section]`
+// directly without a translation layer. Previously these were kebab-case
+// human labels (`'negotiation'`, `'inspection'`, `'bottom-line'`) which
+// would have silently missed their targets on rewrite.
 export interface ReviewConcern {
   section:
     | 'diagnosis'
     | 'pros'
     | 'cons'
-    | 'negotiation'
-    | 'inspection'
+    | 'negotiationLevers'
+    | 'inspectionRedFlags'
     | 'fixes'
-    | 'bottom-line'
+    | 'bottomLine'
     | 'general'
   severity: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'
   claim: string        // the narrative claim being flagged
@@ -82,7 +87,7 @@ Return ONLY a single JSON object, no prose, no markdown fences:
   "confidence": 0.0-1.0,
   "concerns": [
     {
-      "section": "diagnosis | pros | cons | negotiation | inspection | fixes | bottom-line | general",
+      "section": "diagnosis | pros | cons | negotiationLevers | inspectionRedFlags | fixes | bottomLine | general",
       "severity": "CRITICAL | HIGH | MEDIUM | LOW",
       "claim": "<quoted text or paraphrase>",
       "reason": "<why it's wrong, citing the structured data>",

@@ -1,6 +1,8 @@
 import { prisma } from './db'
+import { logger } from './logger'
 import type { Report } from '@prisma/client'
 import { runInvariantCheck, InvariantGateError, type InvariantFailure } from './invariantCheck'
+import { runReviewLoop, type ReviewConcern, type ReviewLoopOutcome } from './reviewReport'
 // Note: reviewReport.ts is retained in the tree but not imported here after
 // the reviewer loop was removed (see comment below in composeFullReport).
 import {
@@ -86,6 +88,8 @@ export interface ReportWarning {
     | 'appreciation-suspect'
     | 'value-triangulation-single-signal'
     | 'hoa-above-building-avg'
+    | 'nyc-likely-coop'
+    | 'rent-avm-below-comps'
   message: string
 }
 
@@ -1524,8 +1528,12 @@ export async function composeFullReport(
   let dealDoctor: DealDoctorOutput | null = null
   let dealDoctorError: string | null = null
   let dealDoctorErrorDetail: string | null = null
-  try {
-    dealDoctor = await aiGenerator(
+
+  // Closure captures the full positional-arg list so the initial call and
+  // any reviewer-triggered rewrite stay in lock-step. Only `reviewCorrections`
+  // varies between first-pass and rewrite-pass invocations.
+  const runGenerator = (reviewCorrections?: ReviewConcern[]) =>
+    aiGenerator(
       report.address,
       report.city,
       report.state,
@@ -1564,7 +1572,15 @@ export async function composeFullReport(
       // the AI needs so it can't cherry-pick STR gross revenue as a "pivot
       // win" when LTR actually nets more (Chicago 1720 S Michigan audit).
       strProjection?.monthlyNetCashFlow ?? null,
+      reviewCorrections,
+      // Invariant WARN flags. FAIL-severity already threw upstream; WARN
+      // figures (DSCR band, GRM extremes, HOA/rent ratio) flow in as hard
+      // constraints so the narrative can't re-assert them as strengths.
+      invariantResult.warnings,
     )
+
+  try {
+    dealDoctor = await runGenerator()
     // Note: the prior Haiku+Sonnet-reviewer loop was removed after the
     // pressure test showed 9/10 reports failing to converge — Haiku's
     // rewrites introduced more bugs than they fixed. Sonnet now writes the
@@ -1583,7 +1599,12 @@ export async function composeFullReport(
     ]
       .filter(Boolean)
       .join(' · ')
-    console.error('Deal Doctor AI failed (report still generated):', detail)
+    logger.error('reportGenerator.deal_doctor_ai_failed', {
+      uuid: report.id,
+      address: report.address,
+      detail,
+      error: err,
+    })
     dealDoctorErrorDetail = detail
     const isRateLimit =
       status === 429 || err?.message?.includes('429') || err?.message?.includes('quota')
@@ -1595,7 +1616,7 @@ export async function composeFullReport(
       : 'AI diagnosis could not be generated. Numbers below are unaffected.'
   }
 
-  return {
+  const result: Record<string, any> = {
     generatedAt: new Date().toISOString(),
     property: {
       address: report.address,
@@ -1773,6 +1794,11 @@ export async function composeFullReport(
     }),
     rentWarnings,
     warnings,
+    // Invariant-gate WARN flags persisted alongside the report so retry-ai
+    // (which rebuilds the generateDealDoctor call from fullReportData
+    // rather than re-running the full pipeline) can forward the same
+    // constraints into the prompt on retry.
+    invariantWarnings: invariantResult.warnings,
     crossCheckLinks: (() => {
       // Prefer direct on-platform URLs so the user doesn't have to tap
       // through a Google interstitial. Zillow accepts the dashed-address
@@ -1810,6 +1836,85 @@ export async function composeFullReport(
       propertyTaxRate: stateRules.propertyTaxRate,
     },
   }
+
+  // ── Reviewer pass ────────────────────────────────────────────────────
+  // Second Sonnet call cross-checks the narrative against the structured
+  // data it was given. Runs inline (not fire-and-forget) so any correction
+  // lands in `result.dealDoctor` before persistence / PDF export.
+  //
+  //   verdict 'clean'   → ship
+  //   verdict 'rewrite' (conf ≥ 0.7, concerns non-empty) → ONE regenerate
+  //       with `reviewCorrections` forwarded, then ship the rewrite
+  //   verdict 'block'   → throw (same pattern as InvariantGateError —
+  //       math-class contradiction should fail loudly, not paper over)
+  //   reviewer throws / low confidence / empty concerns → ship original
+  //
+  // Both the final narrative and the pre-rewrite original (when a rewrite
+  // ran) are persisted in reviewOutcome so we can diff in production and
+  // tell whether the rewrite actually improved things.
+  if (dealDoctor) {
+    let originalDealDoctor: DealDoctorOutput | null = null
+    const loopResult = await runReviewLoop(
+      result,
+      dealDoctor as unknown as Record<string, unknown>,
+      async (concerns) => {
+        originalDealDoctor = dealDoctor
+        const rewritten = await runGenerator(concerns)
+        return rewritten as unknown as Record<string, unknown>
+      },
+      { maxRounds: 2, confidenceFloor: 0.7 }
+    )
+
+    if (loopResult.outcome.blocked) {
+      logger.error('reportGenerator.review_blocked', {
+        uuid: report.id,
+        address: report.address,
+        summary: loopResult.outcome.finalSummary,
+        concernCount: loopResult.outcome.finalConcerns.length,
+      })
+      throw new Error(`Review blocked: ${loopResult.outcome.finalSummary}`)
+    }
+
+    dealDoctor = loopResult.narrative as unknown as DealDoctorOutput
+    result.dealDoctor = dealDoctor
+    // Persist the FULL per-round history, not just the final outcome. This
+    // captures three telemetry classes we'd otherwise lose:
+    //   1. Low-confidence concerns (verdict=rewrite, conf<0.7) — the reviewer
+    //      saw something off but wasn't sure enough to rewrite. Best training
+    //      data for new deterministic assertions: patterns it's noticing
+    //      but can't act on yet.
+    //   2. Round-1 concerns when a rewrite ran — what was actually wrong
+    //      with the original narrative, preserved even after round-2 shows
+    //      "clean" on the rewrite.
+    //   3. Reviewer-unavailable events (error field set) — distinguish
+    //      "reviewer said clean" from "reviewer died" when auditing rates.
+    result.reviewOutcome = {
+      rounds: loopResult.outcome.rounds,
+      verdict: loopResult.outcome.finalVerdict,
+      confidence: loopResult.outcome.finalConfidence,
+      concerns: loopResult.outcome.finalConcerns,
+      summary: loopResult.outcome.finalSummary,
+      rewrote: originalDealDoctor !== null,
+      originalDealDoctor,
+      history: loopResult.outcome.history,
+    }
+
+    logger.info('reportGenerator.review_complete', {
+      uuid: report.id,
+      rounds: loopResult.outcome.rounds,
+      verdict: loopResult.outcome.finalVerdict,
+      confidence: loopResult.outcome.finalConfidence,
+      concernCount: loopResult.outcome.finalConcerns.length,
+      concernsPerRound: loopResult.outcome.history.map((h) => h.concerns.length),
+      reviewerErrored: loopResult.outcome.history.some((h) => !!h.error),
+      rewrote: originalDealDoctor !== null,
+    })
+  } else {
+    // No narrative produced (AI call errored) — reviewer has nothing to do.
+    result.reviewOutcome = null
+  }
+
+  return result
 }
 
 /**
