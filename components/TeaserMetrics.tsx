@@ -1,6 +1,6 @@
 'use client'
 
-import { TrendingUpIcon, HomeIcon, TargetIcon, PercentIcon, AlertTriangleIcon } from 'lucide-react'
+import { AlertTriangleIcon } from 'lucide-react'
 
 interface TeaserWarning { code: string; message: string }
 
@@ -9,7 +9,7 @@ interface TeaserMetricsProps {
     estimatedValue: number
     estimatedRent: number
     breakevenPrice: number
-    listingVsBreakeven: number // positive = listing below breakeven; negative = above
+    listingVsBreakeven: number
     city: string
     state: string
     bedrooms: number
@@ -50,61 +50,58 @@ export function TeaserMetrics({ teaser, property }: TeaserMetricsProps) {
 
   return (
     <div className="w-full max-w-3xl">
-      <div className="mb-4 text-center">
-        <p className="text-sm font-medium text-muted-foreground">Instant analysis for</p>
-        <h3 className="font-[family-name:var(--font-playfair)] text-lg font-semibold text-foreground">
+      {/* Address header — editorial eyebrow + Fraunces heading, no rounded chrome */}
+      <div className="mb-5 border-b border-foreground/15 pb-4 text-center">
+        <div className="flex items-center justify-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-foreground/60">
+          <span>Instant Analysis</span>
+          <span className="font-mono text-foreground/40">§ 02</span>
+        </div>
+        <h3 className="mt-2 font-[family-name:var(--font-fraunces)] text-[22px] font-medium leading-tight text-foreground [font-variation-settings:'opsz'_48,'SOFT'_30]">
           {property.address}
         </h3>
       </div>
 
-      {/* Data-quality warnings BEFORE the hero so buyers see them pre-paywall.
-          Amber band, stacked if multiple. Ignoring would be worse than undermining
-          the breakeven hook — investors trust us more when we tell them what's uncertain. */}
+      {/* Data-quality warnings — rectangular amber band, matches editorial border style */}
       {warnings.length > 0 && (
-        <div className="mb-4 space-y-2">
+        <div className="mb-5 space-y-2">
           {warnings.map((w) => (
             <div
               key={w.code}
-              className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 px-4 py-3"
+              className="flex items-start gap-2 border border-amber-500/40 bg-amber-500/5 px-4 py-3"
             >
               <AlertTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
-              <p className="text-xs leading-relaxed text-foreground">{w.message}</p>
+              <p className="text-xs leading-relaxed text-foreground/80">{w.message}</p>
             </div>
           ))}
         </div>
       )}
 
-      {/* Sub-metrics — these four tiles ARE the teaser. No hero verdict line
-          intentionally: the reader gets raw data (breakeven, value, rent, rate)
-          but not an interpretation. Interpretation (stress test, IRR, offer
-          targets, AI diagnosis) is what the $8.99 full report sells. */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <SubStat
-          icon={HomeIcon}
+      {/* Four stat tiles — matches "The Method" stat grid: mono tabular, uppercase labels,
+          straight dividers. No lucide icons, no rounded corners, no backgrounds. */}
+      <div className="grid grid-cols-2 border border-foreground/20 bg-[hsl(var(--card))]/60 backdrop-blur-sm sm:grid-cols-4">
+        <StatCell
           label="Est. Value"
           value={fmt(teaser.estimatedValue)}
           sub={`${property.bedrooms === 0 ? 'Studio' : `${property.bedrooms}bd`} / ${property.bathrooms}ba${teaser.sqft ? ` / ${teaser.sqft.toLocaleString()} sqft` : ''}`}
         />
-        <SubStat
-          icon={TrendingUpIcon}
+        <StatCell
           label="Est. Rent"
           value={`${fmt(teaser.estimatedRent)}/mo`}
           sub={
             teaser.rentMultiplied && teaser.perBedroomRent && teaser.rentMultipliedBy
-              ? `${fmt(teaser.perBedroomRent)}/bed × ${teaser.rentMultipliedBy} beds (per-bed → total)`
+              ? `${fmt(teaser.perBedroomRent)}/bed × ${teaser.rentMultipliedBy} beds`
               : teaser.yearBuilt
                 ? `Built ${teaser.yearBuilt}`
                 : `${property.city}, ${property.state}`
           }
         />
-        <SubStat
-          icon={TargetIcon}
+        <StatCell
           label="Breakeven"
           value={fmt(teaser.breakevenPrice)}
           sub="Cash-flows at ~$0/mo"
+          accent
         />
-        <SubStat
-          icon={PercentIcon}
+        <StatCell
           label="Investor Rate"
           value={`${(teaser.currentRate * 100).toFixed(2)}%`}
           sub="PMMS + DSCR premium"
@@ -114,25 +111,32 @@ export function TeaserMetrics({ teaser, property }: TeaserMetricsProps) {
   )
 }
 
-function SubStat({
-  icon: Icon,
+function StatCell({
   label,
   value,
   sub,
+  accent,
 }: {
-  icon: React.ComponentType<{ className?: string }>
   label: string
   value: string
   sub?: string
+  accent?: boolean
 }) {
   return (
-    <div className="rounded-xl border bg-card p-4">
-      <div className="flex items-center gap-1.5 text-muted-foreground">
-        <Icon className="h-3.5 w-3.5" />
-        <span className="text-[10px] font-medium uppercase tracking-wider">{label}</span>
-      </div>
-      <p className="mt-1 text-lg font-bold text-foreground">{value}</p>
-      {sub && <p className="mt-0.5 text-[10px] text-muted-foreground">{sub}</p>}
+    <div className="border-b border-foreground/15 px-5 py-4 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0 [&:nth-child(2)]:border-b sm:[&:nth-child(2)]:border-b-0">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-foreground/55">
+        {label}
+      </p>
+      <p
+        className={
+          accent
+            ? 'mt-1.5 font-mono text-[20px] font-semibold tabular-nums text-[hsl(var(--primary))]'
+            : 'mt-1.5 font-mono text-[20px] font-semibold tabular-nums text-foreground'
+        }
+      >
+        {value}
+      </p>
+      {sub && <p className="mt-1 text-[11px] leading-snug text-foreground/55">{sub}</p>}
     </div>
   )
 }
