@@ -274,9 +274,9 @@ export function AddressInput({ onResult, onError }: AddressInputProps) {
         >
           <p className="text-sm font-semibold text-foreground">Did you mean a different address?</p>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            You typed <span className="font-medium text-foreground">"{pendingMismatch.userAddress}"</span>,
+            You typed <span className="font-medium text-foreground">&ldquo;{pendingMismatch.userAddress}&rdquo;</span>,
             but the closest record in our data source is{' '}
-            <span className="font-medium text-foreground">"{pendingMismatch.resolvedAddress}"</span>.
+            <span className="font-medium text-foreground">&ldquo;{pendingMismatch.resolvedAddress}&rdquo;</span>.
             These may be different properties — confirm before we generate the report.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
@@ -286,7 +286,7 @@ export function AddressInput({ onResult, onError }: AddressInputProps) {
               disabled={loading}
               className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             >
-              Yes, use "{pendingMismatch.resolvedAddress}"
+              Yes, use &ldquo;{pendingMismatch.resolvedAddress}&rdquo;
             </button>
             <button
               type="button"

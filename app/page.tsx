@@ -338,9 +338,9 @@ export default function LandingPage() {
                 <span className="font-mono text-[10px] tabular-nums text-foreground/50">§ 01</span>
               </div>
               <p className="mt-4 font-[family-name:var(--font-fraunces)] text-[18px] leading-[1.35] text-foreground/90 [font-variation-settings:'opsz'_24,'SOFT'_20]">
-                "Most deal calculators return cap rate. <em className="text-[hsl(var(--primary))]">DealDoctor returns the
+                &ldquo;Most deal calculators return cap rate. <em className="text-[hsl(var(--primary))]">DealDoctor returns the
                 single price at which this deal breaks even</em> — and what
-                you&apos;d leave on the table above it."
+                you&apos;d leave on the table above it.&rdquo;
               </p>
               <div className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-foreground/15 pt-5 font-mono tabular-nums">
                 <Stat k="TIME TO REPORT" v="~45s" />
