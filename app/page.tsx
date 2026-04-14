@@ -642,7 +642,7 @@ export default function LandingPage() {
       {/* ─── Data sources / masthead credits ───────────────────────── */}
       <section className="border-t border-foreground/20 bg-[hsl(var(--background))]">
         <div className="mx-auto max-w-6xl px-5 py-10">
-          <div className="grid gap-x-10 gap-y-6 border-t border-foreground/20 pt-10 text-[11px] leading-relaxed md:grid-cols-4">
+          <div className="grid gap-x-10 gap-y-6 border-t border-foreground/20 pt-10 text-[11px] leading-relaxed md:grid-cols-3">
             <div>
               <div className="font-semibold uppercase tracking-[0.22em] text-foreground">Data</div>
               <div className="mt-2 space-y-1 font-mono tabular-nums text-foreground/70">
@@ -664,14 +664,6 @@ export default function LandingPage() {
                 <div>Five-year IRR</div>
                 <div>Jurisdictional tax</div>
                 <div>Invariant gate</div>
-              </div>
-            </div>
-            <div>
-              <div className="font-semibold uppercase tracking-[0.22em] text-foreground">Delivery</div>
-              <div className="mt-2 space-y-1 font-mono tabular-nums text-foreground/70">
-                <div>LemonSqueezy · payments</div>
-                <div>Prisma + Postgres · reports</div>
-                <div>Email magic-link · recovery</div>
               </div>
             </div>
             <div>
