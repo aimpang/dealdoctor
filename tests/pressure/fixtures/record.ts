@@ -112,6 +112,7 @@ async function main() {
         sqft: property.square_feet,
         value: property.estimated_value,
         propertyType: property.property_type,
+        address: args.address,
       })
     ),
     settle(getRentComps(args.address, property.bedrooms, property.property_type)),

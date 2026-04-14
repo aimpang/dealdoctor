@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-13T04:54:42.647Z",
+  "generatedAt": "2026-04-13T14:24:31.950Z",
   "property": {
     "address": "1500 W Anderson Ln",
     "city": "Austin",
@@ -25,9 +25,9 @@
     "fedFunds": 0.045
   },
   "breakeven": {
-    "price": 157000,
+    "price": 50000,
     "yourOffer": 27476547,
-    "delta": -27319547
+    "delta": -27426547
   },
   "expenses": {
     "monthlyPropertyTax": 41215,
@@ -267,7 +267,7 @@
     }
   ],
   "recommendedOffers": {
-    "breakevenPrice": 157000,
+    "breakevenPrice": 50000,
     "priceForCashOnCash": {
       "target": 0.08,
       "maxPrice": 0
@@ -421,6 +421,7 @@
     "confidence": "high"
   },
   "rentWarnings": [],
+  "warnings": [],
   "crossCheckLinks": {
     "zillow": "https://www.google.com/search?q=zillow%201500%20W%20Anderson%20Ln",
     "redfin": "https://www.google.com/search?q=redfin%201500%20W%20Anderson%20Ln",
@@ -483,7 +484,7 @@
     ],
     "annualDepreciation": 799318,
     "estimatedTaxSaving": 223809,
-    "afterTaxCashFlow": 907213,
+    "afterTaxCashFlow": -1957099,
     "verdict": "PASS",
     "primaryFailureMode": "NEGATIVE_CASHFLOW",
     "dealScore": 0

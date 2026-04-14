@@ -46,6 +46,7 @@ export const EXPECTED_FULL_REPORT_KEYS = [
   'climate',
   'valueTriangulation',
   'rentWarnings',
+  'warnings',
   'crossCheckLinks',
   'ltr',
   'dealDoctor',
@@ -256,6 +257,25 @@ export function assertAlwaysOnInvariants(data: any) {
   // 11. Breakeven delta math: delta === price − yourOffer (catches subtle
   //     sign regressions).
   expect(data.breakeven.delta).toBe(data.breakeven.price - data.breakeven.yourOffer)
+
+  // 12. Deal score ∈ [0, 100]. Pre-fix, classifyDeal summed three sub-scores
+  //     capped individually at 100 without a total cap — strong deals could
+  //     show 174/100 (Blacksburg audit). The cap now enforces the /100 label.
+  if (data.ltr && typeof data.ltr.dealScore === 'number') {
+    expect(data.ltr.dealScore).toBeGreaterThanOrEqual(0)
+    expect(data.ltr.dealScore).toBeLessThanOrEqual(100)
+  }
+
+  // 13. Value-uncertainty verdict cap. If valueConfidence === 'low' AND
+  //     spreadPct > 50, a DEAL verdict must have been downgraded to
+  //     MARGINAL (or already was PASS). A DEAL that survived this gate is
+  //     the Blacksburg over-rosy-verdict bug.
+  if (
+    data.valueTriangulation?.confidence === 'low' &&
+    data.valueTriangulation?.spreadPct > 50
+  ) {
+    expect(data.ltr.verdict).not.toBe('DEAL')
+  }
 }
 
 /**
