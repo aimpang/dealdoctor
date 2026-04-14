@@ -65,7 +65,7 @@ export default function RootLayout({
         <title>DealDoctor — Know if a real-estate deal is worth it before you offer</title>
         <meta
           name="description"
-          content="Paste a US property address. Get the exact breakeven offer price, 5-year wealth projection + IRR, DSCR stress test, climate risk, and an AI-powered deal diagnosis with specific negotiation scripts. First look free · $8.99 single · 7-day refund."
+          content="Paste a US property address. Get the exact breakeven offer price, 5-year wealth projection + IRR, DSCR stress test, climate risk, and an AI-powered deal diagnosis with specific negotiation scripts. First look free · $24.99 single · 7-day refund."
         />
         <meta
           name="keywords"
@@ -113,19 +113,19 @@ export default function RootLayout({
                 {
                   '@type': 'Offer',
                   name: 'Single Report',
-                  price: '8.99',
+                  price: '24.99',
                   priceCurrency: 'USD',
                 },
                 {
                   '@type': 'Offer',
                   name: '5-Pack Bundle',
-                  price: '28.99',
+                  price: '69.99',
                   priceCurrency: 'USD',
                 },
                 {
                   '@type': 'Offer',
                   name: 'Pro Unlimited',
-                  price: '48.99',
+                  price: '119.99',
                   priceCurrency: 'USD',
                   billingDuration: 'P1M',
                 },

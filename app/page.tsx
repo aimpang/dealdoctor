@@ -486,7 +486,7 @@ export default function LandingPage() {
           {[
             {
               name: 'Single Report',
-              price: '$8.99',
+              price: '$24.99',
               per: 'one report',
               tagline: 'Best when you\'re analyzing a specific address.',
               features: [
@@ -499,8 +499,8 @@ export default function LandingPage() {
             },
             {
               name: 'Bundle · 5-Pack',
-              price: '$28.99',
-              per: '$5.80 per report',
+              price: '$69.99',
+              per: '$14.00 per report',
               tagline: 'Best when you\'re shopping a market.',
               features: [
                 '5 reports that stack across searches',
@@ -513,7 +513,7 @@ export default function LandingPage() {
             },
             {
               name: 'Pro Unlimited',
-              price: '$48.99',
+              price: '$119.99',
               per: 'per month',
               tagline: 'Best for active investors and agents.',
               features: [

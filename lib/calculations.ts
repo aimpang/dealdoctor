@@ -555,7 +555,7 @@ export function calculateSTRProjection(params: {
 
 // --- SENSITIVITY ANALYSIS ---
 // Re-runs the core metrics under adverse/favorable scenarios so investors can
-// see "how safe is this deal?" at a glance. Investors paying $8.99 for a report
+// see "how safe is this deal?" at a glance. Investors paying $24.99 for a report
 // routinely test: what if rent drops 10%? what if the refi rate is +100bps?
 export interface SensitivityRow {
   scenario: string
