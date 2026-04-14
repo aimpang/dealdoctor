@@ -1,21 +1,44 @@
 'use client'
 
-import { Inter, Playfair_Display } from "next/font/google"
+import { Fraunces, Instrument_Sans, JetBrains_Mono } from "next/font/google"
 import "./globals.css"
 import "maplibre-gl/dist/maplibre-gl.css"
 import { useEffect, useState } from "react"
 
-const playfair = Playfair_Display({
+// Fraunces — an expressive variable serif with soft/hard + optical-size axes.
+// Picked for the masthead feel (think Harper's, FT Weekend, a financial
+// circular) without the overused Playfair cadence.
+const fraunces = Fraunces({
   subsets: ["latin"],
-  variable: "--font-playfair",
+  variable: "--font-fraunces",
+  display: "swap",
+  axes: ["opsz", "SOFT"],
+})
+
+// Instrument Sans — a contemporary sans with just enough character to avoid
+// feeling like Inter-boilerplate while staying quietly readable at body size.
+const instrument = Instrument_Sans({
+  subsets: ["latin"],
+  variable: "--font-instrument",
   display: "swap",
 })
 
-const inter = Inter({
+// Monospace for tabular numerals — currency, percentages, anything that
+// should line up across rows.
+const mono = JetBrains_Mono({
   subsets: ["latin"],
-  variable: "--font-inter",
+  variable: "--font-mono",
   display: "swap",
 })
+
+// Legacy aliases so existing components that still reference --font-playfair
+// or --font-inter continue to render correctly without a repo-wide rename.
+const fontAliases = `
+  :root {
+    --font-playfair: var(--font-fraunces);
+    --font-inter: var(--font-instrument);
+  }
+`
 
 export default function RootLayout({
   children,
@@ -42,7 +65,7 @@ export default function RootLayout({
         <title>DealDoctor — Know if a real-estate deal is worth it before you offer</title>
         <meta
           name="description"
-          content="Paste a US property address. Get the exact breakeven price, 5-year wealth projection + IRR, DSCR stress test, climate risk, and a Claude-powered diagnosis with specific negotiation scripts. First look free · $8.99 single · 7-day refund."
+          content="Paste a US property address. Get the exact breakeven offer price, 5-year wealth projection + IRR, DSCR stress test, climate risk, and an AI-powered deal diagnosis with specific negotiation scripts. First look free · $8.99 single · 7-day refund."
         />
         <meta
           name="keywords"
@@ -59,7 +82,7 @@ export default function RootLayout({
         />
         <meta
           property="og:description"
-          content="Exact breakeven offer price, 5-year wealth projection, DSCR stress test, climate risk, and a Claude-powered diagnosis — for any US property. First look free."
+          content="Exact breakeven offer price, 5-year wealth projection, DSCR stress test, climate risk, and an AI-powered deal diagnosis — for any US property. First look free."
         />
         <meta property="og:image" content="/logo.svg" />
 
@@ -71,7 +94,7 @@ export default function RootLayout({
         />
         <meta
           name="twitter:description"
-          content="Exact breakeven price, 5-year IRR, DSCR stress test, climate risk, and Claude-powered negotiation scripts. First look free."
+          content="Exact breakeven price, 5-year IRR, DSCR stress test, climate risk, and AI-powered negotiation scripts. First look free."
         />
 
         {/* JSON-LD structured data — helps Google surface pricing tiers + product info */}
@@ -84,7 +107,7 @@ export default function RootLayout({
               name: 'DealDoctor',
               applicationCategory: 'FinanceApplication',
               description:
-                'Real-estate investment analyzer for US properties. Breakeven offer price, 5-year wealth projection, DSCR stress test, climate risk, and Claude-powered diagnosis.',
+                'Real-estate investment analyzer for US properties. Breakeven offer price, 5-year wealth projection, DSCR stress test, climate risk, and AI-powered deal diagnosis.',
               operatingSystem: 'Any',
               offers: [
                 {
@@ -112,8 +135,9 @@ export default function RootLayout({
         />
       </head>
       <body
-        className={`${playfair.variable} ${inter.variable} font-sans antialiased`}
+        className={`${fraunces.variable} ${instrument.variable} ${mono.variable} font-sans antialiased`}
       >
+        <style dangerouslySetInnerHTML={{ __html: fontAliases }} />
         <ThemeToggle darkMode={darkMode} setDarkMode={setDarkMode} />
         {children}
       </body>

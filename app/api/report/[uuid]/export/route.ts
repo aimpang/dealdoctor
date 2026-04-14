@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import * as XLSX from 'xlsx'
+import { isDebugAccessAuthorized } from '@/lib/debugAccess'
+import { verifyShareToken } from '@/lib/shareToken'
+import { CUSTOMER_COOKIE } from '@/lib/entitlements'
 
 // Multi-sheet Excel export of the full report. Everything comes from
 // fullReportData — no new computations — so this is a pure transformation job.
@@ -19,14 +22,35 @@ export async function GET(
       return NextResponse.json({ error: 'Report not found' }, { status: 404 })
     }
 
+    const { searchParams } = new URL(req.url)
     const isDebug =
-      process.env.NODE_ENV !== 'production' &&
-      new URL(req.url).searchParams.get('debug') === '1'
+      searchParams.get('debug') === '1' &&
+      isDebugAccessAuthorized(searchParams.get('debugKey'))
+
+    // Non-owner Excel access requires a signed share token — same policy as
+    // the main report endpoint. Paid-but-unauthed requests get 403.
+    const tokenValid = verifyShareToken(uuid, searchParams.get('t'))
+    const cookieToken = req.cookies.get(CUSTOMER_COOKIE)?.value
+    let isOwner = false
+    if (cookieToken && (report as any).customerId) {
+      const cookieCustomer = await prisma.customer.findUnique({
+        where: { accessToken: cookieToken },
+        select: { id: true },
+      })
+      isOwner = cookieCustomer?.id === (report as any).customerId
+    }
+    const hasAccess = isDebug || isOwner || tokenValid
 
     if (!report.paid && !isDebug) {
       return NextResponse.json(
         { error: 'Excel export is a paid-report feature' },
         { status: 402 }
+      )
+    }
+    if (report.paid && !hasAccess) {
+      return NextResponse.json(
+        { error: 'Access denied. Excel export requires the owner cookie or a valid share link.' },
+        { status: 403 }
       )
     }
     if (!report.fullReportData) {

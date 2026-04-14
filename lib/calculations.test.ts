@@ -17,6 +17,7 @@ import {
   getStatePropertyTaxGrowth,
   STATE_RULES,
   getStateFromZipCode,
+  isStrProhibitedForInvestor,
 } from './calculations'
 
 // Verified against Bankrate's mortgage calculator. If any of these change,
@@ -154,6 +155,19 @@ describe('calculateDealMetrics', () => {
         12) /
       baseInputs.purchasePrice
     expect(m.capRate).toBeCloseTo(Math.round(expectedCapRate * 10000) / 100, 1)
+  })
+
+  // Blacksburg audit: classifyDeal returned 174/100 on a runaway strong deal
+  // because the three sub-scores (capped individually at 100) summed above
+  // their 40/30/30 weighting. Enforced total cap at 100.
+  it('dealScore is capped at 100 even on runaway strong deals', () => {
+    const m = calculateDealMetrics(
+      { ...baseInputs, purchasePrice: 540_000, downPaymentPct: 0.20 },
+      { estimatedMonthlyRent: 5_100, vacancyRate: 0.05, monthlyExpenses: 500 },
+      'VA'
+    )
+    expect(m.dealScore).toBeGreaterThanOrEqual(0)
+    expect(m.dealScore).toBeLessThanOrEqual(100)
   })
 
   it('verdict is PASS when cash flow is sharply negative', () => {
@@ -438,6 +452,67 @@ describe('calculateFinancingAlternatives', () => {
 // --- SENSITIVITY ---
 // Guards the "how safe is this deal?" section. If these relationships break,
 // investors looking for stress-test signals will see nonsense.
+// DC Apolline regression — the hero IRR (−13.8% on zip-derived −1%
+// appreciation) contradicted the sensitivity Base-case IRR (+6.8% because
+// the table hardcoded 3% appreciation). Now Base case uses the hero's
+// actual appreciation rate when supplied.
+describe('calculateSensitivity — Base-case IRR consistency with hero', () => {
+  const inputs = {
+    offerPrice: 266_000,
+    downPaymentPct: 0.20,
+    annualRate: 0.0725,
+    monthlyRent: 2_100,
+    vacancyRate: 0.05,
+    monthlyExpenses: 800,
+    rehabBudget: 0,
+    annualDepreciation: 7_730,
+    cashToClose: 60_000,
+  }
+
+  it('Base case uses baseAppreciationRate when provided', () => {
+    const withRate = calculateSensitivity({ ...inputs, baseAppreciationRate: -0.01 })
+    const base = withRate.find((r) => r.scenario === 'Base case')!
+    expect(base.description).toContain('-1.0%')
+  })
+
+  it('defaults to 3% appreciation description when baseAppreciationRate is omitted', () => {
+    const legacy = calculateSensitivity(inputs)
+    const base = legacy.find((r) => r.scenario === 'Base case')!
+    expect(base.description).toContain('3.0%')
+  })
+
+  it('Base-case IRR shifts when appreciation shifts (sanity: negative appreciation lowers IRR)', () => {
+    const positive = calculateSensitivity({ ...inputs, baseAppreciationRate: 0.03 })
+    const negative = calculateSensitivity({ ...inputs, baseAppreciationRate: -0.01 })
+    const pBase = positive.find((r) => r.scenario === 'Base case')!
+    const nBase = negative.find((r) => r.scenario === 'Base case')!
+    // Either both finite with neg < pos, or negative went to NaN (acceptable)
+    if (Number.isFinite(nBase.fiveYrIRR) && Number.isFinite(pBase.fiveYrIRR)) {
+      expect(nBase.fiveYrIRR).toBeLessThan(pBase.fiveYrIRR)
+    }
+  })
+
+  it('rent and expense growth propagate through to the projection', () => {
+    const noGrowth = calculateSensitivity({
+      ...inputs,
+      baseAppreciationRate: 0.03,
+      baseRentGrowthRate: 0,
+      baseExpenseGrowthRate: 0,
+    })
+    const withGrowth = calculateSensitivity({
+      ...inputs,
+      baseAppreciationRate: 0.03,
+      baseRentGrowthRate: 0.05,
+      baseExpenseGrowthRate: 0.025,
+    })
+    const noBase = noGrowth.find((r) => r.scenario === 'Base case')!
+    const grBase = withGrowth.find((r) => r.scenario === 'Base case')!
+    // Higher rent growth → more wealth over 5 years (not strictly monotonic
+    // in every knob combo, but this one is).
+    expect(grBase.fiveYrWealth).toBeGreaterThan(noBase.fiveYrWealth)
+  })
+})
+
 describe('calculateSensitivity', () => {
   const baseInputs = {
     offerPrice: 400_000,
@@ -578,6 +653,12 @@ describe('getStatePropertyTaxGrowth', () => {
   it('unknown state falls back to 3%', () => {
     expect(getStatePropertyTaxGrowth('ZZ')).toBe(0.03)
   })
+
+  // Deal score cap (Blacksburg audit: was 174/100) — no calculations.test.ts
+  // entry currently, but the contract says dealScore ∈ [0, 100]. The
+  // pressure-suite invariant 12 already enforces this against fixtures.
+  // Inline sanity check via calculateDealMetrics would require too much
+  // scaffolding — the unit is covered by the pressure suite instead.
   it('every value is in a sane band (0%-10%)', () => {
     for (const s of ['CA', 'TX', 'FL', 'NY', 'OH', 'GA', 'CO', 'WA', 'IL', 'AZ']) {
       const v = getStatePropertyTaxGrowth(s)
@@ -662,5 +743,208 @@ describe('getStateFromZipCode', () => {
   })
   it('strips non-digits (ZIP+4)', () => {
     expect(getStateFromZipCode('78701-1234')).toBe('TX')
+  })
+})
+
+// --- STATE_RULES coverage (regression for silent TX fallback) ---
+// The audit turned up that ~32 states weren't in STATE_RULES. Any of them
+// would silently inherit Texas's 1.8% property-tax rate and STR narrative,
+// which made reports for NM, HI, AK, NJ, AR, etc. arithmetically wrong
+// without surfacing any warning. These tests lock in full 50-state coverage.
+describe('STATE_RULES coverage', () => {
+  const ALL_50_STATES = [
+    'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA',
+    'HI','ID','IL','IN','IA','KS','KY','LA','ME','MD',
+    'MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ',
+    'NM','NY','NC','ND','OH','OK','OR','PA','RI','SC',
+    'SD','TN','TX','UT','VT','VA','WA','WV','WI','WY',
+  ]
+
+  it('every US state is defined (no silent TX fallback)', () => {
+    for (const s of ALL_50_STATES) {
+      expect(STATE_RULES[s], `Missing STATE_RULES entry for ${s}`).toBeDefined()
+    }
+  })
+
+  it('DC is defined', () => {
+    expect(STATE_RULES['DC']).toBeDefined()
+  })
+
+  it('every propertyTaxRate is in a sane band (0.1% – 3%)', () => {
+    for (const s of ALL_50_STATES) {
+      const r = STATE_RULES[s].propertyTaxRate
+      expect(r, `${s} tax rate ${r} out of band`).toBeGreaterThan(0.001)
+      expect(r).toBeLessThan(0.03)
+    }
+  })
+
+  it('NM is NOT treated as Texas (audit-specific regression)', () => {
+    // Pre-fix: STATE_RULES['NM'] || STATE_RULES['TX'] fell through to 1.8%.
+    // Post-fix: NM's own 0.76% effective rate applies — ~2.5× lower tax.
+    expect(STATE_RULES['NM'].propertyTaxRate).toBeLessThan(0.015)
+    expect(STATE_RULES['NM'].name).toBe('New Mexico')
+  })
+
+  it('NJ has a very high effective rate (>2%)', () => {
+    expect(STATE_RULES['NJ'].propertyTaxRate).toBeGreaterThan(0.02)
+  })
+
+  it('HI has a very low effective rate (<0.5%)', () => {
+    expect(STATE_RULES['HI'].propertyTaxRate).toBeLessThan(0.005)
+  })
+
+  // DC Dupont Circle audit: rate was 0.6% (undershoot). Actual effective
+  // rate ~0.85% — the regulations section understated property tax for
+  // any DC property without a county-record override.
+  it('DC is >= 0.8% (corrected from prior 0.6%)', () => {
+    expect(STATE_RULES['DC'].propertyTaxRate).toBeGreaterThanOrEqual(0.008)
+    expect(STATE_RULES['DC'].propertyTaxRate).toBeLessThan(0.01)
+  })
+})
+
+// --- calculateBreakEvenPrice with expense opts ---
+// Regression for Bug B: the solver used to hardcode 20% down + 1.5% tax/ins +
+// $250 ops. That produced a wrong breakeven for Chicago high-rise condos
+// (HOA-heavy, IL 2.1% tax), low-tax CA coastal condos, and anything not on
+// a 20% down loan. The new signature lets callers pass actual deal inputs.
+describe('calculateBreakEvenPrice with expense opts', () => {
+  it('defaults still produce a sane positive number (backward-compat)', () => {
+    const be = calculateBreakEvenPrice(2000, 0.07)
+    expect(be).toBeGreaterThan(50_000)
+    expect(be).toBeLessThan(3_000_000)
+  })
+
+  it('higher propertyTaxRate lowers breakeven (more expense eats rent)', () => {
+    const low = calculateBreakEvenPrice(2500, 0.07, { propertyTaxRate: 0.007 })  // HI-style
+    const high = calculateBreakEvenPrice(2500, 0.07, { propertyTaxRate: 0.022 }) // NJ-style
+    expect(high).toBeLessThan(low)
+  })
+
+  it('adding monthlyHOA lowers breakeven (condo case)', () => {
+    const noHoa = calculateBreakEvenPrice(2500, 0.07, { monthlyHOA: 0 })
+    const condo = calculateBreakEvenPrice(2500, 0.07, { monthlyHOA: 500 })
+    expect(condo).toBeLessThan(noHoa)
+  })
+
+  it('higher downPaymentPct raises breakeven (smaller loan, lower payment)', () => {
+    const twenty = calculateBreakEvenPrice(2500, 0.07, { downPaymentPct: 0.20 })
+    const forty = calculateBreakEvenPrice(2500, 0.07, { downPaymentPct: 0.40 })
+    expect(forty).toBeGreaterThan(twenty)
+  })
+
+  it('Chicago high-rise condo: IL 2.1% + $500 HOA produces a lower breakeven than TX SFR', () => {
+    // Rough regression for the audit's Bug B — a condo with heavy HOA + IL
+    // rate should NOT share breakeven with a TX SFR at the same rent/rate.
+    const chicagoCondo = calculateBreakEvenPrice(2500, 0.07, {
+      propertyTaxRate: 0.021,
+      monthlyInsurance: 150,
+      monthlyHOA: 500,
+    })
+    const tulsaSfr = calculateBreakEvenPrice(2500, 0.07, {
+      propertyTaxRate: 0.009,
+      monthlyInsurance: 100,
+      monthlyHOA: 0,
+    })
+    expect(chicagoCondo).toBeLessThan(tulsaSfr)
+  })
+
+  // Dynamic ceiling — luxury subjects ($3M+) used to be clamped by the flat
+  // 3_000_000 ceiling. Regression for the Old Westbury audit (Bug 8).
+  it('dynamic ceiling scales with offerPrice (no $3M clamp)', () => {
+    // High rent + low rate on a $4M-subject should push breakeven above $3M.
+    // Without the dynamic ceiling the solver would clamp at/near 3M.
+    const be = calculateBreakEvenPrice(30_000, 0.04, {
+      offerPrice: 4_000_000,
+      monthlyHOA: 0,
+    })
+    expect(be).toBeGreaterThan(3_000_000)
+    expect(be).toBeLessThan(8_000_000)
+  })
+
+  it('default call still caps at ~$3M ceiling (backward compat when offerPrice omitted)', () => {
+    const be = calculateBreakEvenPrice(30_000, 0.04)
+    expect(be).toBeLessThanOrEqual(3_000_000)
+  })
+})
+
+// calculateRecommendedOffers regression — breakeven must match the one the
+// standalone solver produces given the same expense inputs. The Old Westbury
+// audit hit "two different breakeven numbers in the same report" because
+// recommendedOffers was calling calculateBreakEvenPrice(rent, rate) with no
+// expense opts, so it silently used the defaults while the hero used actuals.
+describe('calculateRecommendedOffers breakeven consistency', () => {
+  const baseParams = {
+    monthlyRent: 5_000,
+    vacancyRate: 0.05,
+    annualRate: 0.07,
+    downPaymentPct: 0.20,
+    rehabBudget: 0,
+    propertyTaxRate: 0.017,
+    monthlyInsurance: 250,
+    monthlyMaintenance: 228,
+    monthlyHOA: 0,
+  }
+
+  it('uses the passed expense stack, not solver defaults', () => {
+    const recOffers = calculateRecommendedOffers(baseParams)
+    const direct = calculateBreakEvenPrice(baseParams.monthlyRent, baseParams.annualRate, {
+      downPaymentPct: baseParams.downPaymentPct,
+      propertyTaxRate: baseParams.propertyTaxRate,
+      monthlyInsurance: baseParams.monthlyInsurance,
+      monthlyHOA: baseParams.monthlyHOA,
+      monthlyMaintenance: baseParams.monthlyMaintenance,
+    })
+    expect(recOffers.breakevenPrice).toBe(direct)
+  })
+
+  it('offerPrice is forwarded for luxury subjects', () => {
+    const recOffers = calculateRecommendedOffers({
+      ...baseParams,
+      monthlyRent: 30_000,
+      annualRate: 0.04,
+      offerPrice: 4_000_000,
+    })
+    expect(recOffers.breakevenPrice).toBeGreaterThan(3_000_000)
+  })
+})
+
+// Bug 4 regression — NY strNotes used to apply the NYC STR ban to all of NY
+// state, misrepresenting Long Island, Hudson Valley, and upstate.
+describe('STATE_RULES["NY"].strNotes scope', () => {
+  it('scopes the ban to NYC / five boroughs rather than statewide', () => {
+    const notes = STATE_RULES['NY'].strNotes
+    // Must explicitly call out NYC vs the rest of the state.
+    expect(notes.toLowerCase()).toMatch(/nyc|five boroughs/i)
+    expect(notes.toLowerCase()).toMatch(/rules vary|elsewhere|non-nyc|outside/i)
+  })
+})
+
+// Bug regression — Baltimore City §5A bans non-owner-occupied whole-unit STR.
+// Prior to the fix an investor report on 414 Water St #1501 still listed
+// "no state-level STR restrictions" as a pro and included a 60%-occupancy
+// strProjection — contradicting the report's own stateRules.strNotes.
+describe('isStrProhibitedForInvestor', () => {
+  it('flags Baltimore, MD as STR-prohibited for investors', () => {
+    expect(isStrProhibitedForInvestor('MD', 'Baltimore')).toBe(true)
+    expect(isStrProhibitedForInvestor('MD', 'baltimore')).toBe(true)
+    expect(isStrProhibitedForInvestor('MD', '  Baltimore  ')).toBe(true)
+  })
+  it('flags NYC boroughs (NY Local Law 18)', () => {
+    expect(isStrProhibitedForInvestor('NY', 'New York')).toBe(true)
+    expect(isStrProhibitedForInvestor('NY', 'Brooklyn')).toBe(true)
+    expect(isStrProhibitedForInvestor('NY', 'Queens')).toBe(true)
+  })
+  it('does NOT flag non-banned jurisdictions', () => {
+    expect(isStrProhibitedForInvestor('MD', 'Annapolis')).toBe(false)
+    expect(isStrProhibitedForInvestor('NY', 'Albany')).toBe(false)
+    expect(isStrProhibitedForInvestor('TX', 'Austin')).toBe(false)
+    // DC has a 90-night carve-out (not fully prohibited) — handled by the
+    // DC-specific occupancy-scaling branch in reportGenerator, not here.
+    expect(isStrProhibitedForInvestor('DC', 'Washington')).toBe(false)
+  })
+  it('handles null/empty city safely', () => {
+    expect(isStrProhibitedForInvestor('MD', null)).toBe(false)
+    expect(isStrProhibitedForInvestor('MD', '')).toBe(false)
+    expect(isStrProhibitedForInvestor('', null)).toBe(false)
   })
 })

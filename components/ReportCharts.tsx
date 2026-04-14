@@ -127,62 +127,105 @@ export function WealthCompositionPie({
     cumulativeTaxShield5yr: number
   }
 }) {
-  // Negative cash flow should still show proportionally; clamp to 0 for the pie
-  // so a negative slice doesn't invert the visualization.
-  const data = [
-    { name: 'Cash flow', value: Math.max(0, hero.cumulativeCashFlow5yr), color: COMPONENT_COLORS.cashFlow },
-    { name: 'Principal paydown', value: Math.max(0, hero.equityFromPaydown5yr), color: COMPONENT_COLORS.paydown },
-    { name: 'Appreciation', value: Math.max(0, hero.equityFromAppreciation5yr), color: COMPONENT_COLORS.appreciation },
-    { name: 'Tax shield', value: Math.max(0, hero.cumulativeTaxShield5yr), color: COMPONENT_COLORS.taxShield },
+  // A pie chart cannot faithfully represent negative contributions — using
+  // Math.abs() makes a -$110k appreciation drag look like a +12% wealth
+  // component, which is actively misleading. Split the components into
+  // positive drivers (rendered as pie slices, proportional to positive total)
+  // and negative drags (rendered below in a separate list so the signed
+  // magnitude is unambiguous).
+  const components = [
+    { name: 'Cash flow', value: hero.cumulativeCashFlow5yr, color: COMPONENT_COLORS.cashFlow },
+    { name: 'Principal paydown', value: hero.equityFromPaydown5yr, color: COMPONENT_COLORS.paydown },
+    { name: 'Appreciation', value: hero.equityFromAppreciation5yr, color: COMPONENT_COLORS.appreciation },
+    { name: 'Tax shield', value: hero.cumulativeTaxShield5yr, color: COMPONENT_COLORS.taxShield },
   ]
-  const total = data.reduce((s, d) => s + d.value, 0)
+  const positives = components.filter((c) => c.value > 0)
+  const negatives = components.filter((c) => c.value < 0)
+  const positiveTotal = positives.reduce((s, c) => s + c.value, 0)
 
   return (
-    <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
-      <ResponsiveContainer width={180} height={180}>
-        <PieChart>
-          <Pie
-            data={data}
-            dataKey="value"
-            nameKey="name"
-            cx="50%"
-            cy="50%"
-            innerRadius={50}
-            outerRadius={80}
-            strokeWidth={0}
-          >
-            {data.map((d, i) => (
-              <Cell key={i} fill={d.color} />
-            ))}
-          </Pie>
-          <Tooltip
-            contentStyle={{
-              background: 'hsl(var(--card))',
-              border: '1px solid hsl(var(--border))',
-              borderRadius: 8,
-              fontSize: 12,
-            }}
-            formatter={(value) => fmtFull(Number(value) || 0)}
-          />
-        </PieChart>
-      </ResponsiveContainer>
-      <div className="flex flex-1 flex-col gap-2 text-sm">
-        {data.map((d) => {
-          const pct = total > 0 ? (d.value / total) * 100 : 0
-          return (
-            <div key={d.name} className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: d.color }} />
-                <span className="text-muted-foreground">{d.name}</span>
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
+        {positives.length > 0 ? (
+          <ResponsiveContainer width={180} height={180}>
+            <PieChart>
+              <Pie
+                data={positives}
+                dataKey="value"
+                nameKey="name"
+                cx="50%"
+                cy="50%"
+                innerRadius={50}
+                outerRadius={80}
+                strokeWidth={0}
+              >
+                {positives.map((d, i) => (
+                  <Cell key={i} fill={d.color} />
+                ))}
+              </Pie>
+              <Tooltip
+                contentStyle={{
+                  background: 'hsl(var(--card))',
+                  border: '1px solid hsl(var(--border))',
+                  borderRadius: 8,
+                  fontSize: 12,
+                }}
+                formatter={(_value, _name, entry: any) =>
+                  fmtFull(Number(entry?.payload?.value) || 0)
+                }
+              />
+            </PieChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="flex h-[180px] w-[180px] items-center justify-center rounded-full border border-dashed border-border text-xs text-muted-foreground">
+            No positive wealth drivers
+          </div>
+        )}
+        <div className="flex flex-1 flex-col gap-2 text-sm">
+          {positives.map((d) => {
+            const pct = positiveTotal > 0 ? (d.value / positiveTotal) * 100 : 0
+            return (
+              <div key={d.name} className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: d.color }} />
+                  <span className="text-muted-foreground">{d.name}</span>
+                </div>
+                <div className="tabular-nums">
+                  <span className="font-semibold text-foreground">{pct.toFixed(0)}%</span>
+                  <span className="ml-2 text-muted-foreground">{fmtShort(d.value)}</span>
+                </div>
               </div>
-              <div className="tabular-nums">
-                <span className="font-semibold text-foreground">{pct.toFixed(0)}%</span>
-                <span className="ml-2 text-muted-foreground">{fmtShort(d.value)}</span>
-              </div>
-            </div>
-          )
-        })}
+            )
+          })}
+        </div>
       </div>
+
+      {/* Wealth drags — components with negative 5yr contribution.
+          Rendered separately so they don't distort the percentage math on
+          the pie chart above. */}
+      {negatives.length > 0 && (
+        <div className="rounded-md border border-red-500/25 bg-red-500/5 px-4 py-3">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-red-700 dark:text-red-400">
+            Wealth drags
+          </div>
+          <div className="flex flex-col gap-1 text-sm">
+            {negatives.map((d) => (
+              <div key={d.name} className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <span
+                    className="h-3 w-3 rounded-sm"
+                    style={{ backgroundColor: d.color, opacity: 0.5 }}
+                  />
+                  <span className="text-muted-foreground">{d.name}</span>
+                </div>
+                <span className="tabular-nums font-semibold text-red-700 dark:text-red-400">
+                  {fmtShort(d.value)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

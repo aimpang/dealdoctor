@@ -83,7 +83,7 @@ export function TeaserMetrics({ teaser, property }: TeaserMetricsProps) {
           icon={HomeIcon}
           label="Est. Value"
           value={fmt(teaser.estimatedValue)}
-          sub={`${property.bedrooms}bd / ${property.bathrooms}ba${teaser.sqft ? ` / ${teaser.sqft.toLocaleString()} sqft` : ''}`}
+          sub={`${property.bedrooms === 0 ? 'Studio' : `${property.bedrooms}bd`} / ${property.bathrooms}ba${teaser.sqft ? ` / ${teaser.sqft.toLocaleString()} sqft` : ''}`}
         />
         <SubStat
           icon={TrendingUpIcon}

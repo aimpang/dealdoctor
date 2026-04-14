@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { estimateInsuranceFast } from './climateRisk'
+import { estimateInsuranceFast, applyInlandHurricaneSuppression } from './climateRisk'
 
 // Insurance is a top-5 line item in cash flow. If this scaling breaks, every
 // Florida / California / Texas cash flow is wrong by hundreds of dollars/month.
@@ -48,5 +48,45 @@ describe('estimateInsuranceFast', () => {
     expect(estimateInsuranceFast('TX', 300_000)).toBeGreaterThan(
       estimateInsuranceFast('CA', 300_000)
     )
+  })
+})
+
+// Blacksburg VA regression — an inland mountain town at 2,000ft and 250mi
+// from the coast was getting Virginia's state-level hurricane score (3) and
+// the Deal Doctor AI was writing "Virginia coastal hurricane and tropical
+// storm exposure." applyInlandHurricaneSuppression drops the score when
+// longitude indicates the property is well inland.
+describe('applyInlandHurricaneSuppression', () => {
+  it('Blacksburg VA (lng -80.42) suppresses hurricane to 0 (well inland)', () => {
+    // Threshold for VA is -78.0. -80.42 is 2.42° west of threshold → deep inland.
+    expect(applyInlandHurricaneSuppression(3, 'VA', -80.42)).toBe(0)
+  })
+
+  it('Virginia Beach VA (lng -75.98) keeps the full hurricane score (coastal)', () => {
+    expect(applyInlandHurricaneSuppression(3, 'VA', -75.98)).toBe(3)
+  })
+
+  it('marginal inland (just past threshold) reduces to 1, not 0', () => {
+    // VA threshold -78.0. lng -78.5 is only 0.5° inland — remnants can reach.
+    expect(applyInlandHurricaneSuppression(3, 'VA', -78.5)).toBe(1)
+  })
+
+  it('returns the raw score when longitude is missing', () => {
+    expect(applyInlandHurricaneSuppression(4, 'NC', null)).toBe(4)
+    expect(applyInlandHurricaneSuppression(4, 'NC', undefined)).toBe(4)
+  })
+
+  it('returns the raw score for states without an inland threshold (FL, MS)', () => {
+    expect(applyInlandHurricaneSuppression(5, 'FL', -82)).toBe(5)
+    expect(applyInlandHurricaneSuppression(5, 'MS', -90)).toBe(5)
+  })
+
+  it('works for TX deep inland (El Paso at lng -106)', () => {
+    expect(applyInlandHurricaneSuppression(4, 'TX', -106.5)).toBe(0)
+  })
+
+  it('works for NY inland (Buffalo at lng -78.87)', () => {
+    // NY threshold -74.5. Buffalo at -78.87 is 4.37° inland → 0.
+    expect(applyInlandHurricaneSuppression(2, 'NY', -78.87)).toBe(0)
   })
 })

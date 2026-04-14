@@ -35,6 +35,14 @@ export interface PropertyData {
   // (student rentals leased per-room, multi-unit, etc.)
   zoning?: string
   subdivision?: string
+  // 'full' when /properties returned a record for this address. 'avm-only' when
+  // /properties 404'd and we had to synthesize bed/bath/sqft/type from AVM
+  // comparables — triggers a data-quality warning in the report.
+  data_completeness?: 'full' | 'avm-only'
+  // Count of comps Rentcast's AVM used internally (not our own getComparableSales
+  // result). Surfaced in the confidence-band warning so users can tell a
+  // 4-comp $214-317k band apart from a 20-comp one.
+  avm_comparables_count?: number
 }
 
 export interface RentEstimate {
@@ -78,6 +86,196 @@ export class RentcastQuotaError extends Error {
   }
 }
 
+// --- Address match classification ---
+//
+// Rentcast sometimes silently substitutes a nearby but DIFFERENT property when
+// the user's typed address has a minor variant it doesn't recognise —
+// "408 S 8th St, Saginaw MI" returned a record for "408 N 8th St". Numbers and
+// street names match; only the cardinal direction flipped. The report then
+// generated on the wrong house. We classify match quality so the preview route
+// can block this before the user pays.
+
+function normalizeStreetSuffix(tok: string): string {
+  const map: Record<string, string> = {
+    street: 'st', str: 'st',
+    avenue: 'ave', av: 'ave',
+    boulevard: 'blvd', boul: 'blvd',
+    road: 'rd',
+    drive: 'dr',
+    lane: 'ln',
+    court: 'ct',
+    place: 'pl',
+    terrace: 'ter',
+    highway: 'hwy',
+    parkway: 'pkwy',
+    circle: 'cir',
+    trail: 'trl',
+  }
+  return map[tok] ?? tok
+}
+
+function normalizeCardinal(tok: string): string {
+  const map: Record<string, string> = {
+    north: 'n', south: 's', east: 'e', west: 'w',
+    ne: 'ne', nw: 'nw', se: 'se', sw: 'sw',
+    northeast: 'ne', northwest: 'nw', southeast: 'se', southwest: 'sw',
+  }
+  return map[tok] ?? tok
+}
+
+export interface AddressParts {
+  number: string | null
+  direction: string | null        // 'n' | 's' | 'e' | 'w' | 'ne' | ... | null
+  streetCore: string[]            // street name tokens minus direction + suffix
+  streetSuffix: string | null     // normalized ('st', 'ave', ...)
+  city: string | null
+  state: string | null
+  zip: string | null
+}
+
+export function parseAddressParts(input: string): AddressParts {
+  const cleaned = String(input || '')
+    .toLowerCase()
+    .replace(/[.,]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  // Split on commas first to isolate city / state-zip if present. But we
+  // already stripped commas → use a different approach: tokens + positional.
+  // Actually: work from the original (pre-strip) form for comma-based split.
+  const rawCommaSplit = String(input || '')
+    .toLowerCase()
+    .split(',')
+    .map((s) => s.trim().replace(/[.]/g, ''))
+    .filter((s) => s.length > 0)
+
+  // rawCommaSplit[0] = street; [1] = city; [2] = "state zip"
+  // Strip unit markers that attach to the street without a comma, e.g.
+  // "1330 New Hampshire Ave NW #1002" or "... Apt 516" — otherwise they
+  // land in streetCore and break building-key equality across units.
+  const streetPart = (rawCommaSplit[0] ?? cleaned)
+    .replace(/\s+(apt|unit|ste|suite)\s*\S+$/i, '')
+    .replace(/\s+#\s*\S+$/i, '')
+  const cityPart = rawCommaSplit[1] ?? null
+  const stateZipPart = rawCommaSplit[2] ?? null
+
+  const CARDINALS = new Set(['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw', 'north', 'south', 'east', 'west', 'northeast', 'northwest', 'southeast', 'southwest'])
+  const SUFFIXES = new Set(['st', 'street', 'str', 'ave', 'avenue', 'av', 'blvd', 'boulevard', 'boul', 'rd', 'road', 'dr', 'drive', 'ln', 'lane', 'ct', 'court', 'pl', 'place', 'ter', 'terrace', 'hwy', 'highway', 'pkwy', 'parkway', 'cir', 'circle', 'trl', 'trail', 'way'])
+
+  const toks = streetPart.split(/\s+/).filter(Boolean)
+  let number: string | null = null
+  let direction: string | null = null
+  let streetSuffix: string | null = null
+  const streetCore: string[] = []
+  for (let i = 0; i < toks.length; i++) {
+    const t = toks[i]
+    if (i === 0 && /^\d+$/.test(t)) { number = t; continue }
+    if (!direction && CARDINALS.has(t)) { direction = normalizeCardinal(t); continue }
+    if (SUFFIXES.has(t) && i > 0) { streetSuffix = normalizeStreetSuffix(t); continue }
+    streetCore.push(t)
+  }
+
+  let state: string | null = null
+  let zip: string | null = null
+  if (stateZipPart) {
+    const m = stateZipPart.match(/([a-z]{2})\s*(\d{5})?/i)
+    if (m) {
+      state = m[1].toLowerCase()
+      zip = m[2] ?? null
+    }
+  }
+
+  return {
+    number,
+    direction,
+    streetCore,
+    streetSuffix,
+    city: cityPart,
+    state,
+    zip,
+  }
+}
+
+/**
+ * Extract a "building key" — street number + normalized core street tokens —
+ * from an address. Two addresses with the same building key are unit-level
+ * peers in the same building. Used to prefer same-building sale comps over
+ * neighborhood comps when the subject is a condo / apartment.
+ *
+ * Returns null when the address lacks a number or a street name.
+ */
+export function buildingKey(address: string): string | null {
+  const p = parseAddressParts(address)
+  if (!p.number) return null
+  if (p.streetCore.length === 0) return null
+  const dir = p.direction ? `${p.direction} ` : ''
+  return `${p.number} ${dir}${p.streetCore.join(' ')}`.trim().toLowerCase()
+}
+
+// Returns true when an address carries a unit marker indicating it's a
+// specific apartment/condo unit within a multi-unit building — e.g.
+// "414 Water St #1501", "1300 Main St Apt 4B", "500 Elm St Unit 201".
+// Used as a secondary signal for condo-like comp filtering when Rentcast's
+// propertyType field is missing or ambiguous.
+export function isUnitLikeAddress(address: string): boolean {
+  if (!address) return false
+  return /(?:^|[\s,])(?:#\s*\w|apt\b|unit\b|suite\b|ste\b)/i.test(address)
+}
+
+export type AddressMatchKind = 'exact' | 'soft' | 'hard-mismatch'
+export interface AddressMatchReport {
+  kind: AddressMatchKind
+  mismatches: string[]     // list of field names that diverged
+}
+
+/**
+ * Compare a user-typed address against Rentcast's resolved formattedAddress.
+ * Returns 'hard-mismatch' when the street number, direction, core street
+ * tokens, or zip differ — these almost certainly mean a different property.
+ * Returns 'soft' for purely cosmetic differences (suffix spelling, missing
+ * zip, casing). 'exact' when everything material matches.
+ *
+ * 'soft' still generates the report; 'hard-mismatch' should block and ask
+ * the user to confirm.
+ */
+export function classifyAddressMatch(
+  userInput: string,
+  resolved: string
+): AddressMatchReport {
+  const u = parseAddressParts(userInput)
+  const r = parseAddressParts(resolved)
+  const mismatches: string[] = []
+
+  if (u.number && r.number && u.number !== r.number) mismatches.push('number')
+
+  // Direction: only flag when BOTH sides have a direction and they disagree,
+  // OR when the user specified one and Rentcast has a different one. If the
+  // user omitted direction and Rentcast supplies one, that's a soft case.
+  if (u.direction && r.direction && u.direction !== r.direction) {
+    mismatches.push('direction')
+  }
+
+  // Street core tokens must overlap — require at least one shared non-trivial
+  // token when both sides have a core. If no overlap → different street.
+  if (u.streetCore.length > 0 && r.streetCore.length > 0) {
+    const overlap = u.streetCore.some((t) => r.streetCore.includes(t))
+    if (!overlap) mismatches.push('streetName')
+  }
+
+  if (u.zip && r.zip && u.zip !== r.zip) mismatches.push('zip')
+
+  // Hard mismatch on any of: number, direction, streetName, zip
+  const hardFields = mismatches.filter((m) =>
+    ['number', 'direction', 'streetName', 'zip'].includes(m)
+  )
+  if (hardFields.length > 0) return { kind: 'hard-mismatch', mismatches }
+
+  // Soft: suffix, city, or state differences (cosmetic).
+  if (u.streetSuffix && r.streetSuffix && u.streetSuffix !== r.streetSuffix) {
+    return { kind: 'soft', mismatches: ['suffix'] }
+  }
+  return { kind: 'exact', mismatches: [] }
+}
+
 function diagnoseRentcastResponse(res: Response): 'ok' | 'quota' | 'rate-limit' | 'error' {
   if (res.ok) return 'ok'
   if (res.status === 401 || res.status === 403) return 'quota'
@@ -88,11 +286,35 @@ function diagnoseRentcastResponse(res: Response): 'ok' | 'quota' | 'rate-limit' 
 // Rentcast's dedicated value AVM endpoint. Returns a real estimate with a
 // confidence band. The property lookup endpoint (/properties) doesn't include
 // a price in most responses — you need /avm/value for that.
-async function fetchValueAvm(address: string): Promise<{
+//
+// We also capture subjectProperty (address + coords) and comparables (recent
+// sold nearby properties with bed/bath/sqft/type/yearBuilt). When /properties
+// 404s for addresses Rentcast doesn't have in its property database but DOES
+// have AVM coverage for (412 N Main St, Blacksburg VA was the audit case),
+// the comparables let us synthesize a best-effort PropertyData rather than
+// give up with "property not found."
+interface AvmResult {
   price: number
   low: number
   high: number
-} | null> {
+  subject?: {
+    address?: string
+    city?: string
+    state?: string
+    zipCode?: string
+    latitude?: number
+    longitude?: number
+  }
+  comparables?: Array<{
+    bedrooms?: number
+    bathrooms?: number
+    squareFootage?: number
+    propertyType?: string
+    yearBuilt?: number
+  }>
+}
+
+async function fetchValueAvm(address: string): Promise<AvmResult | null> {
   try {
     const url = new URL('https://api.rentcast.io/v1/avm/value')
     url.searchParams.set('address', address)
@@ -108,14 +330,100 @@ async function fetchValueAvm(address: string): Promise<{
     const d = await res.json()
     const price = Number(d?.price)
     if (!Number.isFinite(price) || price <= 0) return null
+    const sp = d?.subjectProperty
+    const comparables = Array.isArray(d?.comparables)
+      ? d.comparables.map((c: any) => ({
+          bedrooms: Number(c?.bedrooms) || undefined,
+          bathrooms: Number(c?.bathrooms) || undefined,
+          squareFootage: Number(c?.squareFootage) || undefined,
+          propertyType: typeof c?.propertyType === 'string' ? c.propertyType : undefined,
+          yearBuilt: Number(c?.yearBuilt) || undefined,
+        }))
+      : []
     return {
       price,
       low: Number(d?.priceRangeLow) || price,
       high: Number(d?.priceRangeHigh) || price,
+      subject: sp
+        ? {
+            address: sp.formattedAddress || sp.addressLine1,
+            city: sp.city,
+            state: sp.state,
+            zipCode: sp.zipCode,
+            latitude: Number(sp.latitude) || undefined,
+            longitude: Number(sp.longitude) || undefined,
+          }
+        : undefined,
+      comparables,
     }
   } catch (err) {
     if (err instanceof RentcastQuotaError) throw err // bubble up quota issues
     return null
+  }
+}
+
+// Build a best-effort PropertyData from AVM data when /properties 404s.
+// Bedrooms / bathrooms / sqft / property-type / year-built are inferred from
+// the median of nearby comparables — an honest "similar properties look like
+// this" estimate. The report surfaces a `property-profile-inferred` warning
+// so the user knows these fields aren't direct measurements.
+//
+// Exported for unit tests; not part of the public API surface.
+export function buildPropertyDataFromAvm(
+  requestedAddress: string,
+  avm: AvmResult
+): PropertyData | null {
+  if (!avm.subject || !avm.price) return null
+  const comps = avm.comparables ?? []
+
+  // Median helper over a finite-positive filtered series.
+  const median = (vals: number[]): number | undefined => {
+    const clean = vals.filter((v) => Number.isFinite(v) && v > 0).sort((a, b) => a - b)
+    if (clean.length === 0) return undefined
+    const mid = Math.floor(clean.length / 2)
+    return clean.length % 2 === 0 ? (clean[mid - 1] + clean[mid]) / 2 : clean[mid]
+  }
+
+  // Modal helper — for categorical fields (propertyType).
+  const mode = (vals: string[]): string | undefined => {
+    const counts: Record<string, number> = {}
+    for (const v of vals) counts[v] = (counts[v] ?? 0) + 1
+    let best: string | undefined
+    let bestN = 0
+    for (const v of Object.keys(counts)) {
+      if (counts[v] > bestN) { best = v; bestN = counts[v] }
+    }
+    return best
+  }
+
+  const bedrooms = Math.round(median(comps.map((c) => c.bedrooms ?? 0)) ?? 3)
+  const bathrooms = median(comps.map((c) => c.bathrooms ?? 0)) ?? 2
+  const squareFootage = median(comps.map((c) => c.squareFootage ?? 0))
+  const yearBuilt = median(comps.map((c) => c.yearBuilt ?? 0))
+  const propertyType =
+    mode(comps.map((c) => c.propertyType).filter((v): v is string => !!v)) ??
+    'Single Family'
+
+  const addr = avm.subject.address ?? requestedAddress
+  return {
+    property_id: addr,
+    address: addr,
+    city: avm.subject.city ?? '',
+    state: avm.subject.state ?? '',
+    zip_code: avm.subject.zipCode ?? '',
+    bedrooms,
+    bathrooms: Math.round(bathrooms * 2) / 2, // round to nearest 0.5 like listing data
+    property_type: propertyType,
+    estimated_value: avm.price,
+    year_built: yearBuilt ? Math.round(yearBuilt) : 1970,
+    square_feet: squareFootage ? Math.round(squareFootage) : 1500,
+    latitude: avm.subject.latitude,
+    longitude: avm.subject.longitude,
+    value_source: 'avm',
+    value_range_low: avm.low,
+    value_range_high: avm.high,
+    data_completeness: 'avm-only',
+    avm_comparables_count: comps.length,
   }
 }
 
@@ -137,10 +445,24 @@ async function searchPropertyRentcast(address: string): Promise<PropertyData | n
     if (diag === 'quota' || diag === 'rate-limit') {
       throw new RentcastQuotaError(propRes.status)
     }
-    if (!propRes.ok) return null
+
+    // When /properties returns 404 (common for addresses Rentcast doesn't have
+    // in its property DB but DOES have AVM coverage for — Blacksburg VA and
+    // other smaller markets), fall back to building a profile from the AVM
+    // response + comparables rather than giving up with "property not found."
+    if (!propRes.ok) {
+      if (propRes.status === 404 && avm) {
+        return buildPropertyDataFromAvm(address, avm)
+      }
+      return null
+    }
 
     const data = await propRes.json()
-    if (!data || (Array.isArray(data) && data.length === 0)) return null
+    if (!data || (Array.isArray(data) && data.length === 0)) {
+      // /properties returned 200 but empty → same AVM fallback path
+      if (avm) return buildPropertyDataFromAvm(address, avm)
+      return null
+    }
 
     const prop = Array.isArray(data) ? data[0] : data
 
@@ -231,8 +553,11 @@ async function searchPropertyRentcast(address: string): Promise<PropertyData | n
       city: prop.city || '',
       state: prop.state || '',
       zip_code: prop.zipCode || '',
-      bedrooms: prop.bedrooms || 3,
-      bathrooms: prop.bathrooms || 2,
+      // `|| 3` was silently upgrading studios (Rentcast returns 0) to 3BR,
+      // which cascaded into wrong comp matching + wrong rent AVM. Preserve
+      // a numeric 0, fall back only for null/undefined.
+      bedrooms: typeof prop.bedrooms === 'number' ? prop.bedrooms : 3,
+      bathrooms: typeof prop.bathrooms === 'number' ? prop.bathrooms : 2,
       property_type: prop.propertyType || 'Single Family',
       estimated_value: estimatedValue,
       year_built: prop.yearBuilt || 2000,
@@ -250,8 +575,11 @@ async function searchPropertyRentcast(address: string): Promise<PropertyData | n
       latest_tax_assessment: latestTaxAssessment,
       zoning: typeof prop.zoning === 'string' ? prop.zoning : undefined,
       subdivision: typeof prop.subdivision === 'string' ? prop.subdivision : undefined,
+      data_completeness: 'full',
+      avm_comparables_count: avm?.comparables?.length,
     }
-  } catch {
+  } catch (err) {
+    if (err instanceof RentcastQuotaError) throw err
     return null
   }
 }
@@ -286,10 +614,15 @@ export async function getMarketSnapshot(zipCode: string): Promise<MarketSnapshot
     if (!res.ok) return null
     const data = await res.json()
 
+    // Prefer MEDIAN over AVERAGE — luxury outliers in urban zips (e.g. a
+    // $4M penthouse in 20037) drag the average to ~$1M while the real
+    // median condo sale is $650-700K. Median is a far better anchor for
+    // the "typical" buyer's expectation. Falls back to average only when
+    // median isn't available.
     const saleNow =
-      data?.saleData?.averagePrice ?? data?.saleData?.medianPrice ?? null
+      data?.saleData?.medianPrice ?? data?.saleData?.averagePrice ?? null
     const rentNow =
-      data?.rentalData?.averageRent ?? data?.rentalData?.medianRent ?? null
+      data?.rentalData?.medianRent ?? data?.rentalData?.averageRent ?? null
 
     // Find the oldest point in the history window (12 months back)
     const saleHistory = data?.saleData?.history ?? {}
@@ -298,11 +631,11 @@ export async function getMarketSnapshot(zipCode: string): Promise<MarketSnapshot
     const oldestRentKey = Object.keys(rentHistory).sort()[0]
     const saleThen =
       oldestSaleKey
-        ? saleHistory[oldestSaleKey]?.averagePrice ?? saleHistory[oldestSaleKey]?.medianPrice
+        ? saleHistory[oldestSaleKey]?.medianPrice ?? saleHistory[oldestSaleKey]?.averagePrice
         : null
     const rentThen =
       oldestRentKey
-        ? rentHistory[oldestRentKey]?.averageRent ?? rentHistory[oldestRentKey]?.medianRent
+        ? rentHistory[oldestRentKey]?.medianRent ?? rentHistory[oldestRentKey]?.averageRent
         : null
 
     const growth = (now: number | null, then: number | null): number | null =>
@@ -310,15 +643,28 @@ export async function getMarketSnapshot(zipCode: string): Promise<MarketSnapshot
         ? Math.round(((now - then) / then) * 10000) / 10000
         : null
 
+    // ZIP-level rentGrowth from Rentcast is a small-sample series and can
+    // spike to -8% / +15% on thin inventory while Zillow ZORI / Redfin
+    // metro-wide rent indexes for the same footprint read -2% to -4%. Clamp
+    // to a sane band so the 5-year projection doesn't compound noise; cap
+    // salePriceGrowth similarly (median sale growth at the zip level is
+    // likewise noisy when only a handful of closings print in a quarter).
+    const clamp = (v: number | null, lo: number, hi: number): number | null =>
+      v == null ? null : Math.max(lo, Math.min(hi, v))
+
     return {
       zipCode,
       salePriceMedian: saleNow,
       rentMedian: rentNow,
-      pricePerSqft: data?.saleData?.averagePricePerSquareFoot ?? null,
-      rentPerSqft: data?.rentalData?.averageRentPerSquareFoot ?? null,
+      pricePerSqft:
+        data?.saleData?.medianPricePerSquareFoot ??
+        data?.saleData?.averagePricePerSquareFoot ?? null,
+      rentPerSqft:
+        data?.rentalData?.medianRentPerSquareFoot ??
+        data?.rentalData?.averageRentPerSquareFoot ?? null,
       avgDaysOnMarket: data?.saleData?.averageDaysOnMarket ?? null,
-      salePriceGrowth12mo: growth(saleNow, saleThen),
-      rentGrowth12mo: growth(rentNow, rentThen),
+      salePriceGrowth12mo: clamp(growth(saleNow, saleThen), -0.15, 0.25),
+      rentGrowth12mo: clamp(growth(rentNow, rentThen), -0.04, 0.15),
     }
   } catch {
     return null
@@ -350,7 +696,7 @@ export async function getRentComps(
     if (!res.ok) return []
     const data = await res.json()
     const comps = Array.isArray(data?.comparables) ? data.comparables : []
-    return comps
+    const mapped: RentComp[] = comps
       .map((c: any): RentComp => ({
         address: c.formattedAddress || c.addressLine1 || '',
         bedrooms: c.bedrooms,
@@ -361,7 +707,51 @@ export async function getRentComps(
         days_old: c.daysOld,
       }))
       .filter((c: RentComp) => c.rent > 0 && c.address)
-      .slice(0, 5)
+
+    // Outlier filter — drop rent comps whose $/sqft is more than 1.25× the
+    // set median (previously 1.5×). Real-world miss: a 525-sqft unit listed
+    // at $2,995 (5.70 $/sqft) passed 1.5× against a ~4.00 $/sqft median
+    // (1.42×). Likely a furnished / short-term / mis-classified listing;
+    // 1.25× is close to the expected dispersion inside a real studio comp
+    // pool while catching clear furnished outliers.
+    const rates = mapped
+      .map((c) => (c.rent && c.square_feet ? c.rent / c.square_feet : null))
+      .filter((v): v is number => v != null && Number.isFinite(v) && v > 0)
+      .sort((a, b) => a - b)
+    const medianRate =
+      rates.length > 0 ? rates[Math.floor(rates.length / 2)] : null
+
+    // Staleness filter — drop comps older than 60 days when we have
+    // fresher alternatives. A 89-day-old listing at $1,650 dragged the
+    // Jefferson House median below current $1,900-2,100 actives.
+    const freshCount = mapped.filter(
+      (c) => c.days_old == null || c.days_old <= 60
+    ).length
+
+    const filtered = mapped.filter((c) => {
+      if (medianRate && c.rent && c.square_feet) {
+        const rate = c.rent / c.square_feet
+        if (rate > medianRate * 1.25) return false
+      }
+      if (freshCount >= 3 && c.days_old != null && c.days_old > 60) return false
+      return true
+    })
+
+    // Same-building rent comps are the strongest anchor for condo rent —
+    // same floor plan, same amenities, same HOA-bundled utilities — so
+    // surface them first when present. Jefferson House (922 24th St NW)
+    // audit: studios list $1,495–$2,100 in-building while Rentcast was
+    // returning 1101 New Hampshire / 940 25th St as the top comps.
+    const subjectBuildingKey = buildingKey(address)
+    if (subjectBuildingKey) {
+      filtered.sort((a, b) => {
+        const aSame = buildingKey(a.address) === subjectBuildingKey ? 1 : 0
+        const bSame = buildingKey(b.address) === subjectBuildingKey ? 1 : 0
+        return bSame - aSame
+      })
+    }
+
+    return filtered.slice(0, 5)
   } catch {
     return []
   }
@@ -424,6 +814,7 @@ export async function getComparableSales(
     sqft?: number | null
     value?: number | null
     propertyType?: string | null
+    address?: string | null       // used to identify same-building comps
   } | null
 ) {
   if (API_KEY && API_KEY !== 'your_key_here') {
@@ -444,8 +835,9 @@ export async function getComparableSales(
       if (subject?.propertyType) {
         url.searchParams.set('propertyType', subject.propertyType)
       }
-      // Request more than we'll show — we're about to filter aggressively.
-      url.searchParams.set('limit', '20')
+      // Request more than we'll show — we're about to filter aggressively
+      // AND we want headroom to prefer same-building matches if they exist.
+      url.searchParams.set('limit', '40')
       url.searchParams.set('status', 'Sold')
 
       const res = await fetch(url.toString(), {
@@ -457,51 +849,142 @@ export async function getComparableSales(
       const data = await res.json()
       const subjectSqft = subject?.sqft && subject.sqft > 0 ? subject.sqft : null
       const subjectValue = subject?.value && subject.value > 0 ? subject.value : null
+      const subjectBuildingKey = subject?.address ? buildingKey(subject.address) : null
+      const subjectZip = subject?.address ? parseAddressParts(subject.address).zip : null
+      const subjectPtLowerRaw = String(subject?.propertyType || '').toLowerCase()
+      const subjectAddrHasUnit = isUnitLikeAddress(subject?.address || '')
+      // Treat a subject as condo-like when EITHER propertyType matches OR
+      // the address itself carries a unit marker (Apt / # / Unit / Suite).
+      // Baltimore 414 Water St #1501 audit: Rentcast occasionally returns a
+      // blank propertyType on specific units, bypassing the zip + sqft
+      // guards and re-admitting 21230 Ridgley's Delight townhouses.
+      const subjectIsCondoLikeRaw =
+        /condo|apartment|co-?op|coop/.test(subjectPtLowerRaw) || subjectAddrHasUnit
 
-      return (Array.isArray(data) ? data : [])
-        .map((p: any) => {
-          // Rentcast sold records use lastSalePrice; active listings use price;
-          // off-market AVM estimates use estimatedValue. Try all three in order.
-          const price =
-            Number(p.lastSalePrice) ||
-            Number(p.price) ||
-            Number(p.estimatedValue) ||
-            0
-          const sqft = Number(p.squareFootage) || 0
-          return {
-            address: p.formattedAddress || p.addressLine1,
-            estimated_value: price,
-            bedrooms: p.bedrooms,
-            bathrooms: p.bathrooms,
-            square_feet: sqft,
-            price_per_sqft: sqft > 0 && price > 0 ? Math.round(price / sqft) : null,
-            days_on_market: typeof p.daysOnMarket === 'number' ? p.daysOnMarket : null,
-            sold_date: p.lastSaleDate || p.soldDate || null,
-          }
-        })
-        .filter((c: any) => {
-          // Price floor: any residential unit sold for under $30k is almost
-          // certainly a parking deed, storage unit, tax-auction, or data glitch.
-          if (!(c.estimated_value > 30_000)) return false
-          // Comps with no sqft can't be scale-validated — drop when we have a
-          // subject sqft to compare against; keep otherwise.
-          if (subjectSqft && (!c.square_feet || c.square_feet < 200)) return false
-          // Sqft similarity: within 0.5× – 2.0× of the subject filters out
-          // studios-mixed-with-penthouses and tiny parking-style records.
-          if (subjectSqft && c.square_feet) {
-            const ratio = c.square_feet / subjectSqft
-            if (ratio < 0.5 || ratio > 2.0) return false
-          }
-          // Value similarity: 0.25× – 4.0× of the subject. Wide enough to
-          // accept reasonable market variation, narrow enough to exclude
-          // outliers that skew the median.
-          if (subjectValue) {
-            const ratio = c.estimated_value / subjectValue
-            if (ratio < 0.25 || ratio > 4.0) return false
-          }
-          return true
-        })
-        .slice(0, 4)
+      const mapped = (Array.isArray(data) ? data : []).map((p: any) => {
+        // Rentcast sold records use lastSalePrice; active listings use price;
+        // off-market AVM estimates use estimatedValue. Try all three in order.
+        const price =
+          Number(p.lastSalePrice) ||
+          Number(p.price) ||
+          Number(p.estimatedValue) ||
+          0
+        const sqft = Number(p.squareFootage) || 0
+        return {
+          address: p.formattedAddress || p.addressLine1,
+          estimated_value: price,
+          bedrooms: p.bedrooms,
+          bathrooms: p.bathrooms,
+          square_feet: sqft,
+          price_per_sqft: sqft > 0 && price > 0 ? Math.round(price / sqft) : null,
+          days_on_market: typeof p.daysOnMarket === 'number' ? p.daysOnMarket : null,
+          sold_date: p.lastSaleDate || p.soldDate || null,
+          propertyType: typeof p.propertyType === 'string' ? p.propertyType : null,
+        }
+      })
+
+      // Staleness cutoff — drop sold records older than 48 months. A 15-year-
+      // old sale from a different building (DC Jefferson House audit: 2011
+      // sale at 2030 F St was the only "comp" offered) is actively
+      // misleading; better to surface "no recent comps" than to anchor on it.
+      const STALE_CUTOFF_MS = Date.now() - 48 * 30 * 24 * 60 * 60 * 1000
+
+      const cleaned = mapped.filter((c: any) => {
+        // Commercial / office / mixed-use filter.
+        const addr = String(c.address || '')
+        if (/\b(ste|suite|office|floor|bldg|building)\b/i.test(addr)) return false
+        // Same-building comps bypass the strict sqft/value/type filters
+        // below. Jefferson House (922 24th St NW DC) audit: 4 studio sales
+        // at $201-249k on the subject building were filtered out because
+        // Rentcast's propertyType field was inconsistent across unit
+        // records, returning zero sale comps despite the building having
+        // real recent sales. Same-building peers are the gold standard
+        // anchor — never drop them for filter reasons.
+        const compBuildingKey = buildingKey(addr)
+        const isSameBuilding =
+          !!subjectBuildingKey && !!compBuildingKey && compBuildingKey === subjectBuildingKey
+        if (/\bunit\s*#?\s*(\d{3,})/i.test(addr) && !isSameBuilding) return false
+        const pt = String(c.propertyType || '').toLowerCase()
+        if (!isSameBuilding && pt && !/single family|condo|townhouse|apartment|multi|manufactured/.test(pt)) return false
+        // Price floor — filter parking / storage / tax-auction anomalies.
+        if (!(c.estimated_value > 30_000)) return false
+        if (!isSameBuilding && subjectSqft && (!c.square_feet || c.square_feet < 200)) return false
+        if (!isSameBuilding && subjectSqft && c.square_feet) {
+          const ratio = c.square_feet / subjectSqft
+          // Tighter sqft band for condo-like subjects — a high-rise condo
+          // isn't comparable to a townhouse-style unit 50% larger even if
+          // both code as "Condo" in Rentcast. Baltimore Harbor East audit:
+          // 414 Water St (1067 sqft) was getting 1454–1559 sqft comps from
+          // Ridgely's Delight as "Condos" at $440k.
+          const [minR, maxR] = subjectIsCondoLikeRaw ? [0.7, 1.4] : [0.5, 2.0]
+          if (ratio < minR || ratio > maxR) return false
+        }
+        // Zip guard for condo-like subjects: a different building in a
+        // different zip is a different neighborhood, different HOA, and
+        // different construction vintage — not a real comp for a condo
+        // unit. Same audit: 21202 Harbor East subject getting 21230
+        // Ridgely's Delight townhouse-condos pulled into the comp set.
+        if (!isSameBuilding && subjectIsCondoLikeRaw && subjectZip) {
+          const compZip = parseAddressParts(addr).zip
+          if (compZip && compZip !== subjectZip) return false
+        }
+        if (!isSameBuilding && subjectValue) {
+          const ratio = c.estimated_value / subjectValue
+          if (ratio < 0.25 || ratio > 4.0) return false
+        }
+        // Drop stale sales (only when a sold_date is available — missing
+        // date shouldn't silently disqualify otherwise-valid records).
+        if (c.sold_date) {
+          const t = new Date(c.sold_date).getTime()
+          if (Number.isFinite(t) && t < STALE_CUTOFF_MS) return false
+        }
+        return true
+      })
+
+      // Partition by building. Same-building comps are always stronger
+      // anchors than random 1-mile neighborhood matches. Audit case: 1330
+      // New Hampshire Ave NW DC ("The Apolline") returned 4 comps from
+      // 1101 L St NW ("The Wisteria", 0.7 mi away) while Apolline sales
+      // existed in Rentcast. Preferring same-building fixes this without
+      // changing the query radius.
+      const sameBuilding: typeof cleaned = []
+      const other: typeof cleaned = []
+      for (const c of cleaned) {
+        const k = buildingKey(c.address || '')
+        if (subjectBuildingKey && k && k === subjectBuildingKey) sameBuilding.push(c)
+        else other.push(c)
+      }
+      const byRecency = (a: any, b: any) => {
+        const da = a.sold_date ? new Date(a.sold_date).getTime() : 0
+        const db = b.sold_date ? new Date(b.sold_date).getTime() : 0
+        return db - da
+      }
+      sameBuilding.sort(byRecency)
+      other.sort(byRecency)
+
+      // When subject is a condo/apartment AND we have 2+ same-building
+      // comps, never fall back to other-building matches — a different
+      // building (different HOA, construction, amenities) isn't a real
+      // comp for a condo unit. Preserves the same-building ordering but
+      // prevents stale cross-building comps from leaking in to pad count.
+      const subjectPtLower = String(subject?.propertyType || '').toLowerCase()
+      const subjectIsCondoLike =
+        /condo|apartment|co-?op|coop/.test(subjectPtLower) || subjectAddrHasUnit
+      // Even one same-building comp beats cross-building fallback for a
+      // condo unit — different buildings carry different HOA, amenities,
+      // and construction vintage. Threshold dropped from 2 to 1.
+      const preferSameBuildingOnly = subjectIsCondoLike && sameBuilding.length >= 1
+      const finalList = preferSameBuildingOnly
+        ? sameBuilding.slice(0, 4)
+        : [...sameBuilding, ...other].slice(0, 4)
+      // Tag each comp so the report can flag "comps came from other buildings"
+      // when the majority don't share a building with the subject.
+      return finalList.map((c: any) => ({
+        ...c,
+        same_building: subjectBuildingKey
+          ? buildingKey(c.address || '') === subjectBuildingKey
+          : false,
+      }))
     } catch {
       return []
     }

@@ -37,9 +37,15 @@ const plans = [
 export function BlurredReport({ uuid, address }: BlurredReportProps) {
   const [loading, setLoading] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState('single')
+  const [checkoutError, setCheckoutError] = useState<{
+    message: string
+    retryable: boolean
+    supportContact?: string
+  } | null>(null)
 
   const handleUnlock = async (plan: string) => {
     setLoading(true)
+    setCheckoutError(null)
     try {
       const res = await fetch('/api/checkout', {
         method: 'POST',
@@ -47,12 +53,26 @@ export function BlurredReport({ uuid, address }: BlurredReportProps) {
         body: JSON.stringify({ uuid, plan }),
       })
       const data = await res.json()
-      if (data.alreadyPaid) {
-        window.location.href = data.url
-      } else if (data.url) {
+      if (!res.ok) {
+        // Structured error from the API: surface the retry CTA + support
+        // contact so the user isn't stuck on a blank 500.
+        setCheckoutError({
+          message: data.error || 'Checkout failed. Please try again.',
+          retryable: data.retryable ?? true,
+          supportContact: data.supportContact,
+        })
+        return
+      }
+      if (data.alreadyPaid || data.url) {
         window.location.href = data.url
       }
     } catch {
+      setCheckoutError({
+        message: 'Network error — check your connection and try again.',
+        retryable: true,
+        supportContact: 'support@dealdoctor.app',
+      })
+    } finally {
       setLoading(false)
     }
   }
@@ -168,6 +188,38 @@ export function BlurredReport({ uuid, address }: BlurredReportProps) {
               {loading ? 'Redirecting...' : `Get Full Report — ${plans.find(p => p.id === selectedPlan)?.price}`}
               <ArrowRightIcon className="h-4 w-4" />
             </Button>
+
+            {checkoutError && (
+              <div
+                role="alert"
+                className="w-full rounded-md border border-destructive/40 bg-destructive/5 px-4 py-3 text-left"
+              >
+                <p className="text-sm font-semibold text-foreground">Checkout couldn't start</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">{checkoutError.message}</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {checkoutError.retryable && (
+                    <button
+                      type="button"
+                      onClick={() => handleUnlock(selectedPlan)}
+                      disabled={loading}
+                      className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                    >
+                      Try again
+                    </button>
+                  )}
+                  {checkoutError.supportContact && (
+                    <a
+                      href={`mailto:${checkoutError.supportContact}?subject=${encodeURIComponent(
+                        `Checkout failed for report ${uuid}`
+                      )}`}
+                      className="rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted"
+                    >
+                      Contact support
+                    </a>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div className="flex flex-col items-center gap-1.5 text-[11px] text-muted-foreground/70">
               <p>Secure checkout via LemonSqueezy &middot; Instant delivery</p>

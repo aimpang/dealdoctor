@@ -25,6 +25,14 @@ export function AddressInput({ onResult, onError }: AddressInputProps) {
   const [selectedIndex, setSelectedIndex] = useState(-1)
   const debounceRef = useRef<ReturnType<typeof setTimeout>>()
   const wrapperRef = useRef<HTMLDivElement>(null)
+  // When Rentcast returns a different address than the user typed, we pause
+  // and ask the user to confirm rather than silently underwrite the wrong
+  // property. The prompt stores what we'd resubmit on "yes".
+  const [pendingMismatch, setPendingMismatch] = useState<{
+    userAddress: string
+    resolvedAddress: string
+    message: string
+  } | null>(null)
 
   // Close suggestions on click outside
   useEffect(() => {
@@ -110,34 +118,60 @@ export function AddressInput({ onResult, onError }: AddressInputProps) {
     }
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!address.trim() || loading) return
-
+  const submitPreview = async (submitAddr: string, confirmedResolvedAddress?: string) => {
     setShowSuggestions(false)
     setLoading(true)
     onError('')
+    setPendingMismatch(null)
 
     try {
       const res = await fetch('/api/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address: address.trim() }),
+        body: JSON.stringify({
+          address: submitAddr,
+          ...(confirmedResolvedAddress ? { confirmedResolvedAddress } : {}),
+        }),
       })
 
       const data = await res.json()
 
+      if (res.status === 409 && data.addressMismatch) {
+        setPendingMismatch({
+          userAddress: data.userAddress,
+          resolvedAddress: data.resolvedAddress,
+          message: data.message,
+        })
+        return
+      }
       if (!res.ok) {
         onError(data.error || 'Something went wrong')
         return
       }
-
       onResult(data)
     } catch {
       onError('Network error. Please try again.')
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!address.trim() || loading) return
+    await submitPreview(address.trim())
+  }
+
+  const confirmResolvedAddress = async () => {
+    if (!pendingMismatch) return
+    // Re-submit using the resolved address so the backend echoes the same
+    // record, and tag it as confirmed to skip the mismatch gate.
+    setAddress(pendingMismatch.resolvedAddress)
+    await submitPreview(pendingMismatch.resolvedAddress, pendingMismatch.resolvedAddress)
+  }
+
+  const dismissMismatch = () => {
+    setPendingMismatch(null)
   }
 
   return (
@@ -213,6 +247,39 @@ export function AddressInput({ onResult, onError }: AddressInputProps) {
       <p className="mt-3 text-center text-xs text-muted-foreground">
         US addresses only &middot; First look is free &middot; No signup required
       </p>
+
+      {pendingMismatch && (
+        <div
+          role="alert"
+          className="mt-4 rounded-lg border-2 border-amber-500/50 bg-amber-500/5 px-4 py-3 text-left"
+        >
+          <p className="text-sm font-semibold text-foreground">Did you mean a different address?</p>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            You typed <span className="font-medium text-foreground">"{pendingMismatch.userAddress}"</span>,
+            but the closest record in our data source is{' '}
+            <span className="font-medium text-foreground">"{pendingMismatch.resolvedAddress}"</span>.
+            These may be different properties — confirm before we generate the report.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={confirmResolvedAddress}
+              disabled={loading}
+              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            >
+              Yes, use "{pendingMismatch.resolvedAddress}"
+            </button>
+            <button
+              type="button"
+              onClick={dismissMismatch}
+              disabled={loading}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-50"
+            >
+              No, let me re-type
+            </button>
+          </div>
+        </div>
+      )}
     </form>
   )
 }

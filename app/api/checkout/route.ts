@@ -31,29 +31,54 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  const checkout = await createCheckout(
-    process.env.LEMONSQUEEZY_STORE_ID!,
-    Number(variantId),
-    {
-      checkoutData: {
-        custom: {
-          uuid: uuid,
-          plan: plan || 'single',
+  // Wrap the LemonSqueezy SDK call. A network blip or LS 5xx used to surface
+  // as a raw 500 with no context — now we return a structured error the UI
+  // can render a retry CTA against (see BlurredReport / retry button).
+  try {
+    const checkout = await createCheckout(
+      process.env.LEMONSQUEEZY_STORE_ID!,
+      Number(variantId),
+      {
+        checkoutData: {
+          custom: {
+            uuid: uuid,
+            plan: plan || 'single',
+          },
         },
-      },
-      productOptions: {
-        redirectUrl: `${process.env.NEXT_PUBLIC_BASE_URL}/report/${uuid}?success=true`,
-        receiptButtonText: 'View Your Report',
-        receiptThankYouNote: 'Your DealDoctor report is being generated now.',
-      },
+        productOptions: {
+          redirectUrl: `${process.env.NEXT_PUBLIC_BASE_URL}/report/${uuid}?success=true`,
+          receiptButtonText: 'View Your Report',
+          receiptThankYouNote: 'Your DealDoctor report is being generated now.',
+        },
+      }
+    )
+
+    const checkoutUrl = checkout.data?.data.attributes.url
+
+    if (!checkoutUrl) {
+      return NextResponse.json(
+        {
+          error: 'Checkout provider did not return a URL',
+          code: 'checkout_no_url',
+          retryable: true,
+          supportContact: 'support@dealdoctor.app',
+        },
+        { status: 502 }
+      )
     }
-  )
 
-  const checkoutUrl = checkout.data?.data.attributes.url
-
-  if (!checkoutUrl) {
-    return NextResponse.json({ error: 'Failed to create checkout' }, { status: 500 })
+    return NextResponse.json({ url: checkoutUrl })
+  } catch (err: any) {
+    console.error('[checkout] LemonSqueezy call failed:', err?.message)
+    return NextResponse.json(
+      {
+        error: 'We couldn\'t reach our payment processor. Try again in a moment, or contact support if this keeps happening.',
+        code: 'checkout_unreachable',
+        retryable: true,
+        supportContact: 'support@dealdoctor.app',
+        detail: process.env.NODE_ENV !== 'production' ? String(err?.message ?? err) : undefined,
+      },
+      { status: 502 }
+    )
   }
-
-  return NextResponse.json({ url: checkoutUrl })
 }

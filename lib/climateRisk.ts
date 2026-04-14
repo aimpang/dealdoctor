@@ -152,10 +152,51 @@ function floodZoneInsuranceAddOn(risk: FloodRisk, dwellingValue: number): number
   return 0
 }
 
-function buildClimateScores(state: string): ClimateScores {
+// Per-state longitude threshold for "clearly inland" — west of this line,
+// the property is far enough from the coast that a hurricane/tropical-storm
+// score inherited from state-level data is misleading. Eyeball-calibrated
+// against the state's east coastline, not geodetically exact.
+//
+// Regression: Blacksburg VA at lng -80.42 was being flagged with the same
+// hurricane exposure as Virginia Beach. Now suppressed.
+const INLAND_HURRICANE_LONGITUDE: Record<string, number> = {
+  VA: -78.0,
+  NC: -78.0,
+  SC: -80.0,
+  GA: -82.0,
+  AL: -87.0,
+  LA: -91.5,
+  TX: -96.0,
+  NY: -74.5,
+  NJ: -74.5,
+  // FL, MS: small coastal states; skip longitudinal suppression.
+  // MD, DE, CT, RI, MA, NH, ME: either fully small or coastal enough that
+  // any point is within hurricane reach.
+}
+
+export function applyInlandHurricaneSuppression(
+  rawHurricane: number,
+  state: string,
+  longitude: number | null | undefined
+): number {
+  if (typeof longitude !== 'number' || !Number.isFinite(longitude)) return rawHurricane
+  const threshold = INLAND_HURRICANE_LONGITUDE[state]
+  if (threshold === undefined) return rawHurricane
+  if (longitude >= threshold) return rawHurricane // east of threshold → coastal reach
+  // West of threshold → inland. Drop to 0 for deep inland (>2° past), 1 for
+  // marginal inland. Preserves the fact that remnants do reach mountains but
+  // stops the "coastal hurricane exposure" narrative on a Blue Ridge property.
+  if (longitude < threshold - 2) return 0
+  return 1
+}
+
+function buildClimateScores(
+  state: string,
+  longitude: number | null | undefined
+): ClimateScores {
   const partial = STATE_CLIMATE[state] || {}
   return {
-    hurricane: partial.hurricane ?? 0,
+    hurricane: applyInlandHurricaneSuppression(partial.hurricane ?? 0, state, longitude),
     wildfire: partial.wildfire ?? 0,
     heat: partial.heat ?? 0,
     drought: partial.drought ?? 0,
@@ -204,10 +245,15 @@ export async function getClimateAndInsurance(
   address: string,
   state: string,
   _zipCode: string,
-  dwellingValue: number
+  dwellingValue: number,
+  // Optional pre-computed coordinates. When the caller already geocoded the
+  // address (e.g. Rentcast returned lat/long on the property record), pass
+  // them in to skip the Mapbox round-trip and keep climate/property/location
+  // sections aligned on the exact same coordinates.
+  providedCoords?: { lat: number; lng: number } | null
 ): Promise<ClimateAndInsurance> {
   // 1. Geocode (best-effort; if Mapbox unavailable we skip flood lookup)
-  const coords = await geocode(address)
+  const coords = providedCoords ?? (await geocode(address))
 
   // 2. Flood zone (needs coords)
   const zone = coords ? await getFloodZone(coords.lat, coords.lng) : null
@@ -220,8 +266,9 @@ export async function getClimateAndInsurance(
   const floodAddOn = floodZoneInsuranceAddOn(floodRisk, dwellingValue)
   const estimatedAnnualInsurance = scaledBase + floodAddOn
 
-  // 4. Climate scores
-  const climateScores = buildClimateScores(state)
+  // 4. Climate scores — pass longitude so inland properties don't inherit
+  // coastal-state hurricane exposure.
+  const climateScores = buildClimateScores(state, coords?.lng ?? null)
 
   const { summary, topConcerns } = buildSummary(state, climateScores, floodRisk, estimatedAnnualInsurance)
 

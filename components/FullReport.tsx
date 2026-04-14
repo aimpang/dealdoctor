@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { DealDoctorSection } from './DealDoctor'
@@ -111,10 +111,29 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
     rentComps,
     valueTriangulation,
     rentWarnings,
+    warnings,
     crossCheckLinks,
   } = data
 
   const v = VERDICT[ltr.verdict as keyof typeof VERDICT] || VERDICT.PASS
+
+  // Sync document.title client-side so the browser's "Save as PDF" dialog
+  // picks up the property address — e.g. "Deal Doctor - 412 N Main St,
+  // Blacksburg, VA". The root app/layout.tsx is a Client Component with a
+  // hardcoded <title> that overrides App Router's generateMetadata on the
+  // report route, so without this effect the PDF filename reverts to the
+  // generic marketing string. Address-based title wins on hydration.
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    const addr = property?.address
+    const city = property?.city
+    const st = property?.state
+    if (!addr) return
+    const tail = [city, st].filter(Boolean).join(', ')
+    document.title = tail
+      ? `Deal Doctor - ${addr}, ${tail}`
+      : `Deal Doctor - ${addr}`
+  }, [property?.address, property?.city, property?.state])
 
   return (
     <div className="w-full">
@@ -195,7 +214,18 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
         </button>
 
         <button
-          onClick={() => typeof window !== 'undefined' && window.print()}
+          onClick={() => {
+            if (typeof window === 'undefined') return
+            // Re-apply the per-report title right before printing so the
+            // browser's PDF filename is "Deal Doctor - {address}" even if
+            // the root layout's hardcoded title happened to re-run.
+            const addr = property?.address
+            const tail = [property?.city, property?.state].filter(Boolean).join(', ')
+            if (addr) {
+              document.title = tail ? `Deal Doctor - ${addr}, ${tail}` : `Deal Doctor - ${addr}`
+            }
+            window.print()
+          }}
           className="inline-flex items-center gap-1.5 rounded-md border bg-card px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           <PrinterIcon className="h-3.5 w-3.5" />
@@ -268,7 +298,9 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
               <Dot />
               {property.propertyType}
               <Dot />
-              {property.bedrooms}bd / {property.bathrooms}ba
+              {property.bedrooms === 0
+                ? `Studio / ${property.bathrooms}ba`
+                : `${property.bedrooms}bd / ${property.bathrooms}ba`}
               {property.sqft && (
                 <>
                   <Dot />
@@ -323,7 +355,9 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
           <HeroCell
             label="Offer vs Breakeven"
             value={
-              breakeven.delta < 0 ? (
+              breakeven.nearBreakeven ? (
+                <span className="text-muted-foreground text-lg">Neutral at ask</span>
+              ) : breakeven.delta < 0 ? (
                 <span className="text-red-700 dark:text-red-400">
                   +{fmt(-breakeven.delta)}
                 </span>
@@ -333,7 +367,11 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
                 </span>
               )
             }
-            sub={`Offer ${fmt(breakeven.yourOffer)}  ·  BE ${fmt(breakeven.price)}`}
+            sub={
+              breakeven.nearBreakeven
+                ? `Cash-flow neutral at market price (${fmt(breakeven.yourOffer)})`
+                : `Offer ${fmt(breakeven.yourOffer)}  ·  BE ${fmt(breakeven.price)}`
+            }
           />
         )}
         {wealthProjection && (
@@ -357,6 +395,47 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
           />
         )}
       </section>
+
+      {/* Near-breakeven sensitivity strip. When the deal cash-flows right at
+          market price, the hero "BE vs Offer" number is tautological — show
+          the user what they'd actually take home at various offer discounts
+          so they have something actionable to negotiate against. */}
+      {breakeven?.nearBreakeven && Array.isArray(breakeven.sensitivity) && (
+        <section className="mb-5 rounded-lg border border-border/70 bg-card p-5">
+          <div className="mb-2 flex items-center gap-2">
+            <Eyebrow>Offer sensitivity</Eyebrow>
+          </div>
+          <p className="mb-3 text-xs text-muted-foreground">
+            Cash flow if you negotiate below ask. At market price the deal is cash-flow neutral
+            — these are what moving the price down buys you.
+          </p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {breakeven.sensitivity.map(
+              (s: { offsetPct: number; price: number; monthlyCashFlow: number }) => (
+                <div
+                  key={s.offsetPct}
+                  className="rounded-md border border-border/50 bg-muted/10 px-3 py-2"
+                >
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                    {Math.round(s.offsetPct * 100)}% from ask ({fmt(s.price)})
+                  </p>
+                  <p
+                    className={cn(
+                      'mt-1 text-sm font-bold tabular-nums',
+                      s.monthlyCashFlow >= 0
+                        ? 'text-emerald-700 dark:text-emerald-400'
+                        : 'text-red-700 dark:text-red-400'
+                    )}
+                  >
+                    {s.monthlyCashFlow >= 0 ? '+' : ''}
+                    {fmt(s.monthlyCashFlow)}/mo
+                  </p>
+                </div>
+              )
+            )}
+          </div>
+        </section>
+      )}
 
       {/* Value triangulation — show every independent signal we have for
           the property's value so the buyer can judge confidence themselves.
@@ -428,6 +507,48 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
               <p className="text-xs leading-relaxed text-foreground">{w}</p>
             </div>
           ))}
+        </section>
+      )}
+
+      {/* Report-level warnings — class-of-property & data-gap caveats
+          (multi-unit detection, manufactured homes, condo-without-HOA,
+          missing-state fallback). Emitted by buildReportWarnings.
+          `property-profile-inferred` escalates to a red critical banner
+          because every downstream metric is built on inferred data. */}
+      {warnings && warnings.length > 0 && (
+        <section className="mb-5 space-y-2">
+          {warnings.map((w: { code: string; message: string }, i: number) => {
+            const critical = w.code === 'property-profile-inferred'
+            return (
+              <div
+                key={`${w.code}-${i}`}
+                data-warning-code={w.code}
+                className={cn(
+                  'flex items-start gap-2 rounded-md border px-4 py-3',
+                  critical
+                    ? 'border-red-500/50 bg-red-500/10'
+                    : 'border-amber-500/40 bg-amber-500/5'
+                )}
+              >
+                <AlertTriangleIcon
+                  className={cn(
+                    'mt-0.5 h-4 w-4 shrink-0',
+                    critical
+                      ? 'text-red-600 dark:text-red-400'
+                      : 'text-amber-600 dark:text-amber-400'
+                  )}
+                />
+                <div className="flex flex-col gap-0.5">
+                  {critical && (
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-red-700 dark:text-red-400">
+                      Based on inferred property data
+                    </p>
+                  )}
+                  <p className="text-xs leading-relaxed text-foreground">{w.message}</p>
+                </div>
+              </div>
+            )
+          })}
         </section>
       )}
 
@@ -622,39 +743,55 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
                     <tr className="border-b border-border/60 text-muted-foreground">
                       <th className="pb-2 text-left font-medium">Year</th>
                       <th className="pb-2 text-right font-medium">Cash Flow</th>
-                      <th className="pb-2 text-right font-medium">Value</th>
-                      <th className="pb-2 text-right font-medium">Loan Bal</th>
+                      <th className="pb-2 text-right font-medium">Tax Shield</th>
                       <th className="pb-2 text-right font-medium">Equity Built</th>
+                      <th className="pb-2 text-right font-medium">Loan Bal</th>
                       <th className="pb-2 text-right font-medium">Wealth</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {wealthProjection.years.map((y: any) => (
-                      <tr key={y.year} className="border-b border-border/30 last:border-b-0">
-                        <td className="py-2 font-medium">Y{y.year}</td>
-                        <td
-                          className={cn(
-                            'py-2 text-right',
-                            y.annualCashFlow >= 0
-                              ? 'text-emerald-700 dark:text-emerald-400'
-                              : 'text-red-700 dark:text-red-400'
-                          )}
-                        >
-                          {y.annualCashFlow >= 0 ? '+' : ''}
-                          {fmt(y.annualCashFlow)}
-                        </td>
-                        <td className="py-2 text-right">{fmt(y.propertyValue)}</td>
-                        <td className="py-2 text-right">{fmt(y.loanBalance)}</td>
-                        <td className="py-2 text-right">
-                          {fmt(y.equityFromPaydown + y.equityFromAppreciation)}
-                        </td>
-                        <td className="py-2 text-right font-bold text-primary">
-                          {fmt(y.totalWealthBuilt)}
-                        </td>
-                      </tr>
-                    ))}
+                    {wealthProjection.years.map((y: any) => {
+                      const equityTotal = y.equityFromPaydown + y.equityFromAppreciation
+                      return (
+                        <tr key={y.year} className="border-b border-border/30 last:border-b-0">
+                          <td className="py-2 font-medium">Y{y.year}</td>
+                          <td
+                            className={cn(
+                              'py-2 text-right',
+                              y.cumulativeCashFlow >= 0
+                                ? 'text-emerald-700 dark:text-emerald-400'
+                                : 'text-red-700 dark:text-red-400'
+                            )}
+                          >
+                            {y.cumulativeCashFlow >= 0 ? '+' : ''}
+                            {fmt(y.cumulativeCashFlow)}
+                          </td>
+                          <td className="py-2 text-right text-emerald-700 dark:text-emerald-400">
+                            +{fmt(y.cumulativeTaxShield)}
+                          </td>
+                          <td
+                            className={cn(
+                              'py-2 text-right',
+                              equityTotal >= 0
+                                ? 'text-foreground'
+                                : 'text-red-700 dark:text-red-400'
+                            )}
+                          >
+                            {equityTotal >= 0 ? '' : '−'}
+                            {fmt(Math.abs(equityTotal))}
+                          </td>
+                          <td className="py-2 text-right">{fmt(y.loanBalance)}</td>
+                          <td className="py-2 text-right font-bold text-primary">
+                            {fmt(y.totalWealthBuilt)}
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
+                <p className="mt-2 text-[10px] text-muted-foreground">
+                  Wealth = Cash Flow + Tax Shield + Equity Built (cumulative through end of year).
+                </p>
                 <p className="mt-3 text-[10px] text-muted-foreground">
                   {pct(wealthProjection.assumptions.rentGrowthRate, 1)} rent growth
                   {wealthProjection.assumptions.rentGrowthSource === 'zip-12mo' && (

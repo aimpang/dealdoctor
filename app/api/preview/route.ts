@@ -1,14 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { searchProperty, getRentEstimate, RentcastQuotaError } from '@/lib/propertyApi'
+import {
+  searchProperty,
+  getRentEstimate,
+  getRentComps,
+  RentcastQuotaError,
+  classifyAddressMatch,
+} from '@/lib/propertyApi'
 import { getCurrentRates, applyInvestorPremium } from '@/lib/rates'
-import { getStateFromZipCode, calculateBreakEvenPrice } from '@/lib/calculations'
-import { applyStudentHousingHeuristic } from '@/lib/studentHousing'
+import { getStateFromZipCode, calculateBreakEvenPrice, STATE_RULES } from '@/lib/calculations'
+import {
+  applyStudentHousingHeuristic,
+  collegeTownForZip,
+  crossCheckRentAgainstComps,
+} from '@/lib/studentHousing'
+import { lookupBuildingHoa } from '@/lib/buildingHoa'
 import { prisma } from '@/lib/db'
 import { randomUUID } from 'crypto'
 import { rateLimit } from '@/lib/rateLimit'
 import {
   getCurrentCustomer,
   hasActiveEntitlement,
+  enforceEntitlementExpiry,
   debitForNewReport,
 } from '@/lib/entitlements'
 import { generateFullReport } from '@/lib/reportGenerator'
@@ -21,7 +33,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Too many requests. Try again tomorrow.' }, { status: 429 })
   }
 
-  const { address } = await req.json()
+  const { address, confirmedResolvedAddress } = await req.json()
   if (!address || address.length < 10) {
     return NextResponse.json({ error: 'Please enter a full address' }, { status: 400 })
   }
@@ -49,6 +61,38 @@ export async function POST(req: NextRequest) {
       }, { status: 404 })
     }
 
+    // Silent-address-substitution guard. Rentcast sometimes returns a nearby
+    // but DIFFERENT property — "408 S 8th St" → "408 N 8th St" is a real
+    // example. If Rentcast's resolved address diverges materially from what
+    // the user typed, block once and ask them to confirm.
+    //
+    // Any non-empty `confirmedResolvedAddress` is treated as "user already saw
+    // the mismatch and clicked Yes — proceed, don't re-prompt." We deliberately
+    // don't require strict equality because Rentcast sometimes re-resolves the
+    // confirmed address to YET ANOTHER record (Saginaw case: confirming
+    // "408 N 8th St" returned "408 New St, Clio, MI"). Strict equality would
+    // trap the user in a re-prompt loop. Users still see the actual resolved
+    // address in the teaser property card + map pin.
+    const userSaidProceed =
+      typeof confirmedResolvedAddress === 'string' &&
+      confirmedResolvedAddress.trim().length > 0
+    if (!userSaidProceed) {
+      const match = classifyAddressMatch(address, property.address)
+      if (match.kind === 'hard-mismatch') {
+        return NextResponse.json(
+          {
+            error: 'Address mismatch',
+            addressMismatch: true,
+            userAddress: address,
+            resolvedAddress: property.address,
+            mismatches: match.mismatches,
+            message: `We couldn't find "${address}" in our data source. The closest record we have is "${property.address}". Did you mean that address?`,
+          },
+          { status: 409 }
+        )
+      }
+    }
+
     const rentEstimate = await getRentEstimate(address, property.bedrooms)
     const state = property.state || getStateFromZipCode(property.zip_code)
     const rawRentAvm = rentEstimate?.estimated_rent || Math.round(property.estimated_value * 0.005)
@@ -56,12 +100,36 @@ export async function POST(req: NextRequest) {
     // Student-housing heuristic: if this looks like a per-bedroom AVM, multiply
     // by bedroom count to get whole-property rent for all math. Applied BEFORE
     // breakeven / warnings so the downstream numbers use the corrected rent.
-    const rentAdjustment = applyStudentHousingHeuristic({
+    let rentAdjustment = applyStudentHousingHeuristic({
       rentAvm: rawRentAvm,
       propertyValue: property.estimated_value,
       bedrooms: property.bedrooms,
       subdivision: property.subdivision,
+      zipCode: property.zip_code,
     })
+
+    // When the heuristic multiplied, cross-check against actual rent comps —
+    // otherwise the teaser shows a number the paid report will later revert
+    // (Blacksburg: teaser $5,100 / report $1,700). Only fetch rent comps when
+    // we actually multiplied to keep the normal preview path single-API-call.
+    let rentMultiplierRevertedDueToComps = false
+    if (rentAdjustment.isMultiplied) {
+      const rentComps = await getRentComps(
+        address,
+        property.bedrooms,
+        property.property_type
+      ).catch(() => [])
+      const check = crossCheckRentAgainstComps({
+        adjustment: rentAdjustment,
+        rawRentAvm,
+        rentCompRents: (rentComps || [])
+          .map((c: any) => Number(c?.rent))
+          .filter((v: number) => Number.isFinite(v) && v > 0),
+      })
+      rentAdjustment = check.adjustment
+      rentMultiplierRevertedDueToComps = check.revertedDueToComps
+    }
+
     const estimatedRent = rentAdjustment.effectiveRent
 
     // Data-quality warnings — shown in the teaser so buyers don't pay for a
@@ -74,6 +142,23 @@ export async function POST(req: NextRequest) {
     //       distressed market. Either way, verify before trusting.
     const annualYield = (estimatedRent * 12) / property.estimated_value
     const warnings: Array<{ code: string; message: string }> = []
+
+    // If the user bypassed a mismatch prompt AND Rentcast's actual resolved
+    // address still differs from what they confirmed, surface it prominently
+    // in the teaser so they don't underwrite a property they never agreed to.
+    if (
+      userSaidProceed &&
+      typeof confirmedResolvedAddress === 'string' &&
+      confirmedResolvedAddress.trim().toLowerCase() !== property.address.trim().toLowerCase()
+    ) {
+      const postBypassMatch = classifyAddressMatch(confirmedResolvedAddress, property.address)
+      if (postBypassMatch.kind === 'hard-mismatch') {
+        warnings.push({
+          code: 'address-substitution',
+          message: `You confirmed "${confirmedResolvedAddress}", but our data source actually returned "${property.address}" — a different property. Every number below is for "${property.address}". If that's not what you meant, retype the address.`,
+        })
+      }
+    }
     if (property.value_source === 'tax-assessment') {
       warnings.push({
         code: 'value-from-tax',
@@ -94,11 +179,22 @@ export async function POST(req: NextRequest) {
         code: 'rent-multiplied',
         message: `Rent AVM ($${rentAdjustment.perBedroomRent?.toLocaleString()}/bed) looked like a per-bedroom rate${rentAdjustment.reason === 'subdivision-match' ? ` (property is in a known student-rental complex)` : ' (implausibly low yield suggested it)'}. Math below uses $${rentAdjustment.effectiveRent.toLocaleString()}/mo total (${rentAdjustment.bedroomsUsed} beds × per-bedroom rate). Verify against actual signed leases.`,
       })
+    } else if (rentMultiplierRevertedDueToComps) {
+      // Heuristic tried to multiply but actual rent comps suggested the AVM
+      // was already a whole-unit figure — we reverted. Surface this at teaser
+      // time so the user sees the same rent / breakeven the paid report
+      // will show (no Blacksburg-style teaser/report mismatch).
+      warnings.push({
+        code: 'rent-multiplier-reverted',
+        message: `The student-rental multiplier would have pushed rent above 2× the highest nearby rent comp, so we kept the raw AVM ($${Math.round(rawRentAvm).toLocaleString()}/mo). The AVM appears to already be a whole-unit figure. Verify with a local property manager before relying on this number.`,
+      })
     } else if (annualYield < 0.04) {
+      const college = collegeTownForZip(property.zip_code)
       warnings.push({
         code: 'rent-suspect',
-        message:
-          "Rent estimate is unusually low vs property value — may be a per-room / student-rental figure or stale data. Verify with a local property manager.",
+        message: college
+          ? `This property is in a known college-town ZIP (${college}). The rent estimate is likely a per-bedroom figure — if this is a student rental, true whole-unit rent may be 3–4× higher. Verify with a local property manager before trusting any cash flow numbers.`
+          : "Rent estimate is unusually low vs property value — may be a per-room / student-rental figure or stale data. Verify with a local property manager.",
       })
     } else if (annualYield > 0.18) {
       warnings.push({
@@ -143,9 +239,17 @@ export async function POST(req: NextRequest) {
       const rangeSpread =
         (property.value_range_high - property.value_range_low) / property.estimated_value
       if (rangeSpread > 0.30) {
+        const n = property.avm_comparables_count
+        // Include comp count when available so users can tell a 4-comp
+        // wide-band apart from a 20-comp one. Also flag low coverage (<5).
+        const compNote = typeof n === 'number'
+          ? n < 5
+            ? ` Based on only ${n} comparable${n === 1 ? '' : 's'} — low comp coverage.`
+            : ` Based on ${n} comparables.`
+          : ''
         warnings.push({
           code: 'avm-wide-range',
-          message: `Value AVM has a wide confidence band ($${property.value_range_low.toLocaleString()}-$${property.value_range_high.toLocaleString()}, ±${Math.round((rangeSpread / 2) * 100)}%). The midpoint is uncertain; cross-check against Zillow / Redfin / a local agent before trusting.`,
+          message: `Value AVM has a wide confidence band ($${property.value_range_low.toLocaleString()}-$${property.value_range_high.toLocaleString()}, ±${Math.round((rangeSpread / 2) * 100)}%).${compNote} The midpoint is uncertain; cross-check against Zillow / Redfin / a local agent before trusting.`,
         })
       }
     }
@@ -173,7 +277,45 @@ export async function POST(req: NextRequest) {
     // audience is investors, so the pre-paywall walk-away number must reflect
     // what they'll actually pay to finance the deal — not an owner-occupied rate.
     const investorRate = applyInvestorPremium(rates.mortgage30yr, 'LTR')
-    const breakevenPrice = calculateBreakEvenPrice(estimatedRent, investorRate)
+    // Match the full-report expense stack so the teaser and full-report
+    // breakeven numbers agree. Previously the teaser used the solver's
+    // defaults (1% tax, $125 ins, $0 HOA, $150 maint) while the full
+    // report passed the real state tax rate + captured HOA + actual
+    // climate-derived insurance — producing two different breakeven
+    // numbers on the same address (DC studio audit: $275k card vs $287k
+    // full). We can't fetch climate pre-paywall, but state tax rate and
+    // the condo-HOA default are derivable here.
+    const stateRulesForBE = STATE_RULES[state] || STATE_RULES['TX']
+    const previewPropertyTypeLower = (property.property_type || '').toLowerCase()
+    const previewIsCondoLike = /condo|apartment|co-?op|coop/.test(previewPropertyTypeLower)
+    const previewCapturedHOA = property.hoa_fee_monthly ?? 0
+    // Building-level HOA override — mirrors the full-report path so the
+    // teaser breakeven + the full-report breakeven agree. Jefferson House
+    // (DC) audit: sqft formula said $499, real building average is $717.
+    const previewBuildingHoa =
+      previewCapturedHOA === 0 && previewIsCondoLike
+        ? lookupBuildingHoa(property.address)
+        : null
+    const previewInferredCondoHOA =
+      previewCapturedHOA === 0 && previewIsCondoLike
+        ? Math.min(1500, Math.max(300, Math.round((property.square_feet || 500) * 1.0)))
+        : 0
+    const previewMonthlyHOA =
+      previewCapturedHOA > 0
+        ? previewCapturedHOA
+        : previewBuildingHoa
+          ? previewBuildingHoa.monthlyHoa
+          : previewInferredCondoHOA
+    const previewMonthlyMaintenance = Math.max(
+      150,
+      property.square_feet ? Math.round(property.square_feet * 0.04) : 150
+    )
+    const breakevenPrice = calculateBreakEvenPrice(estimatedRent, investorRate, {
+      propertyTaxRate: stateRulesForBE.propertyTaxRate,
+      monthlyHOA: previewMonthlyHOA,
+      monthlyMaintenance: previewMonthlyMaintenance,
+      offerPrice: property.estimated_value,
+    })
     const listingVsBreakeven = breakevenPrice - property.estimated_value
 
     // Generate UUID and store in DB
@@ -208,27 +350,54 @@ export async function POST(req: NextRequest) {
     // If the user has an active customer cookie with remaining quota, auto-pay
     // this new report. Solves the "I bought a 5-pack; why am I hitting the paywall
     // on my second search?" bug. Fires the full-report generator in the background.
-    const customer = await getCurrentCustomer()
+    let customer = await getCurrentCustomer()
+    // Lazy sweep: if the customer's unlimited subscription expired and the
+    // `subscription_expired` webhook never arrived, zero it out now.
+    if (customer) customer = await enforceEntitlementExpiry(customer)
     const entitlement = customer ? hasActiveEntitlement(customer) : { active: false }
 
-    await prisma.report.create({
-      data: {
-        id: uuid,
+    // Double-click dedup: if the same address was submitted (by anyone) in
+    // the last 30 seconds and is still unpaid + waiting for checkout, return
+    // that existing report instead of creating a duplicate. This protects
+    // against a user mashing the button and ending up with 2+ report rows
+    // in the DB for the same address.
+    const recentMatch = await prisma.report.findFirst({
+      where: {
         address: property.address,
-        city: property.city,
-        state,
         zipCode: property.zip_code,
-        teaserData: JSON.stringify(teaserData),
-        ...(entitlement.active && customer
-          ? {
-              paid: true,
-              customerId: customer.id,
-              customerEmail: customer.email,
-              paidAt: new Date(),
-            }
-          : {}),
+        paid: false,
+        createdAt: { gt: new Date(Date.now() - 30_000) },
+        // If the current request has a logged-in customer, only dedup
+        // against rows that customer already created — don't let user A
+        // steal user B's just-created row.
+        ...(customer ? { customerId: customer.id } : { customerId: null }),
       },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
     })
+    const reusedExisting = !!recentMatch
+    const finalUuid = recentMatch?.id ?? uuid
+
+    if (!reusedExisting) {
+      await prisma.report.create({
+        data: {
+          id: uuid,
+          address: property.address,
+          city: property.city,
+          state,
+          zipCode: property.zip_code,
+          teaserData: JSON.stringify(teaserData),
+          ...(entitlement.active && customer
+            ? {
+                paid: true,
+                customerId: customer.id,
+                customerEmail: customer.email,
+                paidAt: new Date(),
+              }
+            : {}),
+        },
+      })
+    }
 
     let autopaid: null | {
       entitlement: 'unlimited' | '5pack'
@@ -236,7 +405,7 @@ export async function POST(req: NextRequest) {
       until?: string
     } = null
 
-    if (entitlement.active && customer) {
+    if (entitlement.active && customer && !reusedExisting) {
       const debit = await debitForNewReport(customer)
       autopaid = {
         entitlement: entitlement.type!,
@@ -244,13 +413,14 @@ export async function POST(req: NextRequest) {
         until: entitlement.until?.toISOString(),
       }
       // Generate full report async — don't block preview response
-      generateFullReport(uuid).catch((err) =>
-        console.error('[preview] auto-pay report generation failed for', uuid, err)
+      generateFullReport(finalUuid).catch((err) =>
+        console.error('[preview] auto-pay report generation failed for', finalUuid, err)
       )
     }
 
     return NextResponse.json({
-      uuid,
+      uuid: finalUuid,
+      deduped: reusedExisting,
       teaser: teaserData,
       property: {
         address: property.address,

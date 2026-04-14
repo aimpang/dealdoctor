@@ -75,7 +75,14 @@ export async function POST(req: NextRequest) {
 
     const breakevenPrice = calculateBreakEvenPrice(
       teaser.estimatedRent,
-      teaser.currentRate
+      teaser.currentRate,
+      {
+        downPaymentPct: downPct,
+        propertyTaxRate: stateRules.propertyTaxRate,
+        monthlyInsurance,
+        monthlyMaintenance,
+        offerPrice: price,
+      }
     )
     const deltaVsBreakeven = breakevenPrice - price // positive = headroom, negative = above breakeven
 

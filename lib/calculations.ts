@@ -122,22 +122,47 @@ export function calculateRenewalScenarios(
 // --- BREAKEVEN OFFER PRICE ---
 // Binary-search the purchase price at which monthly cash flow is ~$0 given current
 // rent and rates. This is DealDoctor's flagship metric: "offer $X and it works."
-// Assumes 20% down, 30yr amort, 1.5% annual property tax/insurance, $250/mo ops buffer.
+// Bisection solver for the price that produces CF ≥ 0 on a long-term rental.
 // Invariant: CF(price) is monotonically decreasing — at low prices CF>0, at high CF<0.
 // We search for the crossover: when CF>0 at mid, breakeven is ≥ mid (push low up);
 // when CF<0, breakeven is < mid (pull high down).
+//
+// `opts` lets callers pass the actual deal inputs — state-specific property tax
+// rate, climate-driven insurance, HOA, maintenance, and down-payment pct. When
+// omitted the defaults approximate a generic 20% down SFR (1% tax rate, $125
+// insurance, $150 maintenance, no HOA) — kept so legacy callers still work but
+// the report pipeline now passes real numbers.
 export function calculateBreakEvenPrice(
   monthlyRent: number,
   annualRate: number,
+  opts: {
+    downPaymentPct?: number
+    propertyTaxRate?: number          // decimal, e.g. 0.021 for IL
+    monthlyInsurance?: number         // flat $/mo
+    monthlyHOA?: number               // flat $/mo
+    monthlyMaintenance?: number       // flat $/mo
+    offerPrice?: number               // subject price — sets solver ceiling to 2× so $3M+ luxury properties aren't clamped
+  } = {}
 ): number {
-  let low = 50000, high = 3000000
+  const downPaymentPct = opts.downPaymentPct ?? 0.20
+  const propertyTaxRate = opts.propertyTaxRate ?? 0.010
+  const monthlyInsurance = opts.monthlyInsurance ?? 125
+  const monthlyHOA = opts.monthlyHOA ?? 0
+  const monthlyMaintenance = opts.monthlyMaintenance ?? 150
+
+  // Dynamic high ceiling — pre-fix this was a flat $3M, which clamped every
+  // luxury property and any solver on a $3M+ subject. Always keep 2× the
+  // subject price as headroom so the crossover is reachable.
+  let low = 50000
+  let high = Math.max(3_000_000, (opts.offerPrice ?? 0) * 2)
   for (let i = 0; i < 50; i++) {
     const mid = (low + high) / 2
-    const loan = mid * 0.80
+    const loan = mid * (1 - downPaymentPct)
     const monthlyRate = annualRate / 12
     const n = 30 * 12
     const payment = loan * (monthlyRate * Math.pow(1 + monthlyRate, n)) / (Math.pow(1 + monthlyRate, n) - 1)
-    const cf = monthlyRent * 0.95 - payment - (mid * 0.015 / 12) - 250
+    const fixedExpenses = monthlyInsurance + monthlyHOA + monthlyMaintenance
+    const cf = monthlyRent * 0.95 - payment - (mid * propertyTaxRate / 12) - fixedExpenses
     if (cf > 0) low = mid; else high = mid
   }
   return Math.round((low + high) / 2 / 1000) * 1000
@@ -475,9 +500,14 @@ export function calculateSTRProjection(params: {
   monthlyPropertyTax: number
   monthlyInsuranceLTR: number
   monthlyLTRCashFlow: number
+  // Optional override for the reported occupancy assumption. Set when a
+  // jurisdiction caps non-primary STR nights (e.g. DC 90-night rule) so
+  // the displayed occupancy matches the scaled-down revenue figure.
+  occupancyOverride?: number
 }): STRProjection {
   const { monthlyGrossRevenue, monthlyMortgagePayment,
-          monthlyPropertyTax, monthlyInsuranceLTR, monthlyLTRCashFlow } = params
+          monthlyPropertyTax, monthlyInsuranceLTR, monthlyLTRCashFlow,
+          occupancyOverride } = params
 
   // Variable STR opex as % of gross revenue. Conservative middle-of-the-road
   // assumptions — adjust in the report UI if your market is self-managed or
@@ -511,7 +541,7 @@ export function calculateSTRProjection(params: {
     annualDSCR,
     opExRatio,
     vsLTRMonthlyDelta: Math.round(monthlyNetCashFlow - monthlyLTRCashFlow),
-    estimatedOccupancy: 0.60,
+    estimatedOccupancy: occupancyOverride ?? 0.60,
     breakdown: {
       management,
       cleaning,
@@ -548,6 +578,16 @@ export interface SensitivityInputs {
   rehabBudget: number
   annualDepreciation: number
   cashToClose: number
+  // Base-case growth rates used by the hero 5yr IRR projection. When
+  // provided, the "Base case" sensitivity row uses these EXACTLY so the
+  // hero and the sensitivity table can't disagree on the base-case IRR.
+  // Previously the sensitivity hardcoded 3% appreciation and implicitly 0
+  // rent / expense growth — producing e.g. a +6.8% Base-case IRR while
+  // the hero (using zip data at -1% appreciation) showed -13.8% (DC
+  // Apolline audit). All the OTHER scenarios still offset from these.
+  baseAppreciationRate?: number
+  baseRentGrowthRate?: number
+  baseExpenseGrowthRate?: number
 }
 
 function runSingleScenario(
@@ -576,6 +616,11 @@ function runSingleScenario(
     initialMonthlyExpenses: expenses,
     annualDepreciation: inputs.annualDepreciation,
     appreciationRate: mods.appreciation,
+    // Propagate the hero's actual rent / expense growth rates when
+    // available. Without these, the sensitivity's implicit 0% rent growth
+    // made the Base-case IRR differ from the hero (which uses zip data).
+    rentGrowthRate: inputs.baseRentGrowthRate,
+    expenseGrowthRate: inputs.baseExpenseGrowthRate,
     years: 5,
   })
   const fiveYrWealth = projections[projections.length - 1]?.totalWealthBuilt ?? 0
@@ -585,8 +630,15 @@ function runSingleScenario(
 }
 
 export function calculateSensitivity(inputs: SensitivityInputs): SensitivityRow[] {
+  // Use the hero's actual base-case appreciation (zip-derived) when the
+  // caller provides it — otherwise fall back to the legacy 3% default.
+  // Sensitivity row values are ABSOLUTE (not deltas), so this change
+  // only affects the Base-case and scenarios that share its appreciation.
+  const baseAppr = inputs.baseAppreciationRate ?? 0.03
+  const baseApprPct = (baseAppr * 100).toFixed(1)
+
   const base = runSingleScenario(inputs, {
-    rentMult: 1, rateDelta: 0, expenseMult: 1, appreciation: 0.03,
+    rentMult: 1, rateDelta: 0, expenseMult: 1, appreciation: baseAppr,
   })
 
   const scenarios: Array<{
@@ -594,11 +646,11 @@ export function calculateSensitivity(inputs: SensitivityInputs): SensitivityRow[
     description: string
     mods: { rentMult: number; rateDelta: number; expenseMult: number; appreciation: number }
   }> = [
-    { scenario: 'Base case', description: 'Inputs as reported, 3% appreciation', mods: { rentMult: 1, rateDelta: 0, expenseMult: 1, appreciation: 0.03 } },
-    { scenario: 'Rent −10%', description: 'Softer rental market', mods: { rentMult: 0.9, rateDelta: 0, expenseMult: 1, appreciation: 0.03 } },
-    { scenario: 'Rent +10%', description: 'Rent outperforms', mods: { rentMult: 1.1, rateDelta: 0, expenseMult: 1, appreciation: 0.03 } },
-    { scenario: 'Rate +1%', description: 'Rate spike at refi', mods: { rentMult: 1, rateDelta: 0.01, expenseMult: 1, appreciation: 0.03 } },
-    { scenario: 'Expenses +20%', description: 'Inflation / vacancy spike', mods: { rentMult: 1, rateDelta: 0, expenseMult: 1.2, appreciation: 0.03 } },
+    { scenario: 'Base case', description: `Inputs as reported, ${baseApprPct}% appreciation`, mods: { rentMult: 1, rateDelta: 0, expenseMult: 1, appreciation: baseAppr } },
+    { scenario: 'Rent −10%', description: 'Softer rental market', mods: { rentMult: 0.9, rateDelta: 0, expenseMult: 1, appreciation: baseAppr } },
+    { scenario: 'Rent +10%', description: 'Rent outperforms', mods: { rentMult: 1.1, rateDelta: 0, expenseMult: 1, appreciation: baseAppr } },
+    { scenario: 'Rate +1%', description: 'Rate spike at refi', mods: { rentMult: 1, rateDelta: 0.01, expenseMult: 1, appreciation: baseAppr } },
+    { scenario: 'Expenses +20%', description: 'Inflation / vacancy spike', mods: { rentMult: 1, rateDelta: 0, expenseMult: 1.2, appreciation: baseAppr } },
     { scenario: 'Appreciation 0%', description: 'Flat market', mods: { rentMult: 1, rateDelta: 0, expenseMult: 1, appreciation: 0 } },
     { scenario: 'Appreciation 5%', description: 'Hot market', mods: { rentMult: 1, rateDelta: 0, expenseMult: 1, appreciation: 0.05 } },
   ]
@@ -640,11 +692,12 @@ export function calculateRecommendedOffers(params: {
   monthlyHOA: number
   targetCoC?: number            // default 0.08
   targetIRR?: number            // default 0.10
+  offerPrice?: number           // subject price — sets bisection ceiling so $3M+ luxury subjects aren't clamped
 }): RecommendedOffers {
   const {
     monthlyRent, vacancyRate, annualRate, downPaymentPct, rehabBudget,
     propertyTaxRate, monthlyInsurance, monthlyMaintenance, monthlyHOA,
-    targetCoC = 0.08, targetIRR = 0.10,
+    targetCoC = 0.08, targetIRR = 0.10, offerPrice,
   } = params
 
   const expensesAt = (price: number): number =>
@@ -679,7 +732,11 @@ export function calculateRecommendedOffers(params: {
   // Binary search for max price where metricAt(price) >= target.
   // Metrics are monotonically decreasing in price → crossover exists.
   const bisectMaxPrice = (evaluate: (p: number) => number, target: number): number => {
-    let low = 30_000, high = 10_000_000
+    let low = 30_000
+    // Dynamic ceiling: keep 2× the subject price as headroom so luxury
+    // subjects ($5M+) can reach their valid offer range. Flat $10M clamped
+    // anything above that.
+    let high = Math.max(10_000_000, (offerPrice ?? 0) * 2)
     // If even the lowest price doesn't hit the target, return low (no valid offer)
     if (evaluate(low) < target) return 0
     for (let i = 0; i < 60; i++) {
@@ -691,7 +748,19 @@ export function calculateRecommendedOffers(params: {
   }
 
   return {
-    breakevenPrice: calculateBreakEvenPrice(monthlyRent, annualRate),
+    // Pass the deal's ACTUAL expense stack to the breakeven solver. Without
+    // this, recommendedOffers.breakevenPrice used default assumptions (1%
+    // tax, $125 ins, $150 maint, $0 HOA) while the hero breakeven used the
+    // real inputs — producing two different breakeven numbers in the same
+    // report. Now both agree.
+    breakevenPrice: calculateBreakEvenPrice(monthlyRent, annualRate, {
+      downPaymentPct,
+      propertyTaxRate,
+      monthlyInsurance,
+      monthlyHOA,
+      monthlyMaintenance,
+      offerPrice,
+    }),
     priceForCashOnCash: {
       target: targetCoC,
       maxPrice: bisectMaxPrice(cocAt, targetCoC),
@@ -780,7 +849,7 @@ export const STATE_RULES: Record<string, {
   TX: { name: 'Texas', propertyTaxRate: 0.018, rentControl: false, landlordFriendly: true, strNotes: 'No statewide STR restrictions. Check municipal rules.' },
   FL: { name: 'Florida', propertyTaxRate: 0.009, rentControl: false, landlordFriendly: true, strNotes: 'No statewide ban. Some cities restrict STR in residential zones.' },
   CA: { name: 'California', propertyTaxRate: 0.0073, rentControl: true, landlordFriendly: false, strNotes: 'Many cities restrict STR. LA, SF require permits. Prop 13 caps assessment increases.' },
-  NY: { name: 'New York', propertyTaxRate: 0.017, rentControl: true, landlordFriendly: false, strNotes: 'NYC essentially bans most short-term rentals under 30 days. Strict rent stabilization.' },
+  NY: { name: 'New York', propertyTaxRate: 0.017, rentControl: true, landlordFriendly: false, strNotes: 'NYC (all five boroughs) effectively bans most short-term rentals under 30 days under Local Law 18. Rules vary elsewhere in the state — Long Island, Hudson Valley, and upstate have municipality-by-municipality STR regulations. NYC also has strict rent stabilization. Check local rules for non-NYC addresses.' },
   OH: { name: 'Ohio', propertyTaxRate: 0.016, rentControl: false, landlordFriendly: true, strNotes: 'No statewide STR restrictions.' },
   GA: { name: 'Georgia', propertyTaxRate: 0.009, rentControl: false, landlordFriendly: true, strNotes: 'No statewide STR restrictions. Atlanta requires permits.' },
   NC: { name: 'North Carolina', propertyTaxRate: 0.008, rentControl: false, landlordFriendly: true, strNotes: 'Generally STR-friendly. Check HOA rules.' },
@@ -790,11 +859,96 @@ export const STATE_RULES: Record<string, {
   IN: { name: 'Indiana', propertyTaxRate: 0.008, rentControl: false, landlordFriendly: true, strNotes: 'No statewide STR restrictions.' },
   MI: { name: 'Michigan', propertyTaxRate: 0.015, rentControl: false, landlordFriendly: true, strNotes: 'No statewide STR ban. Some lakeside communities restrict.' },
   PA: { name: 'Pennsylvania', propertyTaxRate: 0.015, rentControl: false, landlordFriendly: true, strNotes: 'Philadelphia requires STR license.' },
-  IL: { name: 'Illinois', propertyTaxRate: 0.021, rentControl: true, landlordFriendly: false, strNotes: 'Chicago requires STR license and has unit cap.' },
+  IL: { name: 'Illinois', propertyTaxRate: 0.021, rentControl: false, landlordFriendly: false, strNotes: 'Chicago RLTO governs landlord/tenant (strong tenant protections, security-deposit interest, written lease disclosures) but Chicago has NOT enacted rent control; IL repealed its statewide preemption in 2021. Chicago requires STR license with unit cap.' },
   WA: { name: 'Washington', propertyTaxRate: 0.009, rentControl: true, landlordFriendly: false, strNotes: 'Seattle restricts STR to primary residences.' },
   NV: { name: 'Nevada', propertyTaxRate: 0.006, rentControl: false, landlordFriendly: true, strNotes: 'Las Vegas requires STR business license.' },
   MO: { name: 'Missouri', propertyTaxRate: 0.010, rentControl: false, landlordFriendly: true, strNotes: 'No statewide STR restrictions.' },
   SC: { name: 'South Carolina', propertyTaxRate: 0.006, rentControl: false, landlordFriendly: true, strNotes: 'Generally STR-friendly. Beach communities may have rules.' },
+  // --- Remaining states (effective rates per Tax Foundation / ATTOM). Default to
+  // landlordFriendly: true + no rent control unless a statewide regime exists. Per-city
+  // STR rules vary; strNotes points to municipal verification.
+  AL: { name: 'Alabama', propertyTaxRate: 0.004, rentControl: false, landlordFriendly: true, strNotes: 'No statewide STR restrictions. Check municipal rules.' },
+  AK: { name: 'Alaska', propertyTaxRate: 0.012, rentControl: false, landlordFriendly: true, strNotes: 'No statewide STR restrictions. Anchorage requires registration.' },
+  AR: { name: 'Arkansas', propertyTaxRate: 0.006, rentControl: false, landlordFriendly: true, strNotes: 'No statewide STR restrictions. Check municipal rules.' },
+  CT: { name: 'Connecticut', propertyTaxRate: 0.020, rentControl: false, landlordFriendly: false, strNotes: 'No statewide STR ban. Tenant-friendly eviction rules.' },
+  DC: { name: 'District of Columbia', propertyTaxRate: 0.0085, rentControl: true, landlordFriendly: false, strNotes: 'DC caps STR at 90 non-primary-residence nights/yr and requires a license.' },
+  DE: { name: 'Delaware', propertyTaxRate: 0.006, rentControl: false, landlordFriendly: true, strNotes: 'No statewide STR restrictions. Beach towns regulate.' },
+  HI: { name: 'Hawaii', propertyTaxRate: 0.003, rentControl: false, landlordFriendly: true, strNotes: 'Honolulu 30-day minimum outside resort zones; statewide STR scrutiny is intense.' },
+  IA: { name: 'Iowa', propertyTaxRate: 0.014, rentControl: false, landlordFriendly: true, strNotes: 'No statewide STR restrictions.' },
+  ID: { name: 'Idaho', propertyTaxRate: 0.006, rentControl: false, landlordFriendly: true, strNotes: 'State preempts local STR bans; very STR-friendly.' },
+  KS: { name: 'Kansas', propertyTaxRate: 0.013, rentControl: false, landlordFriendly: true, strNotes: 'No statewide STR restrictions.' },
+  KY: { name: 'Kentucky', propertyTaxRate: 0.008, rentControl: false, landlordFriendly: true, strNotes: 'No statewide STR restrictions. Louisville / Lexington regulate.' },
+  LA: { name: 'Louisiana', propertyTaxRate: 0.005, rentControl: false, landlordFriendly: true, strNotes: 'New Orleans bans STR in most residential zones.' },
+  MA: { name: 'Massachusetts', propertyTaxRate: 0.012, rentControl: false, landlordFriendly: false, strNotes: 'No statewide STR ban; Boston requires registration and primary-residence rule.' },
+  MD: { name: 'Maryland', propertyTaxRate: 0.010, rentControl: false, landlordFriendly: false, strNotes: 'No statewide STR restrictions. Counties regulate.' },
+  ME: { name: 'Maine', propertyTaxRate: 0.012, rentControl: false, landlordFriendly: true, strNotes: 'No statewide STR restrictions. Coastal towns may restrict.' },
+  MN: { name: 'Minnesota', propertyTaxRate: 0.011, rentControl: true, landlordFriendly: false, strNotes: 'No statewide STR ban. Minneapolis / St Paul regulate.' },
+  MS: { name: 'Mississippi', propertyTaxRate: 0.007, rentControl: false, landlordFriendly: true, strNotes: 'No statewide STR restrictions.' },
+  MT: { name: 'Montana', propertyTaxRate: 0.008, rentControl: false, landlordFriendly: true, strNotes: 'No statewide STR restrictions. Resort towns regulate.' },
+  ND: { name: 'North Dakota', propertyTaxRate: 0.010, rentControl: false, landlordFriendly: true, strNotes: 'No statewide STR restrictions.' },
+  NE: { name: 'Nebraska', propertyTaxRate: 0.016, rentControl: false, landlordFriendly: true, strNotes: 'No statewide STR restrictions.' },
+  NH: { name: 'New Hampshire', propertyTaxRate: 0.021, rentControl: false, landlordFriendly: true, strNotes: 'No statewide STR restrictions.' },
+  NJ: { name: 'New Jersey', propertyTaxRate: 0.022, rentControl: true, landlordFriendly: false, strNotes: 'Many shore towns restrict STR. Strong tenant protections.' },
+  NM: { name: 'New Mexico', propertyTaxRate: 0.007, rentControl: false, landlordFriendly: true, strNotes: 'No statewide STR ban. Santa Fe caps STR units city-wide.' },
+  OK: { name: 'Oklahoma', propertyTaxRate: 0.009, rentControl: false, landlordFriendly: true, strNotes: 'No statewide STR restrictions.' },
+  OR: { name: 'Oregon', propertyTaxRate: 0.009, rentControl: true, landlordFriendly: false, strNotes: 'Statewide rent control (SB 608). Portland restricts STR.' },
+  RI: { name: 'Rhode Island', propertyTaxRate: 0.014, rentControl: false, landlordFriendly: true, strNotes: 'No statewide STR restrictions. Newport regulates.' },
+  SD: { name: 'South Dakota', propertyTaxRate: 0.012, rentControl: false, landlordFriendly: true, strNotes: 'No statewide STR restrictions.' },
+  UT: { name: 'Utah', propertyTaxRate: 0.006, rentControl: false, landlordFriendly: true, strNotes: 'Salt Lake / Park City require STR permits.' },
+  VA: { name: 'Virginia', propertyTaxRate: 0.008, rentControl: false, landlordFriendly: true, strNotes: 'No statewide STR ban. Fairfax / Arlington regulate.' },
+  VT: { name: 'Vermont', propertyTaxRate: 0.018, rentControl: false, landlordFriendly: false, strNotes: 'Statewide STR registration required; towns may restrict further.' },
+  WI: { name: 'Wisconsin', propertyTaxRate: 0.016, rentControl: false, landlordFriendly: true, strNotes: 'State preempts most local STR bans; 6-or-more nights permitted.' },
+  WV: { name: 'West Virginia', propertyTaxRate: 0.006, rentControl: false, landlordFriendly: true, strNotes: 'No statewide STR restrictions.' },
+  WY: { name: 'Wyoming', propertyTaxRate: 0.006, rentControl: false, landlordFriendly: true, strNotes: 'No statewide STR restrictions.' },
+}
+
+// --- CITY RULE OVERRIDES ---
+// Some jurisdictions diverge sharply from statewide defaults — Baltimore City's
+// effective real property tax is ~2.248% vs Maryland's ~1.0% state average, and
+// Baltimore City §5A restricts whole-unit non-owner-occupied STR. Keyed by
+// "CITY, ST" (upper-cased, trimmed). Overrides merge field-by-field over the
+// resolved STATE_RULES entry.
+export const CITY_RULES: Record<string, Partial<{
+  propertyTaxRate: number
+  rentControl: boolean
+  landlordFriendly: boolean
+  strNotes: string
+}>> = {
+  'BALTIMORE, MD': {
+    propertyTaxRate: 0.02248,
+    strNotes: 'Baltimore City Code §5A restricts STR hosts to their primary residence; whole-unit non-owner-occupied STR is broadly prohibited. Investor STR generally not permitted absent the primary-residence / 90-day carve-out.',
+  },
+}
+
+export function getJurisdictionRules(
+  state: string,
+  city?: string | null
+): { name: string; propertyTaxRate: number; rentControl: boolean; landlordFriendly: boolean; strNotes: string } {
+  const base = STATE_RULES[state] || STATE_RULES['TX']
+  if (!city) return base
+  const key = `${city.trim().toUpperCase()}, ${state.trim().toUpperCase()}`
+  const override = CITY_RULES[key]
+  if (!override) return base
+  return { ...base, ...override }
+}
+
+// True when the jurisdiction broadly prohibits non-owner-occupied whole-unit
+// STR for an investor buyer. Baltimore (§5A) and NYC Local Law 18 both qualify.
+// DC is primary-residence-only but allows a 90-day non-OO carve-out, so it
+// is NOT fully prohibited (the DC branch scales revenue to the 90-night cap
+// instead of zeroing it out).
+export function isStrProhibitedForInvestor(
+  state: string,
+  city?: string | null
+): boolean {
+  const stateUp = (state || '').toUpperCase()
+  const cityUp = (city || '').toUpperCase().trim()
+  if (stateUp === 'MD' && cityUp === 'BALTIMORE') return true
+  if (
+    stateUp === 'NY' &&
+    /\b(NEW YORK|MANHATTAN|BROOKLYN|QUEENS|BRONX|STATEN ISLAND)\b/.test(cityUp)
+  ) return true
+  return false
 }
 
 // Extract state from US zip code (first digit mapping)
@@ -885,8 +1039,14 @@ export function calculateDealMetrics(
     .filter(s => s.viable)
     .reduce((max, s) => Math.max(max, s.rate), annualRate)
 
-  // Depreciation
+  // Depreciation — only the annualDepreciation and estimatedTaxSaving fields
+  // from this helper are consumed below. We compute afterTaxCashFlow ourselves
+  // because calculateDepreciation isn't aware of debt service.
   const depr = calculateDepreciation(purchasePrice, noiAnnual + annualDebtService, rental.monthlyExpenses * 12)
+  // After-tax cash flow = actual annual cash-in-pocket + the tax shield from
+  // depreciation. The helper's own afterTaxCashFlow is NOI-based and omits
+  // debt service, so we must recompute from annualNetCashFlow.
+  const afterTaxCashFlow = Math.round(annualNetCashFlow + depr.estimatedTaxSaving)
 
   // Verdict
   const { verdict, primaryFailureMode, dealScore } = classifyDeal(
@@ -907,7 +1067,7 @@ export function calculateDealMetrics(
     renewalScenarios,
     annualDepreciation: depr.annualDepreciation,
     estimatedTaxSaving: depr.estimatedTaxSaving,
-    afterTaxCashFlow: depr.afterTaxCashFlow,
+    afterTaxCashFlow,
     verdict,
     primaryFailureMode,
     dealScore
@@ -918,13 +1078,89 @@ export function calculateDealMetrics(
 // Thresholds are expressed in the same units so the comparisons are consistent.
 // Prior to 2026-04-12 this function had a units mismatch: thresholds were written
 // as whole-percent (coc >= 8) but inputs are decimals — DEAL verdict was unreachable.
+/**
+ * Composite deal score — weights cash flow, DSCR, 5-year IRR, data
+ * confidence, and breakeven position into a single 0–100 number. The old
+ * score relied on cash flow + CoC + cap rate only, which missed strong
+ * appreciation-driven deals (Chicago Bucktown: 0/100 on a 17.5% IRR with
+ * +$630K wealth build) and inflated a "Marginal" verdict to 100/100
+ * (Arlington VA: 100/100 but verdict MARGINAL). Batch pressure test item
+ * #3.
+ *
+ * Weights (from the pressure test recommendation):
+ *   cash flow:            30%
+ *   DSCR vs 1.25 thresh:  20%
+ *   5-year IRR:           20%
+ *   data confidence:      15%
+ *   breakeven position:   15%
+ */
+export function computeCompositeScore(inputs: {
+  monthlyNetCashFlow: number
+  dscr: number
+  irr5yr?: number | null
+  valueConfidence?: 'high' | 'medium' | 'low' | null
+  offerPrice: number
+  breakevenPrice: number
+}): number {
+  const finite = (v: number | null | undefined, fallback: number): number =>
+    typeof v === 'number' && Number.isFinite(v) ? v : fallback
+  const monthlyNetCashFlow = finite(inputs.monthlyNetCashFlow, 0)
+  const dscr = finite(inputs.dscr, 0)
+  const irr5yr = finite(inputs.irr5yr, 0)
+  const offerPrice = finite(inputs.offerPrice, 0)
+  const breakevenPrice = finite(inputs.breakevenPrice, 0)
+  const valueConfidence = inputs.valueConfidence ?? null
+
+  // Cash flow: -$500 = 0, $0 = 50, +$500/mo = 100.
+  const cfScore = clamp01((monthlyNetCashFlow + 500) / 1000) * 30
+
+  // DSCR: 0.8 = 0, 1.25 = 50, 1.70 = 100. Linear between.
+  const dscrScore = clamp01((dscr - 0.8) / (1.70 - 0.8)) * 20
+
+  // IRR: 0% = 0, 10% = 50, 20% = 100. Clamped.
+  const irrScore = clamp01(irr5yr / 0.20) * 20
+
+  // Data confidence: high=15, medium=10, low=5, null=5.
+  const confScore =
+    valueConfidence === 'high' ? 15 :
+    valueConfidence === 'medium' ? 10 : 5
+
+  // Breakeven position: how far below breakeven is the offer? 0% below = 50,
+  // 10%+ below = 100, 10%+ above = 0.
+  const beRatio = breakevenPrice > 0 ? (breakevenPrice - offerPrice) / breakevenPrice : 0
+  const beScore = clamp01(0.5 + beRatio * 5) * 15
+
+  const total = cfScore + dscrScore + irrScore + confScore + beScore
+  if (!Number.isFinite(total)) return 0
+  return Math.min(100, Math.max(0, Math.round(total)))
+}
+
+/**
+ * Label band for the composite score so the UI and narrative can agree.
+ * Matches the pressure-test recommendation.
+ */
+export function labelForCompositeScore(score: number): 'Strong' | 'Solid' | 'Marginal' | 'Weak' | 'Fail' {
+  if (score >= 80) return 'Strong'
+  if (score >= 60) return 'Solid'
+  if (score >= 40) return 'Marginal'
+  if (score >= 20) return 'Weak'
+  return 'Fail'
+}
+
+function clamp01(v: number): number { return Math.min(1, Math.max(0, v)) }
+
 function classifyDeal(
   coc: number, capRate: number, monthlyCF: number, dscr: number
 ): { verdict: 'DEAL' | 'MARGINAL' | 'PASS', primaryFailureMode: string, dealScore: number } {
   const cocScore = Math.min(100, Math.max(0, (coc / 0.08) * 40))
   const capScore = Math.min(100, Math.max(0, (capRate / 0.05) * 30))
   const cfScore = Math.min(100, Math.max(0, ((monthlyCF + 500) / 1000) * 30))
-  const dealScore = Math.round(cocScore + capScore + cfScore)
+  // The three sub-scores are individually capped at 100, but we weight their
+  // contributions at 40/30/30 of a 100-point total — if every sub-score hits
+  // its ceiling the sum is 120, not 100. Plus, on a runaway strong deal, one
+  // sub-score can drag the others up past 100 and produce nonsensical values
+  // like 174/100 (Blacksburg audit). Clamp the total to the 0–100 band.
+  const dealScore = Math.min(100, Math.max(0, Math.round(cocScore + capScore + cfScore)))
 
   let verdict: 'DEAL' | 'MARGINAL' | 'PASS'
   let primaryFailureMode: string

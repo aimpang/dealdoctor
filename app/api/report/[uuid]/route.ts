@@ -3,6 +3,25 @@ import { prisma } from '@/lib/db'
 import { generateFullReport } from '@/lib/reportGenerator'
 import { CUSTOMER_COOKIE, setCustomerCookie } from '@/lib/entitlements'
 import { addressKey } from '@/lib/addressKey'
+import { verifyShareToken } from '@/lib/shareToken'
+import { isDebugAccessAuthorized } from '@/lib/debugAccess'
+
+// Single-process in-flight tracker. Keys are report UUIDs; values are the
+// promise of the in-flight generateFullReport. Concurrent requests for the
+// same UUID share the same promise, so Sonnet is only called once.
+const generationsInFlight = new Map<string, Promise<unknown>>()
+function withGenerationLock<T>(uuid: string, fn: () => Promise<T>): Promise<T> {
+  const existing = generationsInFlight.get(uuid)
+  if (existing) {
+    console.log(`[api/report] reusing in-flight generation for ${uuid}`)
+    return existing as Promise<T>
+  }
+  const promise = fn().finally(() => {
+    generationsInFlight.delete(uuid)
+  })
+  generationsInFlight.set(uuid, promise)
+  return promise
+}
 
 export async function GET(
   req: NextRequest,
@@ -12,11 +31,12 @@ export async function GET(
     const { uuid } = params
     const { searchParams } = new URL(req.url)
 
-    // Dev-only debug bypass — lets us view a full report without paying.
-    // Both gates required: NODE_ENV must NOT be production AND ?debug=1 must be
-    // explicitly passed. Belt-and-suspenders so this can never slip into prod.
+    // Debug bypass — dev-only, AND requires a secondary secret match. Both
+    // the NODE_ENV gate and the secret gate must pass, so a leaked NODE_ENV
+    // toggle alone can't expose paid content (see lib/debugAccess.ts).
     const isDebug =
-      process.env.NODE_ENV !== 'production' && searchParams.get('debug') === '1'
+      searchParams.get('debug') === '1' &&
+      isDebugAccessAuthorized(searchParams.get('debugKey'))
 
     let report = await prisma.report.findUnique({ where: { id: uuid } })
     if (!report) {
@@ -24,8 +44,59 @@ export async function GET(
     }
 
     // In debug mode, synthesize the full report if it hasn't been generated yet.
+    // Hard 3-minute timeout so a stuck Rentcast fetch can't freeze the route
+    // indefinitely (Houston / Baltimore addresses from the batch pressure
+    // test hung with no user-facing error).
     if (isDebug && !report.fullReportData) {
-      await generateFullReport(uuid)
+      const REPORT_GEN_TIMEOUT_MS = 3 * 60_000
+      try {
+        // In-flight mutex: when multiple concurrent requests land on the same
+        // UUID (report page mounts, retries, QA app bursts), they all see
+        // fullReportData: null and would each fire a fresh generateFullReport
+        // — duplicating Sonnet narrative cost 5-10× per user report. Dedupe
+        // by caching the in-flight promise keyed on UUID. Second request
+        // awaits the first; a third reads the already-persisted row from the
+        // refetch below. Single-process scope (good enough for Vercel's per-
+        // invocation isolation; use a DB row lock or Redis for multi-instance).
+        await withGenerationLock(uuid, () =>
+          Promise.race([
+            generateFullReport(uuid),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('report-generation-timeout')), REPORT_GEN_TIMEOUT_MS)
+            ),
+          ])
+        )
+      } catch (err: any) {
+        if (err?.message === 'report-generation-timeout') {
+          return NextResponse.json(
+            {
+              error: 'Report generation timed out — the property data provider may be slow. Please try again.',
+              code: 'report-generation-timeout',
+              uuid,
+            },
+            { status: 504 }
+          )
+        }
+        // Invariant gate contradiction — the math contradicted itself and
+        // we blocked the report rather than ship garbage to the buyer.
+        if (err?.name === 'InvariantGateError') {
+          return NextResponse.json(
+            {
+              error: 'This report failed an internal math sanity check. Our team has been notified. Please try a different address or try again shortly.',
+              code: 'report-invariant-failed',
+              uuid,
+              failures: (err.failures ?? []).map((f: { code: string; message: string; actual?: string; expected?: string }) => ({
+                code: f.code,
+                message: f.message,
+                actual: f.actual,
+                expected: f.expected,
+              })),
+            },
+            { status: 502 }
+          )
+        }
+        throw err
+      }
       report = await prisma.report.findUnique({ where: { id: uuid } })
     }
 
@@ -34,6 +105,42 @@ export async function GET(
     }
 
     const r = report as any
+
+    // Access gating for fullReportData. Three paths grant full access:
+    //   (a) Owner: session cookie matches report.customerId
+    //   (b) Signed share link: ?t=<hmac> validates against the UUID
+    //   (c) Debug bypass (dev only + secret)
+    // Anyone else gets teaser-only. This closes the "UUID-in-a-forwarded-
+    // email = permanent paid access" leak without breaking owners' bookmarks.
+    const tokenParam = searchParams.get('t')
+    const tokenValid = verifyShareToken(uuid, tokenParam)
+    const cookieToken = req.cookies.get(CUSTOMER_COOKIE)?.value
+    let isOwner = false
+    // Refunded customers retain access to their OWN past reports (standard
+    // SaaS behavior — they paid for a moment-in-time analysis and keep it)
+    // but their shared links (?t=) are invalidated below.
+    if (cookieToken && r.customerId) {
+      const cookieCustomer = await prisma.customer.findUnique({
+        where: { accessToken: cookieToken },
+        select: { id: true },
+      })
+      isOwner = cookieCustomer?.id === r.customerId
+    }
+
+    // When the report's owning customer has been refunded, shared links
+    // (?t=) no longer grant full access. Owner access via cookie is
+    // preserved — we're revoking distribution, not the buyer's own view.
+    let tokenRevokedByRefund = false
+    if (tokenValid && r.customerId) {
+      const owner = await prisma.customer.findUnique({
+        where: { id: r.customerId },
+        select: { subscriptionStatus: true },
+      })
+      if (owner?.subscriptionStatus === 'refunded') tokenRevokedByRefund = true
+    }
+    const effectiveTokenValid = tokenValid && !tokenRevokedByRefund
+
+    const hasFullAccess = isDebug || isOwner || effectiveTokenValid
 
     // Aggregate feedback across ALL reports for this same address. If enough
     // past buyers flagged the value/rent, we surface a warning banner.
@@ -60,9 +167,25 @@ export async function GET(
       state: report.state,
       paid: isDebug ? true : report.paid, // debug: pretend it's paid so UI renders
       debug: isDebug,                     // flag so UI can show a banner
+      // Tell the client WHY they're seeing (or not seeing) full data so the
+      // UI can render a "ask the owner for a share link" CTA on the teaser
+      // path instead of the generic paywall.
+      accessGrantedVia: isDebug
+        ? 'debug'
+        : isOwner
+        ? 'owner'
+        : effectiveTokenValid
+        ? 'share-token'
+        : 'none',
+      restricted: !hasFullAccess && report.paid,
+      tokenRevokedByRefund,
       teaserData: report.teaserData,
-      fullReportData: report.fullReportData,
-      photoFindings: r.photoFindings ?? null,
+      // fullReportData is withheld from non-owner, non-tokenized access even
+      // when the report itself is paid. Owners bookmark /report/<uuid>; they
+      // have the cookie and still see everything. Recipients of a forwarded
+      // raw URL see only the teaser.
+      fullReportData: hasFullAccess ? report.fullReportData : null,
+      photoFindings: hasFullAccess ? r.photoFindings ?? null : null,
       addressFlags,
       createdAt: report.createdAt,
     })

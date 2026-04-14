@@ -23,7 +23,32 @@ interface Props {
 export function ShareButton({ uuid, address }: Props) {
   const [open, setOpen] = useState(false)
   const [copied, setCopied] = useState<'full' | 'lender' | null>(null)
+  const [tokenState, setTokenState] = useState<'loading' | 'ready' | 'unauth'>('loading')
+  const [shareToken, setShareToken] = useState<string | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+
+  // Fetch a signed share token from the server. Only the report owner can
+  // mint one (authenticated by the customer cookie server-side). If the
+  // mint fails (401/403) the menu degrades to copying the unsigned URL,
+  // which will now only show the teaser to recipients — that's the point.
+  useEffect(() => {
+    let cancelled = false
+    fetch(`/api/share-token?uuid=${encodeURIComponent(uuid)}`)
+      .then(async (r) => {
+        if (cancelled) return
+        if (r.ok) {
+          const d = await r.json()
+          setShareToken(d.token)
+          setTokenState('ready')
+        } else {
+          setTokenState('unauth')
+        }
+      })
+      .catch(() => !cancelled && setTokenState('unauth'))
+    return () => {
+      cancelled = true
+    }
+  }, [uuid])
 
   // Outside-click dismiss
   useEffect(() => {
@@ -44,8 +69,17 @@ export function ShareButton({ uuid, address }: Props) {
     return () => clearTimeout(t)
   }, [copied])
 
-  const fullUrl = typeof window !== 'undefined' ? window.location.origin + `/report/${uuid}` : ''
-  const lenderUrl = fullUrl ? `${fullUrl}?view=lender` : ''
+  // Embed the signed token in both shareable URLs so recipients get full
+  // access without needing a cookie. Without a token, /report/<uuid> now
+  // returns teaser-only for non-owners.
+  const tokenParam = shareToken ? `t=${encodeURIComponent(shareToken)}` : ''
+  const base = typeof window !== 'undefined' ? window.location.origin + `/report/${uuid}` : ''
+  const fullUrl = base ? (tokenParam ? `${base}?${tokenParam}` : base) : ''
+  const lenderUrl = base
+    ? tokenParam
+      ? `${base}?${tokenParam}&view=lender`
+      : `${base}?view=lender`
+    : ''
 
   const copy = async (which: 'full' | 'lender') => {
     const url = which === 'lender' ? lenderUrl : fullUrl
