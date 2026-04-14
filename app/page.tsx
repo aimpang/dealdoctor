@@ -656,14 +656,14 @@ export default function LandingPage() {
             <div>
               <div className="font-semibold uppercase tracking-[0.22em] text-foreground">Intelligence</div>
               <div className="mt-2 space-y-1 font-mono tabular-nums text-foreground/70">
-                <div>Anthropic · diagnosis + photo red flags</div>
-                <div>Breakeven solver · iterated to $0/mo CF</div>
-                <div>Sensitivity grid · rate × rent × apprec.</div>
-                <div>Value triangulation · AVM / sale / tax</div>
-                <div>DSCR &amp; cash-to-close · lender-grade</div>
-                <div>Five-year IRR · wealth + equity path</div>
-                <div>Jurisdictional tax · Prop 13 / SOH / TX</div>
-                <div>Invariant gate · post-math sanity check</div>
+                <div>Anthropic</div>
+                <div>Breakeven solver</div>
+                <div>Sensitivity grid</div>
+                <div>Value triangulation</div>
+                <div>DSCR &amp; cash-to-close</div>
+                <div>Five-year IRR</div>
+                <div>Jurisdictional tax</div>
+                <div>Invariant gate</div>
               </div>
             </div>
             <div>
