@@ -38,6 +38,36 @@ export async function POST(req: NextRequest) {
   const customData = payload.meta?.custom_data ?? {}
   const email = payload.data?.attributes?.user_email as string | undefined
 
+  // Idempotency guard. LemonSqueezy retries webhook delivery on non-2xx —
+  // without this, a replayed `order_created` re-runs generateFullReport and
+  // re-credits entitlements. We insert the event ID into WebhookEvent first;
+  // the unique constraint rejects replays. Use LS's own event_id when
+  // available, falling back to a stable hash of the meta so we're always
+  // idempotent even if LS stops sending event_id.
+  const providerEventId =
+    (payload.meta?.event_id as string | undefined) ||
+    (payload.meta?.webhook_id as string | undefined) ||
+    // Last resort: synthesize an ID from (event, order-id-or-subscription-id, user_email)
+    `${eventName}|${payload.data?.id ?? ''}|${email ?? ''}`
+
+  try {
+    await prisma.webhookEvent.create({
+      data: {
+        providerEventId,
+        eventName: eventName ?? 'unknown',
+      },
+    })
+  } catch (err: any) {
+    // P2002 = unique constraint violation = we've already processed this
+    // event. Return 200 so LemonSqueezy doesn't keep retrying.
+    if (err?.code === 'P2002') {
+      return NextResponse.json({ received: true, duplicate: true })
+    }
+    // Other DB errors bubble up — we want to retry those.
+    console.error('[webhook] dedup insert failed:', err?.message)
+    return NextResponse.json({ error: 'Dedup insert failed' }, { status: 500 })
+  }
+
   try {
     switch (eventName) {
       case 'order_created':
@@ -112,6 +142,7 @@ async function handleOrderCreated(payload: any, customData: any, email: string |
       reportUrl: uuid ? `${baseUrl}/report/${uuid}` : baseUrl,
       magicLinkUrl: `${baseUrl}/api/auth/claim?token=${customer.accessToken}`,
       address: report?.address || 'your property',
+      recoveryCode: (customer as any).recoveryCode,
     })
     await sendEmail({ to: email, subject: 'Your DealDoctor report is ready', html, text })
   } catch (err) {
