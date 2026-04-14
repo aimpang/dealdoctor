@@ -22,7 +22,10 @@ describe('pressure · austin-baseline (vanilla SFR, happy path)', () => {
   })
 
   it('produces a verdict from the known enum', () => {
-    expect(['DEAL', 'MARGINAL', 'PASS']).toContain(data.ltr.verdict)
+    // reportGenerator now derives a surfaced verdict that includes 'FAIL'
+    // (rewritten from raw 'PASS' or low dealScore) so UI auditors don't
+    // misread 'PASS' as approval. All four labels are valid outputs.
+    expect(['DEAL', 'MARGINAL', 'PASS', 'FAIL']).toContain(data.ltr.verdict)
   })
 
   it('DSCR is a finite number in a plausible range', () => {
