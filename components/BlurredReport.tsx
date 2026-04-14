@@ -84,10 +84,16 @@ export function BlurredReport({ uuid, address }: BlurredReportProps) {
   const selected = plans.find((p) => p.id === selectedPlan)
 
   return (
-    <div className="relative w-full max-w-3xl overflow-hidden border border-foreground/20 bg-[hsl(var(--card))]/60 backdrop-blur-sm">
-      {/* Blurred skeleton — rectangular, matches editorial grid vibe */}
-      <div className="relative p-6 sm:p-8">
-        <div className="select-none blur-[6px] pointer-events-none" aria-hidden="true">
+    <div className="relative w-full max-w-3xl border border-foreground/20 bg-[hsl(var(--card))]/60 backdrop-blur-sm">
+      {/* Blurred skeleton — decorative background layer, does NOT drive the
+          container height. Positioned absolute so the real content below
+          determines how tall the card is (prevents top/bottom clipping of
+          the unlock overlay when content is taller than the skeleton). */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 select-none overflow-hidden blur-[6px]"
+      >
+        <div className="p-6 sm:p-8">
           <div className="mb-6 space-y-3">
             <div className="h-5 w-48 bg-muted" />
             <div className="h-3 w-full bg-muted/60" />
@@ -109,10 +115,17 @@ export function BlurredReport({ uuid, address }: BlurredReportProps) {
             <div className="h-3 w-4/6 bg-muted/50" />
           </div>
         </div>
+      </div>
 
-        {/* Unlock overlay */}
-        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-b from-[hsl(var(--card))]/40 via-[hsl(var(--card))]/85 to-[hsl(var(--card))]">
-          <div className="flex w-full max-w-lg flex-col items-center gap-5 px-4 text-center">
+      {/* Wash behind the content so the skeleton is muted but visible */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[hsl(var(--card))]/40 via-[hsl(var(--card))]/85 to-[hsl(var(--card))]"
+      />
+
+      {/* Unlock content — in normal flow, drives the card height */}
+      <div className="relative p-6 sm:p-8">
+        <div className="mx-auto flex w-full max-w-lg flex-col items-center gap-5 text-center">
             {/* Eyebrow + section mark, matches landing */}
             <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.28em] text-[hsl(var(--primary))]">
               <LockIcon className="h-3 w-3" />
@@ -247,7 +260,6 @@ export function BlurredReport({ uuid, address }: BlurredReportProps) {
             </div>
           </div>
         </div>
-      </div>
     </div>
   )
 }
