@@ -1418,7 +1418,7 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
           Mac PMMS + strategy-adjusted investor premium. Insurance baseline — NAIC state averages.
           State property-tax growth modeled per jurisdiction (Prop 13, Save-Our-Homes, TX uncapped).
           Climate scores, STR estimates, breakeven — DealDoctor models. Narrative + photo review —
-          Claude Haiku 4.5. Full methodology at{' '}
+          Anthropic. Full methodology at{' '}
           <a href="/methodology" className="underline hover:text-foreground">
             /methodology
           </a>

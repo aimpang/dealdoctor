@@ -157,7 +157,7 @@ export async function renderOgCard() {
             color: 'rgba(245,240,232,0.4)',
           }}
         >
-          <span>Rentcast · FEMA · Freddie Mac · Claude Haiku</span>
+          <span>Rentcast · FEMA · Freddie Mac · Anthropic</span>
           <span style={{ color: 'rgba(245,240,232,0.6)' }}>dealdoctor.report</span>
         </div>
       </div>

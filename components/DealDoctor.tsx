@@ -65,7 +65,7 @@ export function DealDoctorSection({ dealDoctor, verdict }: DealDoctorProps) {
           <h3 className="font-[family-name:var(--font-playfair)] text-base font-bold text-foreground">
             Deal Doctor
           </h3>
-          <p className="text-[11px] text-muted-foreground">Claude-powered investment diagnosis</p>
+          <p className="text-[11px] text-muted-foreground">AI-powered investment diagnosis</p>
         </div>
       </div>
 

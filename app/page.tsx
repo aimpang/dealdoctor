@@ -106,7 +106,7 @@ const SECTIONS = [
       {
         icon: SparklesIcon,
         title: 'Deal Doctor Diagnosis',
-        desc: 'Pros, cons, three negotiation scripts with specific dollar amounts, and two property-specific inspection red flags tied to year built and climate. Powered by Google Gemini.',
+        desc: 'Pros, cons, three negotiation scripts with specific dollar amounts, and two property-specific inspection red flags tied to year built and climate. Powered by Anthropic.',
       },
       {
         icon: CameraIcon,
@@ -656,8 +656,8 @@ export default function LandingPage() {
             <div>
               <div className="font-semibold uppercase tracking-[0.22em] text-foreground">Intelligence</div>
               <div className="mt-2 space-y-1 font-mono tabular-nums text-foreground/70">
-                <div>Google Gemini · diagnosis</div>
-                <div>Gemini Vision · photo review</div>
+                <div>Anthropic · diagnosis</div>
+                <div>Anthropic · photo review</div>
               </div>
             </div>
             <div>

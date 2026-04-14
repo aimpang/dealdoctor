@@ -230,7 +230,7 @@ export default async function OGImage({ params }: { params: { uuid: string } }) 
             justifyContent: 'space-between',
           }}
         >
-          <span style={{ display: 'flex' }}>Real mortgage math · DSCR · Claude-powered analysis</span>
+          <span style={{ display: 'flex' }}>Real mortgage math · DSCR · AI-powered analysis</span>
           <span style={{ display: 'flex' }}>dealdoctor.app</span>
         </div>
       </div>
