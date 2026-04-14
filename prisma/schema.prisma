@@ -17,6 +17,11 @@ model Customer {
   id                      String    @id @default(cuid())
   email                   String    @unique
   accessToken             String    @unique
+  // Short alphanumeric code (e.g., "DD-X7K2-A9PQ") shown on the purchase
+  // success page so buyers who lose their email can still restore access by
+  // pasting the code at /retrieve. The magic-link flow stays the primary
+  // recovery path; this is the fallback for buyers who can't find the email.
+  recoveryCode            String?   @unique
   entitlementType         String?   // 'single' | '5pack' | 'unlimited'
   reportsRemaining        Int       @default(0)    // for 5-pack
   unlimitedUntil          DateTime?                  // for unlimited subscription
@@ -29,6 +34,21 @@ model Customer {
   reports                 Report[]
 
   @@index([accessToken])
+  @@index([recoveryCode])
+}
+
+// LemonSqueezy webhook deduplication. Each delivered event carries a unique
+// ID we record here before processing. Unique constraint ensures a replayed
+// event (LS retries on non-2xx) is rejected at insert, not by the processor.
+// Without this, a replayed `order_created` would re-run generateFullReport
+// and re-credit entitlements.
+model WebhookEvent {
+  id              String   @id @default(cuid())
+  providerEventId String   @unique      // LemonSqueezy's event ID
+  eventName       String                 // 'order_created', 'subscription_cancelled', etc.
+  processedAt     DateTime @default(now())
+
+  @@index([providerEventId])
 }
 
 // Feedback on a specific report. Users click thumbs-up/off after viewing.
