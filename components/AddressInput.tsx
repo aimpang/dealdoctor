@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { cn } from '@/lib/utils'
 import { SearchIcon, LoaderIcon, MapPinIcon } from 'lucide-react'
+import { FriendlyLoadingMessage } from '@/components/FriendlyLoadingMessage'
 
 interface AddressInputProps {
   onResult: (data: any) => void
@@ -244,9 +245,27 @@ export function AddressInput({ onResult, onError }: AddressInputProps) {
           </div>
         )}
       </div>
-      <p className="mt-3 text-center text-xs text-muted-foreground">
-        US addresses only &middot; First look is free &middot; No signup required
-      </p>
+      {loading ? (
+        <div
+          role="status"
+          aria-live="polite"
+          className="mt-4 flex items-start gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 text-left"
+        >
+          <LoaderIcon className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-primary" />
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-foreground">
+              <FriendlyLoadingMessage variant="preview" />
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              This usually takes 30–45 seconds. Please don&apos;t close this page.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <p className="mt-3 text-center text-xs text-muted-foreground">
+          US addresses only &middot; First look is free &middot; No signup required
+        </p>
+      )}
 
       {pendingMismatch && (
         <div
