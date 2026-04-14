@@ -50,5 +50,8 @@ dealdoctor-dev.log
 .og-preview.png
 .claude/scheduled_tasks.lock
 
-# qa sub-project deps
+# qa sub-project deps + artifacts
 qa/node_modules
+qa/qa.log
+qa/.vite
+qa/out
