@@ -2,6 +2,8 @@
 // Supports multiple providers — configure via PROPERTY_API_PROVIDER env var
 // Default: stub data for MVP. Swap to Rentcast, ATTOM, or RealtyMole for production.
 
+import { logger } from './logger'
+
 const API_KEY = process.env.PROPERTY_API_KEY || ''
 
 export interface PropertyData {
@@ -324,6 +326,7 @@ async function fetchValueAvm(address: string): Promise<AvmResult | null> {
     })
     const diag = diagnoseRentcastResponse(res)
     if (diag === 'quota' || diag === 'rate-limit') {
+      logger.warn('rentcast.quota_hit', { status: res.status, diag, address })
       throw new RentcastQuotaError(res.status)
     }
     if (!res.ok) return null

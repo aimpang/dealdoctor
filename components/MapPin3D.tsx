@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import 'maplibre-gl/dist/maplibre-gl.css'
 
 interface MapPin3DProps {
   city: string

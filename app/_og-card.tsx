@@ -1,4 +1,13 @@
 import { ImageResponse } from 'next/og'
+import { BASE_URL } from '@/lib/seo'
+
+const DISPLAY_DOMAIN = (() => {
+  try {
+    return new URL(BASE_URL).hostname.replace(/^www\./, '')
+  } catch {
+    return 'dealdoctor.com'
+  }
+})()
 
 // Shared implementation for the root-level OpenGraph + Twitter share cards.
 // Both `app/opengraph-image.tsx` and `app/twitter-image.tsx` render the same
@@ -158,7 +167,7 @@ export async function renderOgCard() {
           }}
         >
           <span>Rentcast · FEMA · Freddie Mac · Anthropic</span>
-          <span style={{ color: 'rgba(245,240,232,0.6)' }}>dealdoctor.report</span>
+          <span style={{ color: 'rgba(245,240,232,0.6)' }}>{DISPLAY_DOMAIN}</span>
         </div>
       </div>
     ),

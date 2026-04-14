@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { FullReport } from '@/components/FullReport'
 import { BlurredReport } from '@/components/BlurredReport'
@@ -8,7 +8,12 @@ import { PhotoAnalysis } from '@/components/PhotoAnalysis'
 import { ReportFeedback } from '@/components/ReportFeedback'
 import { FriendlyLoadingMessage } from '@/components/FriendlyLoadingMessage'
 import { Logo } from '@/components/Logo'
-import { LoaderIcon, CheckCircle2Icon, MapPinIcon } from 'lucide-react'
+import { LoaderIcon, CheckCircle2Icon, MapPinIcon, AlertTriangleIcon } from 'lucide-react'
+
+// After 180s (6× the "30–45 seconds" user-facing promise) we stop polling
+// and surface a recovery path — infinite spinner with no escape is the worst
+// experience a paid customer can have.
+const POLL_TIMEOUT_MS = 180_000
 
 export default function ReportPage() {
   const params = useParams()
@@ -20,9 +25,13 @@ export default function ReportPage() {
   const [report, setReport] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [timedOut, setTimedOut] = useState(false)
+  const [retrying, setRetrying] = useState(false)
+  const pollStartRef = useRef<number>(Date.now())
 
   useEffect(() => {
     let stopped = false
+    pollStartRef.current = Date.now()
 
     const fetchReport = async () => {
       try {
@@ -37,8 +46,19 @@ export default function ReportPage() {
         const data = await res.json()
         setReport(data)
 
-        // If paid but no full report yet, keep polling
-        if (data.paid && !data.fullReportData) return
+        // If paid but no full report yet, keep polling — unless we've blown
+        // past the generation budget. Anthropic or Rentcast hanging longer
+        // than 180s means the webhook-triggered generation has almost
+        // certainly failed; the buyer deserves a retry button, not an
+        // infinite spinner.
+        if (data.paid && !data.fullReportData) {
+          if (Date.now() - pollStartRef.current > POLL_TIMEOUT_MS) {
+            setTimedOut(true)
+            setLoading(false)
+            stopped = true
+          }
+          return
+        }
 
         // We have what we need
         setLoading(false)
@@ -59,6 +79,23 @@ export default function ReportPage() {
     return () => clearInterval(intervalId)
   }, [uuid, isDebug])
 
+  const handleRetryGeneration = async () => {
+    setRetrying(true)
+    try {
+      // Kick off a fresh Anthropic call against the already-persisted report.
+      // The owner cookie set during the success redirect authorizes this.
+      await fetch(`/api/report/${uuid}/retry-ai`, { method: 'POST' }).catch(() => {})
+      // Restart the polling loop — reset timeout, re-enter loading state.
+      setTimedOut(false)
+      setLoading(true)
+      pollStartRef.current = Date.now()
+      const res = await fetch(`/api/report/${uuid}${isDebug ? '?debug=1' : ''}`)
+      if (res.ok) setReport(await res.json())
+    } finally {
+      setRetrying(false)
+    }
+  }
+
   // Success flash
   const [showSuccess, setShowSuccess] = useState(isSuccess)
   useEffect(() => {
@@ -76,6 +113,48 @@ export default function ReportPage() {
           <a href="/" className="mt-4 inline-block text-sm text-primary hover:underline">
             Go back to home
           </a>
+        </div>
+      </div>
+    )
+  }
+
+  if (timedOut && report?.paid) {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-4">
+        <div className="max-w-md text-center">
+          <AlertTriangleIcon className="mx-auto h-10 w-10 text-amber-500" />
+          <h1 className="mt-4 font-[family-name:var(--font-fraunces)] text-[28px] font-medium leading-tight text-foreground">
+            Report generation is taking longer than expected.
+          </h1>
+          <p className="mt-4 text-sm leading-relaxed text-foreground/70">
+            Your payment went through and the report is saved, but the AI narration step
+            didn&apos;t finish inside our normal window. This usually clears up on a retry —
+            no charge, no lost entitlement.
+          </p>
+          <button
+            type="button"
+            onClick={handleRetryGeneration}
+            disabled={retrying}
+            className="mt-6 inline-flex items-center gap-2 rounded-md border border-foreground/20 bg-foreground px-5 py-2.5 text-sm font-semibold text-background hover:bg-foreground/90 disabled:opacity-60"
+          >
+            {retrying ? (
+              <>
+                <LoaderIcon className="h-4 w-4 animate-spin" /> Retrying…
+              </>
+            ) : (
+              'Retry generation'
+            )}
+          </button>
+          <p className="mt-6 text-xs text-foreground/55">
+            Still not working? Email{' '}
+            <a
+              href="mailto:support@dealdoctor.com"
+              className="underline decoration-dotted underline-offset-2 hover:text-foreground"
+            >
+              support@dealdoctor.com
+            </a>{' '}
+            with this URL and we&apos;ll hand-generate it.
+          </p>
         </div>
       </div>
     )

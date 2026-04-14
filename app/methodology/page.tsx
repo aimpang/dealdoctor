@@ -1,11 +1,50 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ArrowLeftIcon } from 'lucide-react'
 import { prisma } from '@/lib/db'
+import { BASE_URL, absoluteUrl } from '@/lib/seo'
 
-export const metadata = {
-  title: 'Methodology — How DealDoctor runs the numbers',
+export const metadata: Metadata = {
+  title: 'How DealDoctor Calculates Your Investment Report',
   description:
-    'Transparent breakdown of every calculation and data source used in a DealDoctor report.',
+    'Transparent underwriting methodology behind every DealDoctor report: breakeven offer math, DSCR, value triangulation, climate risk, jurisdictional tax overlays, and the invariant gate.',
+  alternates: { canonical: '/methodology' },
+  openGraph: {
+    title: 'How DealDoctor Calculates Your Investment Report',
+    description:
+      'The full underwriting methodology — calculation by calculation, data source by data source.',
+    url: absoluteUrl('/methodology'),
+    type: 'article',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'DealDoctor Methodology',
+    description: 'Every calculation and data source used in a DealDoctor report, documented.',
+  },
+}
+
+const methodologyJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'TechArticle',
+  headline: 'How DealDoctor Calculates Your Investment Report',
+  description:
+    'The complete underwriting methodology behind DealDoctor reports — breakeven math, DSCR, value triangulation, jurisdictional overlays, climate risk, and invariant gates.',
+  url: absoluteUrl('/methodology'),
+  author: { '@type': 'Organization', name: 'DealDoctor' },
+  publisher: {
+    '@type': 'Organization',
+    name: 'DealDoctor',
+    logo: { '@type': 'ImageObject', url: absoluteUrl('/logo.svg') },
+  },
+}
+
+const breadcrumbJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'Home', item: BASE_URL },
+    { '@type': 'ListItem', position: 2, name: 'Methodology', item: absoluteUrl('/methodology') },
+  ],
 }
 
 // Server component so we can hit Prisma directly for the latest backtest run
@@ -25,6 +64,14 @@ export default async function MethodologyPage() {
 
   return (
     <div className="mx-auto max-w-3xl px-5 py-14 sm:py-20">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(methodologyJsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+      />
       <Link
         href="/"
         className="inline-flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-[0.18em] text-foreground/60 hover:text-foreground"
