@@ -33,6 +33,9 @@ import {
   revokeEntitlement,
   rotateAccessTokenByEmail,
   generateAccessToken,
+  enforceEntitlementExpiry,
+  generateRecoveryCode,
+  restoreByRecoveryCode,
   type CustomerRecord,
 } from './entitlements'
 import { prisma } from './db'
@@ -348,5 +351,158 @@ describe('rotateAccessTokenByEmail', () => {
     expect(result).not.toBeNull()
     expect(result!.accessToken).not.toBe('old_token')
     expect(result!.accessToken).toMatch(/^[0-9a-f]{64}$/)
+  })
+})
+
+// Gap #3 regression — lazy expiry sweep. If LemonSqueezy's subscription_expired
+// webhook fires late or never, a customer's unlimitedUntil date lapses but
+// their subscriptionStatus stays "active" in the DB. The sweep fixes this on
+// the next preview call so the customer isn't effectively getting free
+// unlimited access past their paid period.
+describe('enforceEntitlementExpiry', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('no-ops when customer has no unlimitedUntil (single / 5pack / nothing)', async () => {
+    const c = baseCustomer()
+    const result = await enforceEntitlementExpiry(c)
+    expect(result).toBe(c) // same reference — no DB write
+    expect(prisma.customer.update).not.toHaveBeenCalled()
+  })
+
+  it('no-ops when unlimitedUntil is still in the future', async () => {
+    const c = baseCustomer({
+      unlimitedUntil: new Date(Date.now() + 7 * 24 * 3600_000), // +7d
+      subscriptionStatus: 'active',
+    })
+    const result = await enforceEntitlementExpiry(c)
+    expect(result).toBe(c)
+    expect(prisma.customer.update).not.toHaveBeenCalled()
+  })
+
+  it('sweeps expired unlimited access to status=expired + unlimitedUntil=null', async () => {
+    const c = baseCustomer({
+      unlimitedUntil: new Date(Date.now() - 24 * 3600_000), // yesterday
+      subscriptionStatus: 'active',
+    })
+    const swept = {
+      ...c,
+      unlimitedUntil: null,
+      subscriptionStatus: 'expired',
+    }
+    vi.mocked(prisma.customer.update).mockResolvedValue(swept as any)
+    const result = await enforceEntitlementExpiry(c)
+    expect(prisma.customer.update).toHaveBeenCalledWith({
+      where: { id: c.id },
+      data: { unlimitedUntil: null, subscriptionStatus: 'expired' },
+    })
+    expect(result.subscriptionStatus).toBe('expired')
+  })
+
+  it('no-ops if already marked expired (idempotent)', async () => {
+    const c = baseCustomer({
+      unlimitedUntil: new Date(Date.now() - 86400_000),
+      subscriptionStatus: 'expired',
+    })
+    const result = await enforceEntitlementExpiry(c)
+    expect(result).toBe(c)
+    expect(prisma.customer.update).not.toHaveBeenCalled()
+  })
+
+  it('no-ops if refunded (refund already revoked)', async () => {
+    const c = baseCustomer({
+      unlimitedUntil: new Date(Date.now() - 86400_000),
+      subscriptionStatus: 'refunded',
+    })
+    await enforceEntitlementExpiry(c)
+    expect(prisma.customer.update).not.toHaveBeenCalled()
+  })
+})
+
+// Gap #5 regression — recovery code flow. Buyer loses the magic-link email
+// and clears cookies — they paste the code from their receipt and we restore
+// access by rotating the session token.
+describe('generateRecoveryCode', () => {
+  it('produces DD-XXXX-XXXX format', () => {
+    const code = generateRecoveryCode()
+    expect(code).toMatch(/^DD-[A-Z2-9]{4}-[A-Z2-9]{4}$/)
+  })
+
+  it('excludes easily-confused characters (0, O, 1, I)', () => {
+    // Stat sample: 200 codes → none should contain any of the four.
+    for (let i = 0; i < 200; i++) {
+      const c = generateRecoveryCode()
+      expect(c).not.toMatch(/[01OI]/)
+    }
+  })
+
+  it('is unique across calls (no duplicates in 100 samples)', () => {
+    const set = new Set<string>()
+    for (let i = 0; i < 100; i++) set.add(generateRecoveryCode())
+    expect(set.size).toBe(100)
+  })
+})
+
+describe('restoreByRecoveryCode', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('returns null when code does not match any customer', async () => {
+    vi.mocked(prisma.customer.findUnique).mockResolvedValue(null)
+    const result = await restoreByRecoveryCode('DD-XXXX-XXXX')
+    expect(result).toBeNull()
+  })
+
+  it('normalizes the code (uppercase + trim) before lookup', async () => {
+    vi.mocked(prisma.customer.findUnique).mockResolvedValue(baseCustomer() as any)
+    vi.mocked(prisma.customer.update).mockResolvedValue(
+      baseCustomer({ accessToken: 'rotated' }) as any
+    )
+    await restoreByRecoveryCode('  dd-abcd-efgh  ')
+    expect(prisma.customer.findUnique).toHaveBeenCalledWith({
+      where: { recoveryCode: 'DD-ABCD-EFGH' },
+    })
+  })
+
+  it('rotates accessToken on successful match', async () => {
+    const existing = baseCustomer({ accessToken: 'old_token' })
+    vi.mocked(prisma.customer.findUnique).mockResolvedValue(existing as any)
+    vi.mocked(prisma.customer.update).mockImplementation((args: any) => ({
+      ...existing,
+      accessToken: args.data.accessToken,
+    }) as any)
+    const result = await restoreByRecoveryCode('DD-ABCD-EFGH')
+    expect(result!.accessToken).not.toBe('old_token')
+    expect(result!.accessToken).toMatch(/^[0-9a-f]{64}$/)
+  })
+})
+
+// Gap #2 context — creditPurchase now attaches a recoveryCode to new customers.
+describe('creditPurchase — recovery code assignment', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('assigns a recovery code to brand-new customers', async () => {
+    vi.mocked(prisma.customer.findUnique).mockResolvedValue(null)
+    const created = { id: 'new', email: 'x@y.com', accessToken: 'a', recoveryCode: 'DD-XXXX-YYYY' }
+    vi.mocked(prisma.customer.create).mockImplementation((args: any) => {
+      // Capture the shape passed to create so we can assert the helper is calling it
+      expect(args.data).toHaveProperty('recoveryCode')
+      expect(args.data.recoveryCode).toMatch(/^DD-[A-Z2-9]{4}-[A-Z2-9]{4}$/)
+      return created as any
+    })
+    await creditPurchase({ email: 'x@y.com', plan: 'single' })
+    expect(prisma.customer.create).toHaveBeenCalled()
+  })
+
+  it('does NOT overwrite an existing customer\'s recovery code on re-purchase', async () => {
+    const existing = baseCustomer({ email: 'returning@y.com' })
+    vi.mocked(prisma.customer.findUnique).mockResolvedValue(existing as any)
+    vi.mocked(prisma.customer.update).mockImplementation((args: any) => {
+      // update path should NOT touch recoveryCode
+      expect(args.data).not.toHaveProperty('recoveryCode')
+      return { ...existing, ...args.data } as any
+    })
+    await creditPurchase({ email: 'returning@y.com', plan: '5pack' })
+    expect(prisma.customer.update).toHaveBeenCalled()
   })
 })

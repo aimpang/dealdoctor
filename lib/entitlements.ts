@@ -149,6 +149,7 @@ export async function creditPurchase(params: {
     data: {
       email,
       accessToken: generateAccessToken(),
+      recoveryCode: generateRecoveryCode(),
       entitlementType: plan,
       reportsRemaining: creditRemaining,
       unlimitedUntil: creditUnlimitedUntil,
@@ -182,5 +183,67 @@ export async function revokeEntitlement(customerId: string) {
       unlimitedUntil: null,
       subscriptionStatus: 'refunded',
     },
+  })
+}
+
+/**
+ * Lazy expiry sweep. Called before a customer check in the preview route
+ * — if their `unlimitedUntil` has passed AND `subscriptionStatus` hasn't
+ * been marked 'expired' yet (because LemonSqueezy's `subscription_expired`
+ * webhook may not have fired), do the bookkeeping now.
+ *
+ * Idempotent and cheap — one no-op SELECT when nothing to do. Protects
+ * against the case where the webhook drops or arrives late.
+ */
+export async function enforceEntitlementExpiry(
+  customer: CustomerRecord
+): Promise<CustomerRecord> {
+  if (!customer.unlimitedUntil) return customer
+  const expired = customer.unlimitedUntil.getTime() < Date.now()
+  if (!expired) return customer
+  if (customer.subscriptionStatus === 'expired' || customer.subscriptionStatus === 'refunded') {
+    return customer
+  }
+  return prisma.customer.update({
+    where: { id: customer.id },
+    data: {
+      unlimitedUntil: null,
+      subscriptionStatus: 'expired',
+    },
+  })
+}
+
+// --- Recovery code (fallback cross-device access restore) ---
+//
+// If a buyer loses their magic-link email AND clears their cookies, today
+// they have no automated path to get back into their 5-pack quota. The
+// recovery code is a human-readable short alphanumeric (~12 chars with
+// dashes) printed on the purchase success page and in the receipt email —
+// they can save it in a password manager. `/retrieve` accepts either the
+// email (magic-link path) OR this code (direct restore).
+
+const RECOVERY_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789' // no 0/O/1/I — harder to mis-transcribe
+
+export function generateRecoveryCode(): string {
+  const pick = () =>
+    RECOVERY_ALPHABET[Math.floor(Math.random() * RECOVERY_ALPHABET.length)]
+  const group = (n: number) => Array.from({ length: n }, pick).join('')
+  return `DD-${group(4)}-${group(4)}`
+}
+
+/**
+ * Look up a customer by recovery code and rotate their access token — same
+ * semantics as the magic-link flow, but user enters a code instead of
+ * clicking an emailed link.
+ */
+export async function restoreByRecoveryCode(
+  code: string
+): Promise<CustomerRecord | null> {
+  const normalized = code.trim().toUpperCase()
+  const existing = await prisma.customer.findUnique({ where: { recoveryCode: normalized } })
+  if (!existing) return null
+  return prisma.customer.update({
+    where: { id: existing.id },
+    data: { accessToken: generateAccessToken() },
   })
 }
