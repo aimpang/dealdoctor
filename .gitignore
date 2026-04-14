@@ -44,3 +44,11 @@ prisma/dealdoctor.db-journal
 
 # secrets
 .Keys.txt
+
+# local dev artifacts
+dealdoctor-dev.log
+.og-preview.png
+.claude/scheduled_tasks.lock
+
+# qa sub-project deps
+qa/node_modules
