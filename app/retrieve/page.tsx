@@ -4,7 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { Logo } from '@/components/Logo'
-import { ArrowLeftIcon, MailIcon, CheckCircle2Icon, LoaderIcon, KeyIcon } from 'lucide-react'
+import { MailIcon, CheckCircle2Icon, LoaderIcon, KeyIcon } from 'lucide-react'
 
 export default function RetrievePage() {
   const [mode, setMode] = useState<'email' | 'code'>('email')
@@ -75,20 +75,22 @@ export default function RetrievePage() {
   }
 
   return (
-    <div className="mx-auto max-w-md px-4 py-14 sm:py-20">
-      <Link
-        href="/"
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeftIcon className="h-4 w-4" />
-        Back to DealDoctor
-      </Link>
+    <div className="min-h-screen bg-[hsl(var(--background))] text-foreground">
+      <header className="border-b border-foreground/20">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-5">
+          <Link href="/">
+            <Logo variant="wordmark" size="md" />
+          </Link>
+          <nav className="flex items-center gap-7 text-[11px] font-medium uppercase tracking-[0.18em] text-foreground/80">
+            <Link href="/" className="hover:text-foreground">Home</Link>
+            <Link href="/methodology" className="hover:text-foreground">Methodology</Link>
+            <Link href="/pricing" className="hover:text-foreground">Pricing</Link>
+          </nav>
+        </div>
+      </header>
 
-      <div className="mt-8 flex justify-center">
-        <Logo variant="mark" size="lg" />
-      </div>
-
-      <h1 className="mt-6 text-center font-[family-name:var(--font-playfair)] text-3xl font-bold text-foreground sm:text-4xl">
+      <section className="mx-auto max-w-md px-5 py-14 sm:py-20">
+      <h1 className="text-center font-[family-name:var(--font-playfair)] text-3xl font-bold text-foreground sm:text-4xl">
         Retrieve your access
       </h1>
       <p className="mt-2 text-center text-sm text-muted-foreground">
@@ -242,6 +244,7 @@ export default function RetrievePage() {
       <p className="mt-8 text-center text-[11px] text-muted-foreground">
         Never purchased? <Link href="/" className="underline hover:text-foreground">Analyze a property</Link> and unlock your first report.
       </p>
+      </section>
     </div>
   )
 }

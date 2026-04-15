@@ -167,7 +167,7 @@ export default function ReportPage() {
           <LoaderIcon className="h-8 w-8 animate-spin text-primary" />
           <div>
             <p className="font-semibold text-foreground">
-              {report?.paid ? <FriendlyLoadingMessage /> : 'Pulling up the property record…'}
+              {report?.paid ? <FriendlyLoadingMessage /> : <FriendlyLoadingMessage variant="preview" />}
             </p>
             {report?.paid && (
               <p className="mt-1 text-sm text-muted-foreground">

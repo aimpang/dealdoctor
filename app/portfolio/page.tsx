@@ -3,13 +3,13 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
+import { Logo } from '@/components/Logo'
 import {
   listSavedDeals,
   removeDeal,
   type SavedDeal,
 } from '@/lib/portfolio'
 import {
-  ArrowLeftIcon,
   MapPinIcon,
   Trash2Icon,
   CheckCircle2Icon,
@@ -44,17 +44,24 @@ export default function PortfolioPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-10 sm:py-14">
-      {/* Nav */}
-      <header className="mb-8">
-        <Link
-          href="/"
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeftIcon className="h-4 w-4" />
-          Back to DealDoctor
-        </Link>
-        <div className="mt-6 flex items-end justify-between gap-4">
+    <div className="min-h-screen bg-[hsl(var(--background))] text-foreground">
+      <header className="border-b border-foreground/20">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-5">
+          <Link href="/">
+            <Logo variant="wordmark" size="md" />
+          </Link>
+          <nav className="flex items-center gap-7 text-[11px] font-medium uppercase tracking-[0.18em] text-foreground/80">
+            <Link href="/" className="hover:text-foreground">Home</Link>
+            <Link href="/methodology" className="hover:text-foreground">Methodology</Link>
+            <Link href="/pricing" className="hover:text-foreground">Pricing</Link>
+            <Link href="/retrieve" className="hover:text-foreground">Retrieve</Link>
+          </nav>
+        </div>
+      </header>
+
+      <section className="mx-auto max-w-4xl px-5 py-10 sm:py-14">
+      <div className="mb-8">
+        <div className="flex items-end justify-between gap-4">
           <div>
             <p className="text-[10px] font-medium uppercase tracking-[0.15em] text-muted-foreground">
               My Portfolio
@@ -72,7 +79,7 @@ export default function PortfolioPage() {
             </span>
           )}
         </div>
-      </header>
+      </div>
 
       {/* Body */}
       {!hydrated ? (
@@ -205,6 +212,7 @@ export default function PortfolioPage() {
           </p>
         </>
       )}
+      </section>
     </div>
   )
 }

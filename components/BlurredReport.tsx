@@ -155,9 +155,14 @@ export function BlurredReport({ uuid, address }: BlurredReportProps) {
               {plans.map((plan, i) => (
                 <button
                   key={plan.id}
-                  onClick={() => setSelectedPlan(plan.id)}
+                  type="button"
+                  onClick={() => {
+                    setSelectedPlan(plan.id)
+                    handleUnlock(plan.id)
+                  }}
+                  disabled={loading}
                   className={cn(
-                    'relative p-3 text-left transition-colors',
+                    'relative p-3 text-left transition-colors disabled:cursor-wait disabled:opacity-60',
                     i > 0 && 'border-l border-foreground/20',
                     selectedPlan === plan.id
                       ? 'bg-[hsl(var(--primary))]/8 ring-1 ring-inset ring-[hsl(var(--primary))]'
