@@ -152,9 +152,17 @@ export async function generateDealDoctor(
           .join('\n')}\n`
       : ''
 
-  const prompt = `You are the Deal Doctor for DealDoctor, a US real estate investment analyzer.
-${correctionsBlock}${validationFlagsBlock}
-HARD LOCK — NEGOTIATION / TARGET PRICE:
+  // When breakeven is at or above ask, the deal already works at the listing
+  // price — there is no "price reduction to $X" story to tell, and framing
+  // breakeven as a lower target actively misleads the buyer (audit: 414 Water
+  // St Baltimore, where breakeven $308k was narrated as a target below a
+  // $206k ask). Swap in guidance that forbids any "target price" below ask
+  // and redirects negotiation energy to concessions / rate buy-downs.
+  const dealWorksAtAsk = breakEvenPrice >= askPrice
+  const negotiationLock = dealWorksAtAsk
+    ? `HARD LOCK — NEGOTIATION / TARGET PRICE:
+Breakeven is $${breakEvenPrice.toLocaleString()}, which is AT OR ABOVE the ask of $${askPrice.toLocaleString()}. The deal ALREADY WORKS at the asking price — no price reduction is needed to hit breakeven, and proposing a lower offer target would actively mislead the buyer. Do NOT frame breakeven ($${breakEvenPrice.toLocaleString()}) as a "drop to $X", "price reduction to $X", "target", "ceiling", or "negotiate down to $X" — it is higher than ask, not lower. Do NOT propose any offer figure below $${askPrice.toLocaleString()}. Frame NEG_1/NEG_2/NEG_3 around NON-PRICE concessions only: seller-paid closing costs, inspection-based repair credits, rate buy-downs (1-0 / 2-1 / permanent points), home warranty inclusion, or appliance/furniture inclusion. If you mention dollars, tie them to the concession (e.g. "$6,000 toward rate buy-down") — not to a target purchase price.`
+    : `HARD LOCK — NEGOTIATION / TARGET PRICE:
 The ONLY valid price-reduction target is the breakeven: $${breakEvenPrice.toLocaleString()}.
 Whenever you mention a target price, offer ceiling, "drop to $X", "price reduction to $X",
 "if seller will not drop to $X or below", or any comparable construction, the number MUST
@@ -166,7 +174,11 @@ $${(Math.round((breakEvenPrice + 5000) / 1000) * 1000).toLocaleString()},
 $${(Math.round((breakEvenPrice + 7000) / 1000) * 1000).toLocaleString()}, and
 $${(Math.round((breakEvenPrice + 10000) / 1000) * 1000).toLocaleString()}.
 If a rule tempts you to write a different target number, delete the target and rephrase
-without one — but do NOT invent a substitute number.
+without one — but do NOT invent a substitute number.`
+
+  const prompt = `You are the Deal Doctor for DealDoctor, a US real estate investment analyzer.
+${correctionsBlock}${validationFlagsBlock}
+${negotiationLock}
 
 PROPERTY (do not change these values — they are pre-calculated):
 - Address: ${address}, ${city}, ${state}, USA
@@ -192,7 +204,7 @@ ${stateRules.rentControl ? `- Rent-controlled jurisdiction: ${stateRules.name} (
 - Landlord-friendly: ${stateRules.landlordFriendly ? 'Yes' : 'No'}
 - STR rules: ${stateRules.strNotes}${strProhibited ? '\n- STR feasibility: PROHIBITED for this investor buyer (whole-unit non-owner-occupied STR is broadly banned in this jurisdiction). Do NOT list STR as a pro, do NOT frame STR as optionality, do NOT propose STR as a pivot strategy in any fix, and do NOT cite any STR revenue figure. If you want to mention STR at all, frame it as "not permitted for investor owners here."' : ''}${
     typeof strNetMonthlyCashFlow === 'number' && !strProhibited
-      ? `\n- STR net monthly cash flow (after 43% variable opex + STR insurance bump): ${
+      ? `\n- STR net monthly cash flow (after jurisdiction-specific variable opex + STR insurance bump, HOT tax included where applicable): ${
           strNetMonthlyCashFlow >= 0 ? '+' : ''
         }$${strNetMonthlyCashFlow.toLocaleString()}/mo${
           strNetMonthlyCashFlow < metrics.monthlyNetCashFlow

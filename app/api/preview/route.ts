@@ -149,7 +149,8 @@ export async function POST(req: NextRequest) {
       const rentComps = await getRentComps(
         address,
         property.bedrooms,
-        property.property_type
+        property.property_type,
+        property.bathrooms
       ).catch(() => [])
       const check = crossCheckRentAgainstComps({
         adjustment: rentAdjustment,

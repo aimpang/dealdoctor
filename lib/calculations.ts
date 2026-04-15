@@ -203,6 +203,10 @@ export function calculateDepreciation(
 export interface CashToCloseBreakdown {
   downPayment: number
   closingCosts: number          // ~2.5% of offer (title, origination, escrow setup)
+  // Buyer-side transfer / recordation tax for jurisdictions that levy one
+  // (NYC ~1.825%, DC 1.45%, Philly 2.14%, Chicago 0.75%, Baltimore 1.5%).
+  // Zero for markets where it's folded into the 2.5% closing lump (TX/FL/etc).
+  transferTax: number
   inspectionAndAppraisal: number // typically $800 inspection + $600 appraisal
   reserves: number              // 6 months PITI held liquid per lender guidance
   rehabBudget: number           // passed through unchanged
@@ -215,14 +219,16 @@ export function calculateCashToClose(
   rehabBudget: number,
   monthlyPITI: number,
   closingCostPct: number = 0.025,
-  reserveMonths: number = 6
+  reserveMonths: number = 6,
+  transferTaxRate: number = 0
 ): CashToCloseBreakdown {
   const downPayment = Math.round(offerPrice * downPaymentPct)
   const closingCosts = Math.round(offerPrice * closingCostPct)
+  const transferTax = Math.round(offerPrice * transferTaxRate)
   const inspectionAndAppraisal = 1500
   const reserves = Math.round(monthlyPITI * reserveMonths)
-  const totalCashToClose = downPayment + closingCosts + inspectionAndAppraisal + reserves + rehabBudget
-  return { downPayment, closingCosts, inspectionAndAppraisal, reserves, rehabBudget, totalCashToClose }
+  const totalCashToClose = downPayment + closingCosts + transferTax + inspectionAndAppraisal + reserves + rehabBudget
+  return { downPayment, closingCosts, transferTax, inspectionAndAppraisal, reserves, rehabBudget, totalCashToClose }
 }
 
 // --- N-YEAR WEALTH PROJECTION ---
@@ -243,10 +249,23 @@ export interface YearProjection {
   loanBalance: number
   equityFromPaydown: number
   equityFromAppreciation: number
-  annualTaxShield: number      // dep × effectiveTaxRate
+  annualTaxShield: number      // dep × effectiveTaxRate (realized annually)
   cumulativeTaxShield: number
-  totalWealthBuilt: number     // cumCF + equityPaydown + equityAppreciation + cumTaxShield
+  // Depreciation claimed through year Y — forms the basis for Section 1250
+  // unrecaptured gain if the property is sold.
+  cumulativeDepreciation: number
+  // Contingent tax owed at sale: 25% of cumulativeDepreciation (IRS
+  // unrecaptured §1250 rate). Credited as wealth during hold via tax shield,
+  // then owed back at exit unless the investor 1031s.
+  depreciationRecaptureTax: number
+  totalWealthBuilt: number     // cumCF + equityPaydown + equityAppreciation + cumTaxShield − recaptureTax
 }
+
+// IRS unrecaptured §1250 gain rate — flat 25% on depreciation claimed,
+// triggered at sale (absent a 1031 exchange). Applied both to year-N IRR
+// sale proceeds and to the wealth projection so the user sees the real
+// net-of-recapture figure, not the gross tax-shield overstatement.
+export const DEPRECIATION_RECAPTURE_RATE = 0.25
 
 export function projectWealth(params: {
   offerPrice: number
@@ -311,7 +330,19 @@ export function projectWealth(params: {
     const taxShield = annualDepreciation * effectiveTaxRate
     cumTaxShield += taxShield
 
-    const totalWealth = cumCashFlow + equityFromPaydown + equityFromAppreciation + cumTaxShield
+    // Depreciation recapture: the investor claimed `annualDepreciation × y`
+    // of deductions through year Y; at sale, IRS taxes that amount at 25%
+    // (unrecaptured §1250). We credit the shield yearly and owe it back
+    // here so "wealth if sold at year Y" is honest about the tax bill.
+    const cumulativeDepreciation = annualDepreciation * y
+    const depreciationRecaptureTax = cumulativeDepreciation * DEPRECIATION_RECAPTURE_RATE
+
+    const totalWealth =
+      cumCashFlow +
+      equityFromPaydown +
+      equityFromAppreciation +
+      cumTaxShield -
+      depreciationRecaptureTax
 
     result.push({
       year: y,
@@ -325,6 +356,8 @@ export function projectWealth(params: {
       equityFromAppreciation: Math.round(equityFromAppreciation),
       annualTaxShield: Math.round(taxShield),
       cumulativeTaxShield: Math.round(cumTaxShield),
+      cumulativeDepreciation: Math.round(cumulativeDepreciation),
+      depreciationRecaptureTax: Math.round(depreciationRecaptureTax),
       totalWealthBuilt: Math.round(totalWealth),
     })
   }
@@ -387,7 +420,14 @@ export function calculateHoldPeriodIRR(
     flows.push(projections[i].annualCashFlow)
   }
   const finalYear = projections[projections.length - 1]
-  const saleProceeds = finalYear.propertyValue * (1 - saleCostPct) - finalYear.loanBalance
+  // Sale proceeds = market price − 6% selling cost − loan payoff − §1250
+  // depreciation recapture (25% of depreciation claimed during the hold).
+  // Without the recapture deduction IRR overstated returns on every deal
+  // that wasn't sold under a 1031 exchange.
+  const saleProceeds =
+    finalYear.propertyValue * (1 - saleCostPct) -
+    finalYear.loanBalance -
+    finalYear.depreciationRecaptureTax
   flows.push(finalYear.annualCashFlow + saleProceeds)
   return findIRR(flows)
 }
@@ -418,8 +458,9 @@ export function calculateFinancingAlternatives(params: {
   monthlyExpenses: number
   rehabBudget: number
   propertyType?: string | null
+  transferTaxRate?: number
 }): FinancingAlternative[] {
-  const { offerPrice, pmmsRate, monthlyRent, vacancyRate, monthlyExpenses, rehabBudget, propertyType } = params
+  const { offerPrice, pmmsRate, monthlyRent, vacancyRate, monthlyExpenses, rehabBudget, propertyType, transferTaxRate = 0 } = params
   const effectiveRent = monthlyRent * (1 - vacancyRate)
   const ptLower = (propertyType || '').toLowerCase()
   const isSingleUnitCondoLike = /condo|apartment|co-?op|coop/.test(ptLower)
@@ -466,7 +507,7 @@ export function calculateFinancingAlternatives(params: {
     const noiAnnual = (effectiveRent - monthlyExpenses) * 12
     const dscr = calculateDSCR(noiAnnual, monthlyPayment * 12)
     const piti = monthlyPayment + monthlyExpenses
-    const cashToClose = downPayment + Math.round(offerPrice * 0.025) + 1500 + Math.round(piti * 6) + rehabBudget
+    const cashToClose = downPayment + Math.round(offerPrice * 0.025) + Math.round(offerPrice * transferTaxRate) + 1500 + Math.round(piti * 6) + rehabBudget
     return {
       ...s,
       downPayment,
@@ -500,6 +541,11 @@ export interface STRProjection {
     utilities: number           // 7% of gross — owner pays (unlike LTR)
     propertyTax: number
     insurance: number           // 50% bump over LTR HO-3 (specialty STR carrier)
+    // Hotel Occupancy / lodging tax (state + county + city combined). 0 when
+    // the jurisdiction doesn't levy one or we don't have a rule yet. TX+Harris
+    // Co = 13%; NYC ≈ 14.75%. Missing this was the biggest remaining STR
+    // error in the 4518 Galesburg audit — $364/mo swing on $2,800 gross.
+    hotelOccupancyTax: number
   }
 }
 
@@ -513,10 +559,14 @@ export function calculateSTRProjection(params: {
   // jurisdiction caps non-primary STR nights (e.g. DC 90-night rule) so
   // the displayed occupancy matches the scaled-down revenue figure.
   occupancyOverride?: number
+  // Combined state/county/city Hotel Occupancy Tax rate (e.g. 0.13 for TX
+  // + Harris County). Scales with gross revenue. Defaults to 0 when the
+  // jurisdiction rules don't specify one.
+  hotelOccupancyTaxRate?: number
 }): STRProjection {
   const { monthlyGrossRevenue, monthlyMortgagePayment,
           monthlyPropertyTax, monthlyInsuranceLTR, monthlyLTRCashFlow,
-          occupancyOverride } = params
+          occupancyOverride, hotelOccupancyTaxRate } = params
 
   // Variable STR opex as % of gross revenue. Conservative middle-of-the-road
   // assumptions — adjust in the report UI if your market is self-managed or
@@ -526,17 +576,19 @@ export function calculateSTRProjection(params: {
   const suppliesAndPlatformFees = Math.round(monthlyGrossRevenue * 0.06)
   const utilities = Math.round(monthlyGrossRevenue * 0.07)
   const insurance = Math.round(monthlyInsuranceLTR * 1.5)
+  const hotelOccupancyTax = Math.round(monthlyGrossRevenue * (hotelOccupancyTaxRate ?? 0))
 
-  const monthlyOpex = management + cleaning + suppliesAndPlatformFees + utilities + monthlyPropertyTax + insurance
+  const monthlyOpex = management + cleaning + suppliesAndPlatformFees + utilities + monthlyPropertyTax + insurance + hotelOccupancyTax
   const monthlyNetCashFlow = Math.round(monthlyGrossRevenue - monthlyMortgagePayment - monthlyOpex)
   const annualNOI = Math.round((monthlyGrossRevenue - monthlyOpex) * 12)
   const annualDebtService = monthlyMortgagePayment * 12
   const annualDSCR = calculateDSCR(annualNOI, annualDebtService)
 
-  // Variable opex (scales with gross): management + cleaning + supplies + utilities.
-  // Insurance is excluded here because it's a fixed $ amount driven by dwelling
-  // value, not by STR revenue. ~43% is the industry ballpark for the variable portion.
-  const variableOpex = management + cleaning + suppliesAndPlatformFees + utilities
+  // Variable opex (scales with gross): management + cleaning + supplies +
+  // utilities + hotel occupancy tax. Insurance is excluded because it's a
+  // fixed $ amount driven by dwelling value, not gross revenue. Base rate
+  // (~43%) climbs with jurisdiction HOT (e.g. 56% in Houston, 58% in NYC).
+  const variableOpex = management + cleaning + suppliesAndPlatformFees + utilities + hotelOccupancyTax
   const opExRatio = monthlyGrossRevenue > 0
     ? Math.round((variableOpex / monthlyGrossRevenue) * 1000) / 1000
     : 0
@@ -558,6 +610,7 @@ export function calculateSTRProjection(params: {
       utilities,
       propertyTax: monthlyPropertyTax,
       insurance,
+      hotelOccupancyTax,
     },
   }
 }
@@ -716,8 +769,13 @@ export function calculateRecommendedOffers(params: {
     const loan = price * (1 - downPaymentPct)
     const payment = calculateMortgage(loan, annualRate, 30)
     const effRent = monthlyRent * (1 - vacancyRate)
-    const monthlyCF = effRent - payment - expensesAt(price)
-    const cashIn = price * downPaymentPct + rehabBudget
+    const expenses = expensesAt(price)
+    const monthlyCF = effRent - payment - expenses
+    // Match irrAt denominator: downPayment + 2.5% closing + $1500 inspection
+    // + 6mo PITI reserves + rehab. Prior version only used downPayment + rehab,
+    // inflating CoC and letting marginal deals clear the 8% DEAL threshold.
+    const piti = payment + expenses
+    const cashIn = price * downPaymentPct + price * 0.025 + 1500 + piti * 6 + rehabBudget
     return cashIn > 0 ? (monthlyCF * 12) / cashIn : 0
   }
 
@@ -922,18 +980,74 @@ export const CITY_RULES: Record<string, Partial<{
   rentControl: boolean
   landlordFriendly: boolean
   strNotes: string
+  // Combined state/county/city Hotel Occupancy Tax rate for STR. Not every
+  // city has an override — when absent, the state default (0) applies and
+  // the STR opex stack simply doesn't deduct HOT.
+  hotelOccupancyTaxRate: number
+  // Buyer-side transfer / recordation tax, combined state + county + city,
+  // expressed as a fraction of offer price. Used to inflate the flat 2.5%
+  // closing-cost estimate in cities with material transaction taxes (NYC
+  // ~1.825%, DC 1.45%, Philly 2.14%, Chicago 0.75%, Baltimore 1.5%).
+  // Default 0 — most markets fold it into the 2.5% lump.
+  transferTaxRate: number
 }>> = {
   'BALTIMORE, MD': {
     propertyTaxRate: 0.02248,
+    // Buyer-side: MD state 0.5% + Baltimore City 1.0% ≈ 1.5% of price.
+    transferTaxRate: 0.015,
     strNotes: 'Baltimore City Code §5A restricts STR hosts to their primary residence; whole-unit non-owner-occupied STR is broadly prohibited. Investor STR generally not permitted absent the primary-residence / 90-day carve-out.',
   },
+  // Harris County effective rate is ~2.03% (City of Houston $0.52 + Harris
+  // County $0.39 + HISD $0.87 per $100, roughly). TX state-average of 1.80%
+  // understated monthly tax by ~$25 on a $128K property in the 4518
+  // Galesburg St audit.
+  //
+  // Houston STR ordinance took effect Jan 1, 2026 — legal but now regulated:
+  // $275 annual registration, safety inspection, human trafficking awareness
+  // training, 13% combined HOT tax (6% TX + 7% Harris County), and event-
+  // venue advertising prohibited. Prior note ("no statewide restrictions")
+  // missed the municipal layer.
+  'HOUSTON, TX': {
+    propertyTaxRate: 0.0203,
+    hotelOccupancyTaxRate: 0.13,
+    strNotes: 'Houston STR ordinance effective Jan 1, 2026: $275 annual registration, safety inspection, and human trafficking awareness training required. 13% combined hotel occupancy tax applies (6% TX + 7% Harris County). Event-venue advertising prohibited. STR is legal but factor the $275 registration + 13% HOT tax into net revenue.',
+  },
+  // NYC: NY state RPTT 0.4% + NYC RPTT 1.425% (residential > $500K) ≈ 1.825%.
+  // Does NOT include the progressive mansion tax (additional 1%+ on $1M+);
+  // that layer is a separate bracket we'd model if/when we add $1M+ deals.
+  'NEW YORK, NY': { transferTaxRate: 0.01825 },
+  'MANHATTAN, NY': { transferTaxRate: 0.01825 },
+  'BROOKLYN, NY': { transferTaxRate: 0.01825 },
+  'QUEENS, NY': { transferTaxRate: 0.01825 },
+  'BRONX, NY': { transferTaxRate: 0.01825 },
+  'STATEN ISLAND, NY': { transferTaxRate: 0.01825 },
+  // DC: buyer pays recordation tax 1.45% on price (transfer tax is seller-side).
+  'WASHINGTON, DC': { transferTaxRate: 0.0145 },
+  // Philadelphia: combined 4.278% (1% state + 3.278% city), customarily split
+  // buyer/seller — buyer eats ~2.14%. Still one of the highest in the country.
+  'PHILADELPHIA, PA': { transferTaxRate: 0.02139 },
+  // Cook County + Chicago transfer stamps: 0.5% buyer-facing combined state +
+  // county stamps, plus Chicago's 0.25% buyer Real Property Transfer Tax.
+  'CHICAGO, IL': { transferTaxRate: 0.0075 },
 }
 
 export function getJurisdictionRules(
   state: string,
   city?: string | null
-): { name: string; propertyTaxRate: number; rentControl: boolean; landlordFriendly: boolean; strNotes: string } {
-  const base = STATE_RULES[state] || STATE_RULES['TX']
+): {
+  name: string
+  propertyTaxRate: number
+  rentControl: boolean
+  landlordFriendly: boolean
+  strNotes: string
+  hotelOccupancyTaxRate: number
+  transferTaxRate: number
+} {
+  const stateBase = STATE_RULES[state] || STATE_RULES['TX']
+  // STATE_RULES doesn't carry HOT or transfer tax yet; default both to 0 so
+  // callers get a safe baseline (STR opex stack / closing costs). Cities
+  // with data flow through CITY_RULES overrides.
+  const base = { ...stateBase, hotelOccupancyTaxRate: 0, transferTaxRate: 0 }
   if (!city) return base
   const key = `${city.trim().toUpperCase()}, ${state.trim().toUpperCase()}`
   const override = CITY_RULES[key]
@@ -1019,7 +1133,6 @@ export function calculateDealMetrics(
   const { purchasePrice, downPaymentPct, annualRate, amortizationYears, rehabBudget } = inputs
   const loanAmount = purchasePrice * (1 - downPaymentPct)
   const downPayment = purchasePrice * downPaymentPct
-  const totalCashIn = downPayment + (rehabBudget || 0)
 
   // Mortgage payment
   const monthlyMortgagePayment = calculateMortgage(loanAmount, annualRate, amortizationYears)
@@ -1028,6 +1141,14 @@ export function calculateDealMetrics(
   const effectiveMonthlyRent = rental.estimatedMonthlyRent * (1 - rental.vacancyRate)
   const monthlyNetCashFlow = effectiveMonthlyRent - monthlyMortgagePayment - rental.monthlyExpenses
   const annualNetCashFlow = monthlyNetCashFlow * 12
+
+  // CoC denominator = all capital deployed at close, matching calculateCashToClose
+  // (downPayment + 2.5% closing + $1500 inspection + 6mo PITI reserves + rehab).
+  // Previously excluded closing/reserves, inflating CoC by 2–4pts vs. IRR basis.
+  const closingCosts = purchasePrice * 0.025
+  const inspectionAndAppraisal = 1500
+  const reserves = (monthlyMortgagePayment + rental.monthlyExpenses) * 6
+  const totalCashIn = downPayment + closingCosts + inspectionAndAppraisal + reserves + (rehabBudget || 0)
 
   // Returns
   const noiAnnual = (effectiveMonthlyRent - rental.monthlyExpenses) * 12

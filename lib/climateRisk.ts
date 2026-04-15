@@ -82,6 +82,7 @@ export interface ClimateAndInsurance {
   insuranceBreakdown: {
     baseStatePremium: number
     dwellingScaleFactor: number
+    ageSurchargeMultiplier: number
     floodZoneAddOn: number
   }
 
@@ -142,6 +143,18 @@ function interpretFloodZone(zone: string | null): { risk: FloodRisk; required: b
   if (z === 'X' || z === 'B' || z === 'C') return { risk: 'minimal', required: false }
   if (z === 'D') return { risk: 'unknown', required: false }
   return { risk: 'moderate', required: false }
+}
+
+// Age-of-home surcharge multiplier on the base HO-3 premium. Pre-1940 homes
+// (knob-and-tube, galvanized plumbing, wood frame, no sprinklers) are priced
+// materially higher by most carriers; post-1980 homes get the baseline.
+// Conservative step function — real carrier tables are more granular.
+function ageSurchargeMultiplier(yearBuilt: number | null | undefined): number {
+  if (!yearBuilt || !Number.isFinite(yearBuilt)) return 1
+  if (yearBuilt >= 1980) return 1
+  if (yearBuilt >= 1960) return 1.15
+  if (yearBuilt >= 1940) return 1.30
+  return 1.45
 }
 
 function floodZoneInsuranceAddOn(risk: FloodRisk, dwellingValue: number): number {
@@ -235,10 +248,11 @@ function buildSummary(
 // Lightweight state-only insurance estimate (no geocoding/FEMA call).
 // Use in fast paths like /api/refine where full climate lookup is too slow.
 // Typically within ~15% of the full estimate — flood-zone properties will be lower here.
-export function estimateInsuranceFast(state: string, dwellingValue: number): number {
+export function estimateInsuranceFast(state: string, dwellingValue: number, yearBuilt?: number | null): number {
   const base = STATE_INSURANCE_BASE[state] ?? 1800
   const scale = Math.max(0.5, Math.min(3, dwellingValue / 300_000))
-  return Math.round(base * scale)
+  const ageMult = ageSurchargeMultiplier(yearBuilt)
+  return Math.round(base * scale * ageMult)
 }
 
 export async function getClimateAndInsurance(
@@ -250,7 +264,8 @@ export async function getClimateAndInsurance(
   // address (e.g. Rentcast returned lat/long on the property record), pass
   // them in to skip the Mapbox round-trip and keep climate/property/location
   // sections aligned on the exact same coordinates.
-  providedCoords?: { lat: number; lng: number } | null
+  providedCoords?: { lat: number; lng: number } | null,
+  yearBuilt?: number | null
 ): Promise<ClimateAndInsurance> {
   // 1. Geocode (best-effort; if Mapbox unavailable we skip flood lookup)
   const coords = providedCoords ?? (await geocode(address))
@@ -262,7 +277,8 @@ export async function getClimateAndInsurance(
   // 3. Insurance estimate
   const baseStatePremium = STATE_INSURANCE_BASE[state] ?? 1800
   const dwellingScaleFactor = Math.max(0.5, Math.min(3, dwellingValue / 300_000))
-  const scaledBase = Math.round(baseStatePremium * dwellingScaleFactor)
+  const ageMult = ageSurchargeMultiplier(yearBuilt)
+  const scaledBase = Math.round(baseStatePremium * dwellingScaleFactor * ageMult)
   const floodAddOn = floodZoneInsuranceAddOn(floodRisk, dwellingValue)
   const estimatedAnnualInsurance = scaledBase + floodAddOn
 
@@ -282,6 +298,7 @@ export async function getClimateAndInsurance(
     insuranceBreakdown: {
       baseStatePremium: scaledBase,
       dwellingScaleFactor: Math.round(dwellingScaleFactor * 100) / 100,
+      ageSurchargeMultiplier: ageMult,
       floodZoneAddOn: floodAddOn,
     },
     climateScores,

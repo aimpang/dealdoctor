@@ -44,6 +44,29 @@ export async function GET(
       return NextResponse.json({ error: 'Report not found' }, { status: 404 })
     }
 
+    // Short-circuit on a cached reviewer block. When composeFullReport throws
+    // "Review blocked: ...", generateFullReport persists a sentinel to
+    // fullReportData so we don't re-run the 30-60s pipeline on every poll.
+    if (report.fullReportData) {
+      try {
+        const parsed = JSON.parse(report.fullReportData)
+        if (parsed && parsed.__error === 'review-blocked') {
+          return NextResponse.json(
+            {
+              error: 'This report was blocked by our internal quality review.',
+              code: 'review-blocked',
+              reason: parsed.reason,
+              blockedAt: parsed.at,
+              uuid,
+            },
+            { status: 502 }
+          )
+        }
+      } catch {
+        // Non-JSON fullReportData falls through to the normal response path.
+      }
+    }
+
     // In debug mode, synthesize the full report if it hasn't been generated yet.
     // Hard 3-minute timeout so a stuck Rentcast fetch can't freeze the route
     // indefinitely (Houston / Baltimore addresses from the batch pressure

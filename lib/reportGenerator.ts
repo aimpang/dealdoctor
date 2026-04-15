@@ -37,6 +37,7 @@ import {
   calculateSTRProjection,
   getStatePropertyTaxGrowth,
   STATE_RULES,
+  CITY_RULES,
   getJurisdictionRules,
   isStrProhibitedForInvestor,
 } from './calculations'
@@ -1047,9 +1048,16 @@ export async function composeFullReport(
     ? Math.round(climate.estimatedAnnualInsurance / 12)
     : Math.round(1800 / 12)
 
-  // Property tax: prefer actual county record from Rentcast, fall back to state avg × price.
+  // Property tax: prefer actual county record from Rentcast, fall back to
+  // the jurisdictional rate × price. When we have a CITY_RULES override
+  // (e.g. Houston's 2.03% Harris County effective rate vs TX's 1.80%
+  // state-wide), the fallback is a city-specific estimate, not a state
+  // average — surface that in the badge so users don't see "state avg"
+  // when the rate is actually a county effective figure.
+  const cityTaxKey = `${report.city.trim().toUpperCase()}, ${report.state.trim().toUpperCase()}`
+  const hasCityTaxOverride = typeof CITY_RULES[cityTaxKey]?.propertyTaxRate === 'number'
   let monthlyPropertyTax: number
-  let propertyTaxSource: 'county-record' | 'state-average'
+  let propertyTaxSource: 'county-record' | 'city-override' | 'state-average'
   // Building-level tax detection — same rule as the triangulation fix.
   // NYC co-ops and some multi-unit records return the ENTIRE building's
   // annual tax on every unit (Bronx 5700 Arlington Ave audit: $85,482/mo
@@ -1076,7 +1084,7 @@ export async function composeFullReport(
     propertyTaxSource = 'county-record'
   } else {
     monthlyPropertyTax = stateAverageTax
-    propertyTaxSource = 'state-average'
+    propertyTaxSource = hasCityTaxOverride ? 'city-override' : 'state-average'
     if (taxIsBuildingLevel) {
       console.log(
         `[reportGenerator] county-record tax ${countyRecordTax.toLocaleString()}/mo appears to be building-level (> 3× state average or > 60% of AVM/yr); falling back to state-average ${stateAverageTax.toLocaleString()}/mo`
@@ -1480,7 +1488,15 @@ export async function composeFullReport(
   }
 
   const monthlyPITI = ltrMetrics.monthlyMortgagePayment + monthlyPropertyTax + monthlyInsurance
-  const cashToClose = calculateCashToClose(offerPrice, downPaymentPct, rehabBudget, monthlyPITI)
+  const cashToClose = calculateCashToClose(
+    offerPrice,
+    downPaymentPct,
+    rehabBudget,
+    monthlyPITI,
+    0.025,
+    6,
+    stateRules.transferTaxRate
+  )
 
   // Growth clamps. We accept upside caps ≤ 15% (avoids "rent will double")
   // and asymmetric floors: one bad trailing-12-month print shouldn't compound
@@ -1587,6 +1603,7 @@ export async function composeFullReport(
     monthlyExpenses,
     rehabBudget,
     propertyType: property.property_type,
+    transferTaxRate: stateRules.transferTaxRate,
   })
 
   const sensitivity = calculateSensitivity({
@@ -1636,6 +1653,7 @@ export async function composeFullReport(
     monthlyPropertyTax,
     monthlyInsuranceLTR: monthlyInsurance,
     monthlyLTRCashFlow: ltrMetrics.monthlyNetCashFlow,
+    hotelOccupancyTaxRate: stateRules.hotelOccupancyTaxRate,
   })
 
   const recommendedOffers = calculateRecommendedOffers({
@@ -1711,12 +1729,13 @@ export async function composeFullReport(
     instantCardBreakeven: teaserBreakeven,
     fullReportBreakeven: recommendedOffers.breakevenPrice,
     canonicalBreakeven: canonicalBreakEven,
-    wealthYears: projections.map((p: { year: number; cumulativeCashFlow?: number; cumulativeTaxShield?: number; equityFromPaydown?: number; equityFromAppreciation?: number; totalWealthBuilt?: number }) => ({
+    wealthYears: projections.map((p: { year: number; cumulativeCashFlow?: number; cumulativeTaxShield?: number; equityFromPaydown?: number; equityFromAppreciation?: number; depreciationRecaptureTax?: number; totalWealthBuilt?: number }) => ({
       year: p.year,
       cumulativeCashFlow: p.cumulativeCashFlow,
       cumulativeTaxShield: p.cumulativeTaxShield,
       equityFromPaydown: p.equityFromPaydown,
       equityFromAppreciation: p.equityFromAppreciation,
+      depreciationRecaptureTax: p.depreciationRecaptureTax,
       totalWealthBuilt: p.totalWealthBuilt,
     })),
     dscr: cappedLtrMetrics.dscr,
@@ -2173,13 +2192,13 @@ export async function generateFullReport(uuid: string): Promise<void> {
       propertyType: property.property_type,
       address: report.address,
     }),
-    getRentComps(report.address, property.bedrooms, property.property_type),
+    getRentComps(report.address, property.bedrooms, property.property_type, property.bathrooms),
     getMarketSnapshot(report.zipCode),
     // Pass the already-known property coords so climate doesn't re-geocode
     // the same address (saves a Mapbox call AND keeps property/climate/
     // locationSignals aligned on identical lat/lng — prior behavior produced
     // ~15m drift between property and climate coordinates).
-    getClimateAndInsurance(report.address, report.state, report.zipCode, offerPriceForTax, coords),
+    getClimateAndInsurance(report.address, report.state, report.zipCode, offerPriceForTax, coords, property.year_built),
     coords ? getLocationSignals(coords.lat, coords.lng) : Promise.resolve(null),
   ])
 
@@ -2196,16 +2215,39 @@ export async function generateFullReport(uuid: string): Promise<void> {
     }
   }
 
-  const fullReportData = await composeFullReport(report, {
-    property,
-    rates,
-    rentEstimate: rentRes,
-    saleComps: salesRes,
-    rentComps: rentCompsRes,
-    marketSnapshot: marketRes,
-    climate: climateRes,
-    locationSignals: locationRes,
-  })
+  let fullReportData
+  try {
+    fullReportData = await composeFullReport(report, {
+      property,
+      rates,
+      rentEstimate: rentRes,
+      saleComps: salesRes,
+      rentComps: rentCompsRes,
+      marketSnapshot: marketRes,
+      climate: climateRes,
+      locationSignals: locationRes,
+    })
+  } catch (err: any) {
+    // Cache the reviewer's block verdict on the row itself. Without this,
+    // the polling frontend kept re-running the full 30-60s pipeline on every
+    // refresh (audit: 414 Water St, Baltimore — 6× re-runs at 30-60s each).
+    // With the sentinel persisted to fullReportData, the route short-circuits
+    // on subsequent reads and returns the cached reason immediately.
+    const msg = typeof err?.message === 'string' ? err.message : ''
+    if (msg.startsWith('Review blocked:')) {
+      await prisma.report.update({
+        where: { id: uuid },
+        data: {
+          fullReportData: JSON.stringify({
+            __error: 'review-blocked',
+            reason: msg.replace(/^Review blocked:\s*/, ''),
+            at: new Date().toISOString(),
+          }),
+        },
+      })
+    }
+    throw err
+  }
 
   await prisma.report.update({
     where: { id: uuid },

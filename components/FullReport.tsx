@@ -1240,6 +1240,14 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
                           county
                         </span>
                       )}
+                      {expenses.propertyTaxSource === 'city-override' && (
+                        <span
+                          title="Jurisdictional effective rate applied — we have a city/county-specific rate for this market but no parcel-level tax record. Verify against the actual tax bill before relying on the carrying cost."
+                          className="rounded bg-amber-500/10 px-1 text-[9px] font-semibold text-amber-700 dark:text-amber-400"
+                        >
+                          county est
+                        </span>
+                      )}
                       {expenses.propertyTaxSource === 'state-average' && (
                         <span
                           title="State average applied — no county record for this parcel. Pull the actual tax bill before making an offer."

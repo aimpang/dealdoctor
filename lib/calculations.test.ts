@@ -261,7 +261,7 @@ describe('calculateCashToClose', () => {
   it('total is sum of all components', () => {
     const c = calculateCashToClose(400_000, 0.2, 30_000, 2_500)
     expect(c.totalCashToClose).toBe(
-      c.downPayment + c.closingCosts + c.inspectionAndAppraisal + c.reserves + c.rehabBudget
+      c.downPayment + c.closingCosts + c.transferTax + c.inspectionAndAppraisal + c.reserves + c.rehabBudget
     )
   })
 
@@ -269,6 +269,15 @@ describe('calculateCashToClose', () => {
     const c3 = calculateCashToClose(400_000, 0.2, 0, 2_500, 0.025, 3)
     const c6 = calculateCashToClose(400_000, 0.2, 0, 2_500, 0.025, 6)
     expect(c6.reserves - c3.reserves).toBe(Math.round(2_500 * 3))
+  })
+
+  it('transfer tax is zero by default and scales with offer price', () => {
+    const baseline = calculateCashToClose(400_000, 0.2, 0, 2_500)
+    expect(baseline.transferTax).toBe(0)
+    // NYC buyer-side transfer ≈ 1.825% on $400K = $7,300.
+    const nyc = calculateCashToClose(400_000, 0.2, 0, 2_500, 0.025, 6, 0.01825)
+    expect(nyc.transferTax).toBe(7_300)
+    expect(nyc.totalCashToClose - baseline.totalCashToClose).toBe(7_300)
   })
 })
 
@@ -313,12 +322,24 @@ describe('projectWealth', () => {
     expect(Math.abs(p[4].cumulativeTaxShield - expected)).toBeLessThan(5)
   })
 
-  it('total wealth is sum of the four components', () => {
+  it('total wealth = cashFlow + equity + taxShield − depreciationRecapture', () => {
     const p = projectWealth(baseParams)
     const y5 = p[4]
-    const sum = y5.cumulativeCashFlow + y5.equityFromPaydown + y5.equityFromAppreciation + y5.cumulativeTaxShield
+    const sum =
+      y5.cumulativeCashFlow +
+      y5.equityFromPaydown +
+      y5.equityFromAppreciation +
+      y5.cumulativeTaxShield -
+      y5.depreciationRecaptureTax
     // Rounding may cause off-by-one on sums
     expect(Math.abs(y5.totalWealthBuilt - sum)).toBeLessThanOrEqual(2)
+  })
+
+  it('depreciation recapture = cumulative depreciation × 25% (IRS §1250)', () => {
+    const p = projectWealth(baseParams)
+    const y5 = p[4]
+    expect(y5.cumulativeDepreciation).toBe(Math.round(baseParams.annualDepreciation * 5))
+    expect(y5.depreciationRecaptureTax).toBe(Math.round(y5.cumulativeDepreciation * 0.25))
   })
 
   it('0% rent growth and 0% appreciation = no appreciation equity', () => {
@@ -723,8 +744,19 @@ describe('calculateSTRProjection', () => {
       r.breakdown.suppliesAndPlatformFees +
       r.breakdown.utilities +
       r.breakdown.propertyTax +
-      r.breakdown.insurance
+      r.breakdown.insurance +
+      r.breakdown.hotelOccupancyTax
     expect(sum).toBe(r.monthlyOpex)
+  })
+
+  it('hotel occupancy tax is deducted when jurisdiction provides a rate', () => {
+    const without = calculateSTRProjection(baseParams)
+    const withHot = calculateSTRProjection({ ...baseParams, hotelOccupancyTaxRate: 0.13 })
+    const expectedHot = Math.round(baseParams.monthlyGrossRevenue * 0.13)
+    expect(withHot.breakdown.hotelOccupancyTax).toBe(expectedHot)
+    expect(withHot.monthlyNetCashFlow).toBe(without.monthlyNetCashFlow - expectedHot)
+    // opExRatio scales with gross, so adding 13% HOT bumps ~0.43 → ~0.56.
+    expect(withHot.opExRatio).toBeCloseTo(without.opExRatio + 0.13, 2)
   })
 })
 

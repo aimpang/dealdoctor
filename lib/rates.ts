@@ -34,19 +34,29 @@ export function applyInvestorPremium(
   return pmmsRate + INVESTOR_PREMIUM[strategy]
 }
 
+let warnedAboutMissingKey = false
+
 export async function getCurrentRates(): Promise<CurrentRates> {
   try {
-    // FRED requires an API key but we'll use their public data feed
-    // For MVP, fetch from the Freddie Mac survey data
+    // FRED requires an API key. Provision FRED_API_KEY in env (free:
+    // https://fred.stlouisfed.org/docs/api/api_key.html). Without a real key,
+    // DEMO_KEY is throttled to ~120 req/day and returns errors unpredictably
+    // — which silently falls through to the hardcoded 6.5% / 5.8% fallback
+    // below, making every rate-derived figure in the report stale.
+    const fredKey = process.env.FRED_API_KEY || 'DEMO_KEY'
+    if (fredKey === 'DEMO_KEY' && !warnedAboutMissingKey) {
+      warnedAboutMissingKey = true
+      console.warn('[rates] FRED_API_KEY not set — using DEMO_KEY (throttled). PMMS will fall back to hardcoded 6.5% when throttled.')
+    }
     const [rate30Res, rate15Res] = await Promise.all([
       // MORTGAGE30US: 30-Year Fixed Rate Mortgage Average
       fetch(
-        `${FRED_BASE}?series_id=MORTGAGE30US&api_key=DEMO_KEY&file_type=json&sort_order=desc&limit=1`,
+        `${FRED_BASE}?series_id=MORTGAGE30US&api_key=${fredKey}&file_type=json&sort_order=desc&limit=1`,
         { next: { revalidate: 86400 } }
       ).catch(() => null),
       // MORTGAGE15US: 15-Year Fixed Rate Mortgage Average
       fetch(
-        `${FRED_BASE}?series_id=MORTGAGE15US&api_key=DEMO_KEY&file_type=json&sort_order=desc&limit=1`,
+        `${FRED_BASE}?series_id=MORTGAGE15US&api_key=${fredKey}&file_type=json&sort_order=desc&limit=1`,
         { next: { revalidate: 86400 } }
       ).catch(() => null),
     ])

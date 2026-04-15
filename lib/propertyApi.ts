@@ -680,7 +680,8 @@ export async function getMarketSnapshot(zipCode: string): Promise<MarketSnapshot
 export async function getRentComps(
   address: string,
   bedrooms: number,
-  propertyType?: string | null
+  propertyType?: string | null,
+  subjectBathrooms?: number | null
 ): Promise<RentComp[]> {
   if (!API_KEY || API_KEY === 'your_key_here') return []
   try {
@@ -731,12 +732,32 @@ export async function getRentComps(
       (c) => c.days_old == null || c.days_old <= 60
     ).length
 
+    // Bathroom-count filter: a 2.5-bath comp for a 1-bath subject is almost
+    // always a newer duplex/townhome and inflates the perceived rent range
+    // (4518 Galesburg Houston audit: 8321 Coma St at $2,250/mo 2bd/2.5ba
+    // distorted a 1-bath SFR comp set). Tolerance of 0.5 keeps "1.0 subject
+    // with a 1.5-bath comp" in the pool while dropping 2.0+ differentials.
+    // Comps without a bathroom count fall through — we can't filter on
+    // missing data.
+    const subjectBaths =
+      typeof subjectBathrooms === 'number' && subjectBathrooms > 0
+        ? subjectBathrooms
+        : null
+
     const filtered = mapped.filter((c) => {
       if (medianRate && c.rent && c.square_feet) {
         const rate = c.rent / c.square_feet
         if (rate > medianRate * 1.25) return false
       }
       if (freshCount >= 3 && c.days_old != null && c.days_old > 60) return false
+      if (
+        subjectBaths != null &&
+        typeof c.bathrooms === 'number' &&
+        c.bathrooms > 0 &&
+        Math.abs(c.bathrooms - subjectBaths) > 0.5
+      ) {
+        return false
+      }
       return true
     })
 

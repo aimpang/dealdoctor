@@ -50,6 +50,7 @@ export interface InvariantGateInput {
     cumulativeTaxShield?: number
     equityFromPaydown?: number
     equityFromAppreciation?: number
+    depreciationRecaptureTax?: number
     totalWealthBuilt?: number
   }>
   dscr?: number | null
@@ -136,13 +137,14 @@ export function runInvariantCheck(input: InvariantGateInput): InvariantGateResul
       (y.cumulativeCashFlow ?? 0) +
       (y.cumulativeTaxShield ?? 0) +
       (y.equityFromPaydown ?? 0) +
-      (y.equityFromAppreciation ?? 0)
+      (y.equityFromAppreciation ?? 0) -
+      (y.depreciationRecaptureTax ?? 0)
     const total = y.totalWealthBuilt
     if (finite(total) && Math.abs(total - parts) > 100) {
       failures.push({
         code: `wealth-math-y${y.year}`,
         severity: 'FAIL',
-        message: `Year-${y.year} wealth does not equal CF + TaxShield + Principal + Appreciation`,
+        message: `Year-${y.year} wealth does not equal CF + TaxShield + Principal + Appreciation − §1250 Recapture`,
         actual: `$${total.toLocaleString()}`,
         expected: `$${Math.round(parts).toLocaleString()} (sum of components)`,
       })
