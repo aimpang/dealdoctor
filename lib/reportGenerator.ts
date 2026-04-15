@@ -1890,7 +1890,15 @@ export async function composeFullReport(
       // "Cash-flow neutral at market price" instead, and append a
       // sensitivity strip showing cash flow at -5% / -10% / -15% of offer
       // price so the user has actionable data to negotiate against.
-      const nearBreakeven = Math.abs(bePrice - offerPrice) / Math.max(offerPrice, 1) < 0.02
+      //
+      // Asymmetric rule: only flag "neutral" when the deal actually works at
+      // offer (bePrice >= offerPrice). Otherwise offer=BE+1% shows as
+      // "Neutral" when the buyer is in fact losing money every month — the
+      // 4518 Galesburg audit caught this at -$155/mo. Also tightened from
+      // 2% to 0.5% so a $2k gap on a $128k deal no longer qualifies.
+      const nearBreakeven =
+        bePrice >= offerPrice &&
+        (bePrice - offerPrice) / Math.max(offerPrice, 1) < 0.005
 
       // Monthly CF at an arbitrary offer price, holding the rest of the
       // deal (rate, rent, expense stack) constant. Direct replica of the
