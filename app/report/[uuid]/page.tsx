@@ -27,6 +27,7 @@ export default function ReportPage() {
   const [error, setError] = useState('')
   const [timedOut, setTimedOut] = useState(false)
   const [retrying, setRetrying] = useState(false)
+  const [progress, setProgress] = useState(0)
   const pollStartRef = useRef<number>(Date.now())
 
   useEffect(() => {
@@ -78,6 +79,20 @@ export default function ReportPage() {
 
     return () => clearInterval(intervalId)
   }, [uuid, isDebug])
+
+  // Drive a fake-but-honest progress % while waiting. Uses an exponential
+  // curve (τ = 30 s) so early seconds feel snappy and it naturally slows near
+  // the end — caps at 95 % until the real data arrives, then completes.
+  useEffect(() => {
+    if (!loading) return
+    const start = Date.now()
+    setProgress(0)
+    const id = setInterval(() => {
+      const elapsed = Date.now() - start
+      setProgress(95 * (1 - Math.exp(-elapsed / 30_000)))
+    }, 400)
+    return () => clearInterval(id)
+  }, [loading])
 
   const handleRetryGeneration = async () => {
     setRetrying(true)
@@ -161,20 +176,39 @@ export default function ReportPage() {
   }
 
   if (loading || !report) {
+    const pct = Math.round(progress)
+    const nearlyDone = pct >= 90
     return (
       <div className="flex min-h-screen items-center justify-center p-4">
-        <div className="flex flex-col items-center gap-4 text-center">
-          <LoaderIcon className="h-8 w-8 animate-spin text-primary" />
-          <div>
-            <p className="font-semibold text-foreground">
-              {report?.paid ? <FriendlyLoadingMessage /> : <FriendlyLoadingMessage variant="preview" />}
-            </p>
-            {report?.paid && (
-              <p className="mt-1 text-sm text-muted-foreground">
-                This usually takes 30-45 seconds. Please don&apos;t close this page.
-              </p>
-            )}
+        <div className="flex w-full max-w-[280px] flex-col items-center gap-5 text-center">
+          {/* Percentage readout */}
+          <span className="font-[family-name:var(--font-fraunces)] text-[80px] font-bold leading-none tabular-nums text-foreground">
+            {pct}%
+          </span>
+
+          {/* Progress track */}
+          <div className="h-[3px] w-full overflow-hidden rounded-full bg-foreground/10">
+            <div
+              className="h-full rounded-full bg-primary transition-[width] duration-500 ease-out"
+              style={{ width: `${progress}%` }}
+            />
           </div>
+
+          {/* Stage message */}
+          <p className="text-sm font-medium text-foreground/70">
+            {report?.paid
+              ? <FriendlyLoadingMessage />
+              : <FriendlyLoadingMessage variant="preview" />}
+          </p>
+
+          {/* Contextual hint */}
+          <p className="text-xs text-muted-foreground/60">
+            {nearlyDone
+              ? 'Almost there — writing your diagnosis…'
+              : report?.paid
+              ? "Usually 30–45 s. Don't close this tab."
+              : null}
+          </p>
         </div>
       </div>
     )
