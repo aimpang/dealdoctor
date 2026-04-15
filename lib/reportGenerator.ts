@@ -1128,9 +1128,36 @@ export async function composeFullReport(
     capturedHOA > buildingHoaRecord.monthlyHoa * 1.15
   const buildingHoaRecordUsed =
     capturedHOA === 0 || listingHoaIsOutlier ? buildingHoaRecord : null
+  // Tier-adjusted inference: full-service amenity-rich high-rise markets
+  // carry materially higher HOA than the national ~$1/sqft/mo baseline.
+  // NYC condos routinely clear $1.40–$2.00/sqft/mo for even modest units
+  // (doorman, gym, concierge, elevator, garage all baked in). DC / Boston
+  // / SF / Chicago Loop sit in between. Everywhere else: baseline.
+  const inferredHoaTier = ((): { floor: number; cap: number; rate: number } => {
+    const city = (report.city || '').toLowerCase()
+    const state = (report.state || '').toUpperCase()
+    if (state === 'NY' && /new york|brooklyn|queens|bronx|staten|manhattan/.test(city)) {
+      return { floor: 900, cap: 2500, rate: 1.4 }
+    }
+    if (
+      state === 'DC' ||
+      (state === 'MA' && /boston|cambridge|brookline/.test(city)) ||
+      (state === 'CA' && /san francisco/.test(city)) ||
+      (state === 'IL' && /chicago/.test(city))
+    ) {
+      return { floor: 500, cap: 2000, rate: 1.2 }
+    }
+    return { floor: 300, cap: 1500, rate: 1.0 }
+  })()
   const inferredCondoHOA =
     capturedHOA === 0 && isCondoLike && !buildingHoaRecord
-      ? Math.min(1500, Math.max(300, Math.round((property.square_feet || 500) * 1.0)))
+      ? Math.min(
+          inferredHoaTier.cap,
+          Math.max(
+            inferredHoaTier.floor,
+            Math.round((property.square_feet || 500) * inferredHoaTier.rate)
+          )
+        )
       : 0
   const monthlyHOA = buildingHoaRecordUsed
     ? buildingHoaRecordUsed.monthlyHoa

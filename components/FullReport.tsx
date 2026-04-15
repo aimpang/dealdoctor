@@ -1050,21 +1050,32 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
               <CardHeader label="Location Quality" />
               <div className="mt-2 flex items-baseline justify-between">
                 <div>
-                  {locationSignals.dataConfidence === 'insufficient' ? (
-                    <p className="font-[family-name:var(--font-playfair)] text-xl font-bold text-muted-foreground">
-                      —
-                    </p>
-                  ) : (
+                  {locationSignals.dataConfidence === 'high' ? (
                     <p className="font-[family-name:var(--font-playfair)] text-3xl font-bold tabular-nums text-foreground">
                       {locationSignals.walkabilityScore}
                     </p>
+                  ) : (
+                    <p className="font-[family-name:var(--font-playfair)] text-xl font-bold text-muted-foreground">
+                      —
+                    </p>
                   )}
                   <p className="text-[11px] font-medium text-muted-foreground">
-                    {locationSignals.walkabilityLabel}
+                    {locationSignals.dataConfidence === 'high'
+                      ? locationSignals.walkabilityLabel
+                      : 'Walkability data unavailable'}
                   </p>
-                  {locationSignals.dataConfidence === 'low' && (
+                  {locationSignals.dataConfidence !== 'high' && (
                     <p className="mt-0.5 text-[10px] text-amber-600 dark:text-amber-400">
-                      Low POI coverage — score may understate walkability
+                      Our amenity map has gaps in this area — verify on{' '}
+                      <a
+                        href="https://www.walkscore.com/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline hover:text-amber-700 dark:hover:text-amber-300"
+                      >
+                        walkscore.com
+                      </a>{' '}
+                      directly.
                     </p>
                   )}
                 </div>
@@ -1267,6 +1278,13 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
                   HOA above is an estimated market default, not a captured disclosure. Confirm the listing&apos;s actual monthly dues — it&apos;s the single biggest driver of the cash-flow number.
                 </p>
               )}
+              {expenses.propertyTaxSource === 'state-average' &&
+                property.state === 'NY' &&
+                /new york|brooklyn|queens|bronx|staten/i.test(property.city || '') && (
+                  <p className="mt-2 text-[10px] text-amber-600 dark:text-amber-400">
+                    NYC assesses condos well below market value under the 421-a / assessment-cap system. Actual taxes are typically lower than this state-average projection — verify on the ACRIS record or the listing&apos;s tax history before relying on cash-flow math.
+                  </p>
+                )}
               {expenses.monthlyHOA === 0 &&
                 (property.propertyType || '').toLowerCase().includes('condo') && (
                   <p className="mt-2 text-[10px] text-amber-600 dark:text-amber-400">

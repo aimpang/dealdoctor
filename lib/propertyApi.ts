@@ -935,6 +935,29 @@ export async function getComparableSales(
           const ratio = c.estimated_value / subjectValue
           if (ratio < 0.25 || ratio > 4.0) return false
         }
+        // $/sqft divergence filter. The absolute-value ratio check above
+        // doesn't catch luxury-vs-workforce comps of similar size in the
+        // same radius — e.g. a 668-sqft Times Square condo at $2,068/sqft
+        // vs a 756-sqft Murray Hill subject at $1,097/sqft. The sqft
+        // band passes (0.88× subject) and the value band passes (1.67×)
+        // but the $/sqft ratio is 1.89× — a fundamentally different
+        // submarket. Drop non-same-building comps whose $/sqft is more
+        // than 50% off the subject's implied $/sqft. Same-building comps
+        // are always kept.
+        if (
+          !isSameBuilding &&
+          subjectValue &&
+          subjectSqft &&
+          c.square_feet &&
+          c.estimated_value > 0
+        ) {
+          const subjectPerSqft = subjectValue / subjectSqft
+          const compPerSqft = c.estimated_value / c.square_feet
+          if (subjectPerSqft > 0 && compPerSqft > 0) {
+            const ratio = compPerSqft / subjectPerSqft
+            if (ratio < 0.5 || ratio > 1.5) return false
+          }
+        }
         // Drop stale sales (only when a sold_date is available — missing
         // date shouldn't silently disqualify otherwise-valid records).
         if (c.sold_date) {
