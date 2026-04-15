@@ -4,6 +4,7 @@ import { sendEmail, buildMagicLinkEmail } from '@/lib/email'
 import { prisma } from '@/lib/db'
 import { rateLimit } from '@/lib/rateLimit'
 import { getClientIp } from '@/lib/clientIp'
+import { logger } from '@/lib/logger'
 import { BASE_URL } from '@/lib/seo'
 
 // Retrieve-my-access flow. User enters email; if we know them, rotate their
@@ -52,12 +53,21 @@ export async function POST(req: NextRequest) {
       entitlementDescription: entitlement,
       originalReportUrl,
     })
-    await sendEmail({
+    const result = await sendEmail({
       to: customer.email,
       subject: 'Restore your DealDoctor access',
       html,
       text,
     })
+    // Email-enumeration protection means we still return 200, but ops must
+    // see when Resend is silently failing (bad API key, unverified domain,
+    // quota hit) so we don't ship dead magic links for days.
+    if (!result.sent) {
+      logger.error('magic_link.email_failed', {
+        customerId: customer.id,
+        error: result.error,
+      })
+    }
   }
 
   // Always return 200 so email enumeration doesn't work
