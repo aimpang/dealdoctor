@@ -12,6 +12,7 @@ import {
   getRentComps,
   getMarketSnapshot,
   buildingKey,
+  isUnitLikeAddress,
   type PropertyData,
   type RentEstimate,
   type MarketSnapshot,
@@ -96,6 +97,8 @@ export interface ReportWarning {
     | 'price-per-sqft-implausible'
     | 'property-classification-uncertain'
     | 'thin-comp-set'
+    | 'condo-misclassified'
+    | 'sqft-bedroom-mismatch'
   message: string
 }
 
@@ -145,6 +148,11 @@ export function buildReportWarnings(input: {
   subjectHasBuildingKey?: boolean
   sameBuildingCompCount?: number
   totalCompCount?: number
+  // Sale comps whose address sits at the subject's building key AND carries
+  // a unit marker (Unit/#/Apt/Suite). When ≥2, the "building" is really a
+  // multi-unit structure and the subject — even if Rentcast labeled it
+  // "Single Family" — is almost certainly a condo unit.
+  sameBuildingUnitCompCount?: number
   // Zip 12-month appreciation (raw decimal, e.g. 0.22 = +22%). Flagged when
   // it exceeds ~15% OR diverges sharply from rent growth — small-N artifacts
   // and mix-shift can blow up a trailing-12mo median swing.
@@ -316,6 +324,49 @@ export function buildReportWarnings(input: {
       code: 'property-classification-uncertain',
       message: `Property is classified as "${input.propertyType}" by our data source but the HOA above is an inferred market default — we have no real confirmation this is a standalone apartment vs. a condo unit in a converted building vs. a single floor of a multi-family. This is a data-classification gap that cascades into every number below (rent math, financing, HOA, cash flow). Before acting on this report, confirm on the actual listing whether you're buying a condo unit (HOA applies), a whole multi-family building (no HOA, rental income from other units offsets the mortgage), or a true single-unit apartment.`,
     })
+  }
+
+  // Condo misclassified as Single Family. Rentcast regularly returns
+  // "Single Family" for individual condo units in high-rise buildings
+  // (54 Rainey St Austin / The Milago, 1847 N California Chicago). When
+  // multiple same-building sale comps carry unit markers (#, Unit, Apt),
+  // the structure is a multi-unit building and a "Single Family" label on
+  // the subject is almost certainly wrong. HOA, financing, and cash-flow
+  // math all misfire on a misclassified condo.
+  if (
+    /^single family$/i.test(pt.trim()) &&
+    (input.sameBuildingUnitCompCount ?? 0) >= 2
+  ) {
+    warnings.push({
+      code: 'condo-misclassified',
+      message: `Property is labeled "Single Family" but ${input.sameBuildingUnitCompCount} sale comps at the same street address carry unit numbers — the building is almost certainly multi-unit and this is a condo unit misclassified by our data source. HOA ($0 assumed), financing eligibility, and cash-flow math below are likely wrong. Pull the actual listing before acting on this report.`,
+    })
+  }
+
+  // Square-footage / bedroom ratio sanity. Rentcast occasionally maps the
+  // wrong unit's floor-plan size onto a condo address without a unit
+  // number — e.g. returning unit 804's 1,189 sqft 2BD/2BA plan for a
+  // 1BD/1BA query at the same street address. Downstream rent and
+  // value math then use a square footage that belongs to a different
+  // unit type. Thresholds: >900 sqft for 1BD, >1,400 for 2BD, >700
+  // sqft-per-bed for 3BD+.
+  if (
+    typeof input.squareFeet === 'number' &&
+    typeof input.bedrooms === 'number' &&
+    input.bedrooms > 0 &&
+    input.squareFeet > 0
+  ) {
+    const sqftPerBed = input.squareFeet / input.bedrooms
+    const oversized =
+      (input.bedrooms === 1 && input.squareFeet > 900) ||
+      (input.bedrooms === 2 && input.squareFeet > 1400) ||
+      (input.bedrooms >= 3 && sqftPerBed > 700)
+    if (oversized) {
+      warnings.push({
+        code: 'sqft-bedroom-mismatch',
+        message: `Square footage (${input.squareFeet.toLocaleString()} sqft) is unusually large for a ${input.bedrooms}-bed unit (${Math.round(sqftPerBed)} sqft per bedroom). In condo buildings without a unit number, our data source occasionally returns a different unit's floor plan — verify the actual unit size against the listing before trusting rent, value, or cash-flow math below.`,
+      })
+    }
   }
 
   // Zip appreciation cross-check. Trailing-12mo median-sale swings in
@@ -1366,6 +1417,9 @@ export async function composeFullReport(
     subjectHasBuildingKey: subjectBuildingKeyForWarning !== null,
     sameBuildingCompCount: dedupedSaleComps.filter((c: any) => c?.same_building).length,
     totalCompCount: dedupedSaleComps.length,
+    sameBuildingUnitCompCount: dedupedSaleComps.filter(
+      (c: any) => c?.same_building && isUnitLikeAddress(c?.address || '')
+    ).length,
     zipAppreciation12mo: marketSnapshot?.salePriceGrowth12mo,
     zipRentGrowth12mo: marketSnapshot?.rentGrowth12mo,
     valueSignalCount: signalPoints.length,

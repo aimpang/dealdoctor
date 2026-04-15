@@ -518,7 +518,9 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
       {warnings && warnings.length > 0 && (
         <section className="mb-5 space-y-2">
           {warnings.map((w: { code: string; message: string }, i: number) => {
-            const critical = w.code === 'property-profile-inferred'
+            const critical =
+              w.code === 'property-profile-inferred' ||
+              w.code === 'condo-misclassified'
             return (
               <div
                 key={`${w.code}-${i}`}
@@ -541,7 +543,9 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
                 <div className="flex flex-col gap-0.5">
                   {critical && (
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-red-700 dark:text-red-400">
-                      Based on inferred property data
+                      {w.code === 'condo-misclassified'
+                        ? 'Likely misclassified — verify property type'
+                        : 'Based on inferred property data'}
                     </p>
                   )}
                   <p className="text-xs leading-relaxed text-foreground">{w.message}</p>

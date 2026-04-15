@@ -145,6 +145,10 @@ export function AddressInput({ onResult, onError }: AddressInputProps) {
         })
         return
       }
+      if (res.status === 409 && data.needsUnitNumber) {
+        onError(data.message || 'Unit number required')
+        return
+      }
       if (!res.ok) {
         onError(data.error || 'Something went wrong')
         return

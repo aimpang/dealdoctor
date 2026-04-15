@@ -5,6 +5,7 @@ import {
   getRentComps,
   RentcastQuotaError,
   classifyAddressMatch,
+  isUnitLikeAddress,
 } from '@/lib/propertyApi'
 import { getCurrentRates, applyInvestorPremium } from '@/lib/rates'
 import { getStateFromZipCode, calculateBreakEvenPrice, STATE_RULES } from '@/lib/calculations'
@@ -92,6 +93,32 @@ export async function POST(req: NextRequest) {
             resolvedAddress: property.address,
             mismatches: match.mismatches,
             message: `We couldn't find "${address}" in our data source. The closest record we have is "${property.address}". Did you mean that address?`,
+          },
+          { status: 409 }
+        )
+      }
+    }
+
+    // Multi-unit input gate. If the user typed a bare street address but the
+    // property is a condo / apartment building OR Rentcast returned a
+    // resolved address that contains a unit marker we didn't supply, we're
+    // analyzing an arbitrary unit picked by the data source — the 54 Rainey
+    // St / 1847 N California class of failure. Force the user to add a unit
+    // number so the subsequent lookup pins to one specific floor plan.
+    const userAddressHasUnit = isUnitLikeAddress(address)
+    if (!userAddressHasUnit) {
+      const looksMultiUnit =
+        /^(condo|apartment)$/i.test((property.property_type || '').trim()) ||
+        isUnitLikeAddress(property.address)
+      if (looksMultiUnit) {
+        return NextResponse.json(
+          {
+            error: 'Unit number required',
+            needsUnitNumber: true,
+            userAddress: address,
+            resolvedAddress: property.address,
+            propertyType: property.property_type,
+            message: `"${address}" looks like a multi-unit building. Please include the unit number (e.g., "${address} Unit 804") so we analyze the right floor plan — otherwise our data source returns an arbitrary unit, which cascades into wrong square footage, HOA, and rent numbers.`,
           },
           { status: 409 }
         )
