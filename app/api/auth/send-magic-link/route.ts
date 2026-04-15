@@ -12,7 +12,7 @@ import { BASE_URL } from '@/lib/seo'
 
 export async function POST(req: NextRequest) {
   const ip = getClientIp(req)
-  if (await rateLimit(ip, 3, { bucket: 'magic-link' })) {
+  if (await rateLimit(ip, 5, { bucket: 'magic-link' })) {
     return NextResponse.json({ error: 'Too many requests. Try again later.' }, { status: 429 })
   }
 

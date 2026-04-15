@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
   // let any caller rotate a spoofed value per request to create fresh
   // buckets and drain Rentcast / Anthropic budget.
   const ip = getClientIp(req)
-  const limited = await rateLimit(ip, 3, { bucket: 'preview' })
+  const limited = await rateLimit(ip, 15, { bucket: 'preview' })
   if (limited) {
     return NextResponse.json({ error: 'Too many requests. Try again tomorrow.' }, { status: 429 })
   }
