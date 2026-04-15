@@ -172,23 +172,20 @@ export default function ReportPage() {
   if (loading || !report) {
     return (
       <div className="flex min-h-screen items-center justify-center p-4">
-        <div className="flex flex-col items-center gap-4 text-center">
-          <LoaderIcon className="h-8 w-8 animate-spin text-primary" />
-          <div>
+        {report?.paid ? (
+          <FriendlyLoadingMessage
+            progress={progress}
+            city={report.city}
+            state={report.state}
+          />
+        ) : (
+          <div className="flex flex-col items-center gap-4 text-center">
+            <LoaderIcon className="h-8 w-8 animate-spin text-primary" />
             <p className="font-semibold text-foreground">
-              {report?.paid ? (
-                <FriendlyLoadingMessage progress={progress} />
-              ) : (
-                <FriendlyLoadingMessage variant="preview" />
-              )}
+              <FriendlyLoadingMessage variant="preview" />
             </p>
-            {report?.paid && (
-              <p className="mt-1 text-sm text-muted-foreground">
-                This usually takes 30-45 seconds. Please don&apos;t close this page.
-              </p>
-            )}
           </div>
-        </div>
+        )}
       </div>
     )
   }
