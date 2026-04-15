@@ -170,13 +170,19 @@ export default function ReportPage() {
   }
 
   if (loading || !report) {
+    // Show the full activity log as soon as we know this is a paid generation:
+    // - report.paid flips after the first fast poll (~200ms)
+    // - isSuccess means the user just came from checkout (paid, definitely generating)
+    // - isDebug means the GET blocks for the full generation duration (report stays
+    //   null the whole time), so we need to show the log from the very first render
+    const showFullLog = Boolean(report?.paid || isSuccess || isDebug)
     return (
       <div className="flex min-h-screen items-center justify-center p-4">
-        {report?.paid ? (
+        {showFullLog ? (
           <FriendlyLoadingMessage
             progress={progress}
-            city={report.city}
-            state={report.state}
+            city={report?.city}
+            state={report?.state}
           />
         ) : (
           <div className="flex flex-col items-center gap-4 text-center">
