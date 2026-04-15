@@ -7,9 +7,6 @@ import { TeaserMetrics } from '@/components/TeaserMetrics'
 import { BlurredReport } from '@/components/BlurredReport'
 import { LiveCounter } from '@/components/LiveCounter'
 import { Logo } from '@/components/Logo'
-import dynamic from 'next/dynamic'
-
-const MapPin3D = dynamic(() => import('@/components/MapPin3D'), { ssr: false })
 import {
   ShieldCheckIcon,
   ZapIcon,
@@ -334,13 +331,6 @@ export default function LandingContent() {
       {result && (
         <section id="results" className="relative mx-auto max-w-6xl px-5 pb-16">
           <div className="flex flex-col items-center gap-8">
-            <div className="w-full animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <MapPin3D
-                city={result.property.city}
-                state={result.property.state}
-                address={result.property.address}
-              />
-            </div>
             <TeaserMetrics teaser={result.teaser} property={result.property} />
             <BlurredReport uuid={result.uuid} address={result.property.address} />
           </div>
