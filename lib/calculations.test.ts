@@ -18,6 +18,7 @@ import {
   STATE_RULES,
   getStateFromZipCode,
   isStrProhibitedForInvestor,
+  getJurisdictionRules,
 } from './calculations'
 
 // Verified against Bankrate's mortgage calculator. If any of these change,
@@ -986,5 +987,14 @@ describe('isStrProhibitedForInvestor', () => {
     expect(isStrProhibitedForInvestor('MD', null)).toBe(false)
     expect(isStrProhibitedForInvestor('MD', '')).toBe(false)
     expect(isStrProhibitedForInvestor('', null)).toBe(false)
+  })
+})
+
+describe('getJurisdictionRules', () => {
+  it('applies Phoenix STR lodging tax instead of falling back to zero', () => {
+    const rules = getJurisdictionRules('AZ', 'Phoenix')
+
+    expect(rules.hotelOccupancyTaxRate).toBeCloseTo(0.1257, 4)
+    expect(rules.strNotes).toMatch(/transient|lodging|tax/i)
   })
 })

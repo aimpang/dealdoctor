@@ -5,6 +5,7 @@ import {
   buildValueTriangulationOutput,
   dedupeNearDuplicateComps,
   resolveCanonicalBreakeven,
+  resolvePropertyTax,
   selectCompsForArv,
 } from './reportGenerator'
 import * as reportGenerator from './reportGenerator'
@@ -984,5 +985,242 @@ describe('buildSameBuildingRentCompWarning — confirms haircut is applied mecha
     // Past-tense "applied" means the calc engine handled it; imperative
     // "Apply" leaves it as an unfulfilled user TODO.
     expect(w).toMatch(/\bapplied\b/i)
+  })
+})
+
+// ─── resolvePropertyTax ───────────────────────────────────────────────────────
+// Covers every branch of the tax source decision tree:
+//   county-record  →  Rentcast annualPropertyTax is positive and sane
+//   city-override  →  Rentcast missing, but CITY_RULES has a rate for this city
+//   state-average  →  Rentcast missing, no city override
+// Plus building-level rejection (3× state-avg and >60% AVM) and edge cases.
+
+describe('resolvePropertyTax', () => {
+  // ── Group 1: county-record happy path ────────────────────────────────────
+  it('uses county-record when Rentcast annual_property_tax is positive', () => {
+    // $7,200/yr → $600/mo; TX state rate 1.8% on $400k → $600/mo state-avg
+    // county-record should win because it is present and not building-level
+    const result = resolvePropertyTax({
+      annualPropertyTax: 7200,
+      offerPrice: 400_000,
+      statePropertyTaxRate: 0.018,
+      hasCityTaxOverride: false,
+      city: 'AUSTIN',
+      state: 'TX',
+    })
+    expect(result.propertyTaxSource).toBe('county-record')
+    expect(result.monthlyPropertyTax).toBe(600)
+    expect(result.taxIsBuildingLevel).toBe(false)
+  })
+
+  it('rounds county-record to nearest dollar', () => {
+    // $7,001/yr → 583.416… → rounds to $583
+    const result = resolvePropertyTax({
+      annualPropertyTax: 7001,
+      offerPrice: 400_000,
+      statePropertyTaxRate: 0.018,
+      hasCityTaxOverride: false,
+      city: 'AUSTIN',
+      state: 'TX',
+    })
+    expect(result.propertyTaxSource).toBe('county-record')
+    expect(result.monthlyPropertyTax).toBe(583)
+  })
+
+  it('county-record beats city-override when Rentcast data is present and sane', () => {
+    // Even if CITY_RULES has a rate (hasCityTaxOverride: true), actual Rentcast
+    // data is more accurate and should take precedence.
+    const result = resolvePropertyTax({
+      annualPropertyTax: 7200,
+      offerPrice: 400_000,
+      statePropertyTaxRate: 0.018,
+      hasCityTaxOverride: true,
+      city: 'HOUSTON',
+      state: 'TX',
+    })
+    expect(result.propertyTaxSource).toBe('county-record')
+    expect(result.monthlyPropertyTax).toBe(600)
+  })
+
+  // ── Group 2: city-override path ───────────────────────────────────────────
+  it('falls back to city-override when annualPropertyTax is undefined', () => {
+    const result = resolvePropertyTax({
+      annualPropertyTax: undefined,
+      offerPrice: 400_000,
+      statePropertyTaxRate: 0.018,
+      hasCityTaxOverride: true,
+      city: 'HOUSTON',
+      state: 'TX',
+    })
+    expect(result.propertyTaxSource).toBe('city-override')
+  })
+
+  it('falls back to city-override when annualPropertyTax is 0', () => {
+    // 0 is treated as missing (Rentcast sentinel for no data)
+    const result = resolvePropertyTax({
+      annualPropertyTax: 0,
+      offerPrice: 400_000,
+      statePropertyTaxRate: 0.018,
+      hasCityTaxOverride: true,
+      city: 'HOUSTON',
+      state: 'TX',
+    })
+    expect(result.propertyTaxSource).toBe('city-override')
+  })
+
+  // ── Group 3: state-average fallback ──────────────────────────────────────
+  it('falls back to state-average when Rentcast missing and no city override', () => {
+    const result = resolvePropertyTax({
+      annualPropertyTax: undefined,
+      offerPrice: 300_000,
+      statePropertyTaxRate: 0.01,
+      hasCityTaxOverride: false,
+      city: 'NOWHERE',
+      state: 'OH',
+    })
+    expect(result.propertyTaxSource).toBe('state-average')
+    // $300k × 1% / 12 = $250
+    expect(result.monthlyPropertyTax).toBe(250)
+  })
+
+  it('falls back to state-average when annualPropertyTax is 0 and no city override', () => {
+    const result = resolvePropertyTax({
+      annualPropertyTax: 0,
+      offerPrice: 300_000,
+      statePropertyTaxRate: 0.01,
+      hasCityTaxOverride: false,
+      city: 'NOWHERE',
+      state: 'OH',
+    })
+    expect(result.propertyTaxSource).toBe('state-average')
+    expect(result.monthlyPropertyTax).toBe(250)
+  })
+
+  // ── Group 4: building-level rejection — 3× state-average threshold ────────
+  it('rejects building-level county-record exceeding 3× state-average', () => {
+    // $22,000/yr on $400k TX (state-avg $600/mo) → county-record $1,833/mo > 3×$600=$1,800
+    const result = resolvePropertyTax({
+      annualPropertyTax: 22_000,
+      offerPrice: 400_000,
+      statePropertyTaxRate: 0.018,
+      hasCityTaxOverride: false,
+      city: 'AUSTIN',
+      state: 'TX',
+    })
+    expect(result.taxIsBuildingLevel).toBe(true)
+    expect(result.propertyTaxSource).not.toBe('county-record')
+  })
+
+  it('does NOT reject when county-record equals exactly 3× state-average (strictly-greater threshold)', () => {
+    // $21,600/yr → $1,800/mo exactly; state-avg $600/mo → exactly 3× but NOT > 3×
+    const result = resolvePropertyTax({
+      annualPropertyTax: 21_600,
+      offerPrice: 400_000,
+      statePropertyTaxRate: 0.018,
+      hasCityTaxOverride: false,
+      city: 'AUSTIN',
+      state: 'TX',
+    })
+    expect(result.taxIsBuildingLevel).toBe(false)
+    expect(result.propertyTaxSource).toBe('county-record')
+  })
+
+  it('rejects Bronx audit case: $1,025,784/yr on $223k offer (building-level multi-unit)', () => {
+    // Real audit case that surfaced building-level tax bleeding into unit calculations.
+    // $1,025,784 / 12 = $85,482/mo; state-avg: $223k × 1.25% / 12 ≈ $232/mo → far > 3×
+    const result = resolvePropertyTax({
+      annualPropertyTax: 1_025_784,
+      offerPrice: 223_000,
+      statePropertyTaxRate: 0.0125,
+      hasCityTaxOverride: false,
+      city: 'BRONX',
+      state: 'NY',
+    })
+    expect(result.taxIsBuildingLevel).toBe(true)
+    expect(result.propertyTaxSource).not.toBe('county-record')
+  })
+
+  // ── Group 5: building-level rejection — >60% AVM threshold ───────────────
+  // To isolate the 60%-AVM condition independently of the 3× condition we
+  // use an artificially high statePropertyTaxRate (25%) so that 3× state-avg
+  // sits above the 60%-boundary county-record figure.
+  //   offerPrice=$200k, stateRate=25% → stateAvg=$4,167/mo → 3×=$12,500/mo
+  //   60% boundary = $120k/yr → $10,000/mo < $12,500  (3× guard silent here)
+  it('rejects county-record when annual tax exceeds 60% of offer price', () => {
+    // $125,000/yr on $200k → 62.5% of AVM → building-level via >60% path
+    // countyRecordTax $10,417/mo < 3×$4,167=$12,500 → 3× guard does NOT fire
+    const result = resolvePropertyTax({
+      annualPropertyTax: 125_000,
+      offerPrice: 200_000,
+      statePropertyTaxRate: 0.25,
+      hasCityTaxOverride: false,
+      city: 'TESTVILLE',
+      state: 'TX',
+    })
+    expect(result.taxIsBuildingLevel).toBe(true)
+  })
+
+  it('does NOT reject when annual tax equals exactly 60% of offer price (strictly-greater threshold)', () => {
+    // $120,000/yr on $200k → exactly 60% → NOT rejected (strict >)
+    // countyRecordTax $10,000/mo < 3×$4,167=$12,500 → 3× guard also silent
+    const result = resolvePropertyTax({
+      annualPropertyTax: 120_000,
+      offerPrice: 200_000,
+      statePropertyTaxRate: 0.25,
+      hasCityTaxOverride: false,
+      city: 'TESTVILLE',
+      state: 'TX',
+    })
+    expect(result.taxIsBuildingLevel).toBe(false)
+  })
+
+  // ── Group 6: edge cases ───────────────────────────────────────────────────
+  it('handles undefined annualPropertyTax without throwing', () => {
+    expect(() =>
+      resolvePropertyTax({
+        annualPropertyTax: undefined,
+        offerPrice: 300_000,
+        statePropertyTaxRate: 0.01,
+        hasCityTaxOverride: false,
+        city: 'NOWHERE',
+        state: 'OH',
+      })
+    ).not.toThrow()
+    const result = resolvePropertyTax({
+      annualPropertyTax: undefined,
+      offerPrice: 300_000,
+      statePropertyTaxRate: 0.01,
+      hasCityTaxOverride: false,
+      city: 'NOWHERE',
+      state: 'OH',
+    })
+    expect(result.taxIsBuildingLevel).toBe(false)
+    expect(result.propertyTaxSource).toBe('state-average')
+  })
+
+  it('treats negative annualPropertyTax as missing (no county-record path)', () => {
+    const result = resolvePropertyTax({
+      annualPropertyTax: -100,
+      offerPrice: 300_000,
+      statePropertyTaxRate: 0.01,
+      hasCityTaxOverride: false,
+      city: 'NOWHERE',
+      state: 'OH',
+    })
+    expect(result.propertyTaxSource).toBe('state-average')
+    expect(result.taxIsBuildingLevel).toBe(false)
+  })
+
+  it('does not divide by zero when offerPrice is 0', () => {
+    expect(() =>
+      resolvePropertyTax({
+        annualPropertyTax: 7200,
+        offerPrice: 0,
+        statePropertyTaxRate: 0.018,
+        hasCityTaxOverride: false,
+        city: 'AUSTIN',
+        state: 'TX',
+      })
+    ).not.toThrow()
   })
 })

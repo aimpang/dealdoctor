@@ -928,7 +928,7 @@ export const STATE_RULES: Record<string, {
   // as the non-homesteaded statewide fallback; high-tax counties (Broward, Miami-Dade)
   // are overridden per-city in CITY_RULES. All FL STR revenue is subject to FL 6%
   // sales tax + county Tourist Development Tax (TDT, typically 5–6%).
-  FL: { name: 'Florida', propertyTaxRate: 0.011, rentControl: false, landlordFriendly: true, strNotes: 'Investment properties are NOT eligible for Florida\'s Save Our Homes 3% assessment cap (homesteaded primary residences only) — effective non-homesteaded rates vary from ~1.1% (rural) to ~1.7% (Miami-Dade/Broward). All STR revenue is subject to FL 6% sales tax + county Tourist Development Tax (TDT, 5–6% depending on county). SB 714 (2024) limits some local STR bans but does not fully preempt county/city rules. Major markets require STR registration.' },
+  FL: { name: 'Florida', propertyTaxRate: 0.011, rentControl: false, landlordFriendly: true, strNotes: 'Investment properties are NOT eligible for Florida\'s Save Our Homes 3% assessment cap (homesteaded primary residences only) — effective non-homesteaded rates vary from ~1.1% (rural) to ~1.7% (Miami-Dade/Broward). All STR gross revenue is subject to three layers: FL 6% state sales tax + FL county discretionary sales surtax (0.5–1.5% depending on county) + county Tourist Development Tax (TDT, 5–7%). Combined all-in STR tax typically runs 12.5–14% by county. SB 714 (2024) limits some local STR bans but does not fully preempt county/city rules. Major markets require STR registration.' },
   // CA: 0.73% reflects the statewide portfolio average suppressed by Prop 13 lock-in
   // across long-held properties. For a NEW purchase the effective rate is ~1.1%.
   // AB 1482 (Tenant Protection Act): SFRs are NOT automatically exempt when held in
@@ -1039,6 +1039,22 @@ export const CITY_RULES: Record<string, Partial<{
     strAnnualRegistrationFee: 275,
     strNotes: 'Houston STR ordinance effective Jan 1, 2026: $275 annual registration, safety inspection, and human trafficking awareness training required. 13% combined hotel occupancy tax applies (6% TX + 7% Harris County). Event-venue advertising prohibited. STR is legal but factor the $275 registration + 13% HOT tax into net revenue.',
   },
+  // Austin, TX: City of Austin requires STR permit (Type 1 owner-occupied or
+  // Type 2 non-owner-occupied). Combined HOT: 6% TX state + 9% City of Austin
+  // + 2% Austin venue project tax = 17% total on STR gross revenue.
+  // Travis County effective property tax rate ~1.9% for non-homesteaded SFR
+  // (city $0.445 + county $0.327 + AISD $1.014 + other per $100 assessed, roughly).
+  'AUSTIN, TX': {
+    propertyTaxRate: 0.019,
+    hotelOccupancyTaxRate: 0.17,
+    strNotes: 'Austin (Travis County). City of Austin requires STR permit (Type 1 or Type 2). 17% combined hotel occupancy tax on STR gross revenue: 6% TX state + 9% City of Austin + 2% Austin venue project tax. Travis County non-homesteaded SFR effective rate ~1.9%.',
+  },
+  // Phoenix, AZ / Maricopa County transient lodging: 5.5% AZ state TPT +
+  // 1.77% Maricopa County + 5.3% Phoenix hotel/motel tax = 12.57% combined.
+  'PHOENIX, AZ': {
+    hotelOccupancyTaxRate: 0.1257,
+    strNotes: 'Phoenix (Maricopa County). STR stays under 30 days are subject to ~12.57% combined transient lodging tax: 5.5% Arizona state TPT + 1.77% Maricopa County + 5.3% City of Phoenix hotel/motel tax. Verify current ADOR / city filing requirements and whether your booking platform auto-remits.',
+  },
   // NYC: NY state RPTT 0.4% + NYC RPTT 1.425% (residential > $500K) ≈ 1.825%.
   // Does NOT include the progressive mansion tax (additional 1%+ on $1M+);
   // that layer is a separate bracket we'd model if/when we add $1M+ deals.
@@ -1064,61 +1080,62 @@ export const CITY_RULES: Record<string, Partial<{
   // non-homesteaded combined millage. STR lodging tax = FL 6% sales tax +
   // county Tourist Development Tax (TDT) per FSS §125.0104.
   //
-  // Broward County (Fort Lauderdale metro): ~1.65% non-homesteaded, 12% STR HOT
+  // Broward County (Fort Lauderdale metro): ~1.65% non-homesteaded, 13% STR
+  // (FL 6% state + 1% Broward discretionary surtax + 6% Broward TDT)
   'FORT LAUDERDALE, FL': {
     propertyTaxRate: 0.0165,
-    hotelOccupancyTaxRate: 0.12,
-    strNotes: 'Fort Lauderdale requires vacation rental registration with DBPR and the city. FL 6% sales tax + 6% Broward County TDT = 12% on all STR gross revenue. Non-homesteaded investment properties: effective Broward County rate ~1.65% (no Save Our Homes cap).',
+    hotelOccupancyTaxRate: 0.13,
+    strNotes: 'Fort Lauderdale requires vacation rental registration with DBPR and the city. FL 6% state sales tax + 1% Broward discretionary surtax + 6% Broward County TDT = 13% on all STR gross revenue. Non-homesteaded investment properties: effective Broward County rate ~1.65% (no Save Our Homes cap).',
   },
   'HOLLYWOOD, FL': {
     propertyTaxRate: 0.0165,
-    hotelOccupancyTaxRate: 0.12,
-    strNotes: 'Hollywood (Broward County) requires vacation rental registration. FL 6% sales tax + 6% Broward TDT = 12% on STR gross. Non-homesteaded effective rate ~1.65%.',
+    hotelOccupancyTaxRate: 0.13,
+    strNotes: 'Hollywood (Broward County) requires vacation rental registration. FL 6% + 1% Broward surtax + 6% Broward TDT = 13% on STR gross. Non-homesteaded effective rate ~1.65%.',
   },
   'POMPANO BEACH, FL': {
     propertyTaxRate: 0.0165,
-    hotelOccupancyTaxRate: 0.12,
-    strNotes: 'Pompano Beach (Broward County). FL 6% sales tax + 6% Broward TDT = 12% on STR gross. Non-homesteaded effective rate ~1.65%.',
+    hotelOccupancyTaxRate: 0.13,
+    strNotes: 'Pompano Beach (Broward County). FL 6% + 1% Broward surtax + 6% Broward TDT = 13% on STR gross. Non-homesteaded effective rate ~1.65%.',
   },
   'DEERFIELD BEACH, FL': {
     propertyTaxRate: 0.0165,
-    hotelOccupancyTaxRate: 0.12,
-    strNotes: 'Deerfield Beach (Broward County). FL 6% sales tax + 6% Broward TDT = 12% on STR gross. Non-homesteaded effective rate ~1.65%.',
+    hotelOccupancyTaxRate: 0.13,
+    strNotes: 'Deerfield Beach (Broward County). FL 6% + 1% Broward surtax + 6% Broward TDT = 13% on STR gross. Non-homesteaded effective rate ~1.65%.',
   },
   'MIRAMAR, FL': {
     propertyTaxRate: 0.0165,
-    hotelOccupancyTaxRate: 0.12,
-    strNotes: 'Miramar (Broward County). FL 6% sales tax + 6% Broward TDT = 12% on STR gross. Non-homesteaded effective rate ~1.65%.',
+    hotelOccupancyTaxRate: 0.13,
+    strNotes: 'Miramar (Broward County). FL 6% + 1% Broward surtax + 6% Broward TDT = 13% on STR gross. Non-homesteaded effective rate ~1.65%.',
   },
   'PEMBROKE PINES, FL': {
     propertyTaxRate: 0.0165,
-    hotelOccupancyTaxRate: 0.12,
-    strNotes: 'Pembroke Pines (Broward County). FL 6% sales tax + 6% Broward TDT = 12% on STR gross. Non-homesteaded effective rate ~1.65%.',
+    hotelOccupancyTaxRate: 0.13,
+    strNotes: 'Pembroke Pines (Broward County). FL 6% + 1% Broward surtax + 6% Broward TDT = 13% on STR gross. Non-homesteaded effective rate ~1.65%.',
   },
   'CORAL SPRINGS, FL': {
     propertyTaxRate: 0.0165,
-    hotelOccupancyTaxRate: 0.12,
-    strNotes: 'Coral Springs (Broward County). FL 6% sales tax + 6% Broward TDT = 12% on STR gross. Non-homesteaded effective rate ~1.65%.',
+    hotelOccupancyTaxRate: 0.13,
+    strNotes: 'Coral Springs (Broward County). FL 6% + 1% Broward surtax + 6% Broward TDT = 13% on STR gross. Non-homesteaded effective rate ~1.65%.',
   },
   'PLANTATION, FL': {
     propertyTaxRate: 0.0165,
-    hotelOccupancyTaxRate: 0.12,
-    strNotes: 'Plantation (Broward County). FL 6% sales tax + 6% Broward TDT = 12% on STR gross. Non-homesteaded effective rate ~1.65%.',
+    hotelOccupancyTaxRate: 0.13,
+    strNotes: 'Plantation (Broward County). FL 6% + 1% Broward surtax + 6% Broward TDT = 13% on STR gross. Non-homesteaded effective rate ~1.65%.',
   },
   'SUNRISE, FL': {
     propertyTaxRate: 0.0165,
-    hotelOccupancyTaxRate: 0.12,
-    strNotes: 'Sunrise (Broward County). FL 6% sales tax + 6% Broward TDT = 12% on STR gross. Non-homesteaded effective rate ~1.65%.',
+    hotelOccupancyTaxRate: 0.13,
+    strNotes: 'Sunrise (Broward County). FL 6% + 1% Broward surtax + 6% Broward TDT = 13% on STR gross. Non-homesteaded effective rate ~1.65%.',
   },
   'DAVIE, FL': {
     propertyTaxRate: 0.0165,
-    hotelOccupancyTaxRate: 0.12,
-    strNotes: 'Davie (Broward County). FL 6% sales tax + 6% Broward TDT = 12% on STR gross. Non-homesteaded effective rate ~1.65%.',
+    hotelOccupancyTaxRate: 0.13,
+    strNotes: 'Davie (Broward County). FL 6% + 1% Broward surtax + 6% Broward TDT = 13% on STR gross. Non-homesteaded effective rate ~1.65%.',
   },
   'HALLANDALE BEACH, FL': {
     propertyTaxRate: 0.0165,
-    hotelOccupancyTaxRate: 0.12,
-    strNotes: 'Hallandale Beach (Broward County). FL 6% sales tax + 6% Broward TDT = 12% on STR gross. Non-homesteaded effective rate ~1.65%.',
+    hotelOccupancyTaxRate: 0.13,
+    strNotes: 'Hallandale Beach (Broward County). FL 6% + 1% Broward surtax + 6% Broward TDT = 13% on STR gross. Non-homesteaded effective rate ~1.65%.',
   },
   // Miami-Dade County: ~1.70% non-homesteaded, ~13% STR HOT
   // (6% FL + 2% discretionary surtax + 3% TDT + 2% convention dev tax — exact
@@ -1149,74 +1166,79 @@ export const CITY_RULES: Record<string, Partial<{
     hotelOccupancyTaxRate: 0.13,
     strNotes: 'Miami Gardens (Miami-Dade County). FL + Miami-Dade combined lodging tax ~13% on STR gross. Non-homesteaded effective rate ~1.7%.',
   },
-  // Palm Beach County: ~1.55% non-homesteaded, 12% STR HOT (6% FL + 6% PB TDT)
+  // Palm Beach County: ~1.55% non-homesteaded, 13% STR
+  // (FL 6% state + 1% Palm Beach discretionary surtax + 6% Palm Beach TDT)
   'WEST PALM BEACH, FL': {
     propertyTaxRate: 0.0155,
-    hotelOccupancyTaxRate: 0.12,
-    strNotes: 'West Palm Beach (Palm Beach County). FL 6% sales tax + 6% Palm Beach TDT = 12% on STR gross. Non-homesteaded effective rate ~1.55%. City requires STR registration.',
+    hotelOccupancyTaxRate: 0.13,
+    strNotes: 'West Palm Beach (Palm Beach County). FL 6% + 1% Palm Beach surtax + 6% Palm Beach TDT = 13% on STR gross. Non-homesteaded effective rate ~1.55%. City requires STR registration.',
   },
   'BOCA RATON, FL': {
     propertyTaxRate: 0.0155,
-    hotelOccupancyTaxRate: 0.12,
-    strNotes: 'Boca Raton (Palm Beach County). FL 6% sales tax + 6% Palm Beach TDT = 12% on STR gross. Non-homesteaded effective rate ~1.55%.',
+    hotelOccupancyTaxRate: 0.13,
+    strNotes: 'Boca Raton (Palm Beach County). FL 6% + 1% Palm Beach surtax + 6% Palm Beach TDT = 13% on STR gross. Non-homesteaded effective rate ~1.55%.',
   },
   'DELRAY BEACH, FL': {
     propertyTaxRate: 0.0155,
-    hotelOccupancyTaxRate: 0.12,
-    strNotes: 'Delray Beach (Palm Beach County). FL 6% sales tax + 6% Palm Beach TDT = 12% on STR gross. Non-homesteaded effective rate ~1.55%.',
+    hotelOccupancyTaxRate: 0.13,
+    strNotes: 'Delray Beach (Palm Beach County). FL 6% + 1% Palm Beach surtax + 6% Palm Beach TDT = 13% on STR gross. Non-homesteaded effective rate ~1.55%.',
   },
   'BOYNTON BEACH, FL': {
     propertyTaxRate: 0.0155,
-    hotelOccupancyTaxRate: 0.12,
-    strNotes: 'Boynton Beach (Palm Beach County). FL 6% sales tax + 6% Palm Beach TDT = 12% on STR gross. Non-homesteaded effective rate ~1.55%.',
+    hotelOccupancyTaxRate: 0.13,
+    strNotes: 'Boynton Beach (Palm Beach County). FL 6% + 1% Palm Beach surtax + 6% Palm Beach TDT = 13% on STR gross. Non-homesteaded effective rate ~1.55%.',
   },
   'LAKE WORTH, FL': {
     propertyTaxRate: 0.0155,
-    hotelOccupancyTaxRate: 0.12,
-    strNotes: 'Lake Worth Beach (Palm Beach County). FL 6% sales tax + 6% Palm Beach TDT = 12% on STR gross. Non-homesteaded effective rate ~1.55%.',
+    hotelOccupancyTaxRate: 0.13,
+    strNotes: 'Lake Worth Beach (Palm Beach County). FL 6% + 1% Palm Beach surtax + 6% Palm Beach TDT = 13% on STR gross. Non-homesteaded effective rate ~1.55%.',
   },
-  // Hillsborough County / Tampa: ~1.40% non-homesteaded, 13% STR HOT
-  // (6% FL + 7% Hillsborough TDT)
+  // Hillsborough County / Tampa: ~1.40% non-homesteaded, 13.5% STR
+  // (FL 6% state + 1.5% Hillsborough discretionary surtax + 6% Hillsborough TDT)
+  // Note: surtax was temporarily 0.5% Jan–May 2025; reinstated to 1.5% June 1 2025
+  // per FL DOR TIP 25A01-12. TDT is 6%, not 5.5% — previous comment was wrong.
   'TAMPA, FL': {
     propertyTaxRate: 0.0140,
-    hotelOccupancyTaxRate: 0.13,
-    strNotes: 'Tampa (Hillsborough County) requires STR registration. FL 6% sales tax + 7% Hillsborough TDT = 13% on STR gross. Non-homesteaded effective rate ~1.4%.',
+    hotelOccupancyTaxRate: 0.135,
+    strNotes: 'Tampa (Hillsborough County) requires STR registration. FL 6% state + 1.5% Hillsborough surtax + 6% Hillsborough TDT = 13.5% on STR gross (as of June 1 2025). Non-homesteaded effective rate ~1.4%.',
   },
   'BRANDON, FL': {
     propertyTaxRate: 0.0140,
-    hotelOccupancyTaxRate: 0.13,
-    strNotes: 'Brandon (Hillsborough County). FL 6% sales tax + 7% Hillsborough TDT = 13% on STR gross. Non-homesteaded effective rate ~1.4%.',
+    hotelOccupancyTaxRate: 0.135,
+    strNotes: 'Brandon (Hillsborough County). FL 6% state + 1.5% Hillsborough surtax + 6% Hillsborough TDT = 13.5% on STR gross (as of June 1 2025). Non-homesteaded effective rate ~1.4%.',
   },
-  // Pinellas County / St. Pete: ~1.45% non-homesteaded, 13% STR HOT
-  // (6% FL + 7% Pinellas TDT)
+  // Pinellas County / St. Pete: ~1.45% non-homesteaded, 13% STR
+  // (FL 6% state + 1% Pinellas discretionary surtax + 6% Pinellas TDT)
   'ST. PETERSBURG, FL': {
     propertyTaxRate: 0.0145,
     hotelOccupancyTaxRate: 0.13,
-    strNotes: 'St. Petersburg (Pinellas County). FL 6% sales tax + 7% Pinellas TDT = 13% on STR gross. Non-homesteaded effective rate ~1.45%.',
+    strNotes: 'St. Petersburg (Pinellas County). FL 6% state + 1% Pinellas surtax + 6% Pinellas TDT = 13% on STR gross. Non-homesteaded effective rate ~1.45%.',
   },
   'CLEARWATER, FL': {
     propertyTaxRate: 0.0145,
     hotelOccupancyTaxRate: 0.13,
-    strNotes: 'Clearwater (Pinellas County). FL 6% sales tax + 7% Pinellas TDT = 13% on STR gross. Non-homesteaded effective rate ~1.45%.',
+    strNotes: 'Clearwater (Pinellas County). FL 6% state + 1% Pinellas surtax + 6% Pinellas TDT = 13% on STR gross. Non-homesteaded effective rate ~1.45%.',
   },
-  // Orange County / Orlando: ~1.35% non-homesteaded, 12.5% STR HOT
-  // (6% FL + 6.5% Orange County TDT)
+  // Orange County / Orlando: ~1.35% non-homesteaded, 12.5% STR
+  // (FL 6% state + 0.5% Orange discretionary surtax + 6% Orange County TDT)
   'ORLANDO, FL': {
     propertyTaxRate: 0.0135,
     hotelOccupancyTaxRate: 0.125,
-    strNotes: 'Orlando (Orange County) requires vacation rental registration. FL 6% sales tax + 6.5% Orange County TDT = 12.5% on STR gross. Non-homesteaded effective rate ~1.35%.',
+    strNotes: 'Orlando (Orange County) requires vacation rental registration. FL 6% state + 0.5% Orange surtax + 6% Orange County TDT = 12.5% on STR gross. Non-homesteaded effective rate ~1.35%.',
   },
+  // Osceola County / Kissimmee: ~1.35% non-homesteaded, 13.5% STR
+  // (FL 6% state + 1.5% Osceola discretionary surtax + 6% Osceola TDT)
   'KISSIMMEE, FL': {
     propertyTaxRate: 0.0135,
-    hotelOccupancyTaxRate: 0.125,
-    strNotes: 'Kissimmee (Osceola County, adjacent to Orange; similar STR regime). FL 6% sales tax + ~6% TDT ≈ 12% on STR gross. Non-homesteaded rate ~1.35%. Heavy STR market — verify current permitting.',
+    hotelOccupancyTaxRate: 0.135,
+    strNotes: 'Kissimmee (Osceola County). FL 6% state + 1.5% Osceola surtax + 6% Osceola TDT = 13.5% on STR gross. Non-homesteaded rate ~1.35%. Heavy STR market — verify current city permitting requirements.',
   },
-  // Duval County / Jacksonville: ~1.20% non-homesteaded, 12% STR HOT
-  // (6% FL + 6% Duval TDT)
+  // Duval County / Jacksonville: ~1.20% non-homesteaded, 13.5% STR
+  // (FL 6% state + 1.5% Duval discretionary surtax + 6% Duval TDT)
   'JACKSONVILLE, FL': {
     propertyTaxRate: 0.0120,
-    hotelOccupancyTaxRate: 0.12,
-    strNotes: 'Jacksonville (Duval County). FL 6% sales tax + 6% Duval TDT = 12% on STR gross. Non-homesteaded effective rate ~1.2%.',
+    hotelOccupancyTaxRate: 0.135,
+    strNotes: 'Jacksonville (Duval County). FL 6% state + 1.5% Duval surtax + 6% Duval TDT = 13.5% on STR gross. Non-homesteaded effective rate ~1.2%.',
   },
 
   // ── Indiana: Marion County (Indianapolis) ────────────────────────────────────
@@ -1224,11 +1246,12 @@ export const CITY_RULES: Record<string, Partial<{
   // Indiana's SFR investment property is subject to a 2% circuit breaker cap on
   // property tax as a % of gross assessed value. Marion County's effective non-
   // homesteaded rate for investment SFR is ~2.0–2.2% — roughly 2.5× the 0.8%
-  // statewide average. Combined innkeeper's tax: 7% IN state + 6% Marion County = 13%.
+  // statewide average. Combined innkeeper's tax: 7% IN state + 10% Marion County = 17%.
+  // (Prior comment said 6% Marion — wrong. Marion County's innkeeper's tax is 10%.)
   'INDIANAPOLIS, IN': {
     propertyTaxRate: 0.021,
-    hotelOccupancyTaxRate: 0.13,
-    strNotes: 'Indianapolis (Marion County). Indiana levies 7% state innkeeper\'s tax + 6% Marion County innkeeper\'s tax = 13% on all STR gross revenue. Marion County non-homesteaded investment SFR: effective rate ~2.0–2.2% (Indiana\'s 2% circuit breaker caps rental-property tax at 2% of gross assessed value). No statewide STR permit requirement; verify county zoning.',
+    hotelOccupancyTaxRate: 0.17,
+    strNotes: 'Indianapolis (Marion County). Indiana levies 7% state innkeeper\'s tax + 10% Marion County innkeeper\'s tax = 17% on all STR gross revenue. Marion County non-homesteaded investment SFR: effective rate ~2.0–2.2% (Indiana\'s 2% circuit breaker caps rental-property tax at 2% of gross assessed value). No statewide STR permit requirement; verify county zoning.',
   },
 
   // ── California: Sacramento County ────────────────────────────────────────────

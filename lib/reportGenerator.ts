@@ -100,6 +100,8 @@ export interface ReportWarning {
     | 'thin-comp-set'
     | 'condo-misclassified'
     | 'sqft-bedroom-mismatch'
+    | 'avm-wide-range'
+    | 'avm-extremely-wide'
   message: string
 }
 
@@ -912,6 +914,93 @@ export function buildValueTriangulationOutput(input: {
   }
 }
 
+// ─── resolvePropertyTax ───────────────────────────────────────────────────────
+
+export interface ResolvePropertyTaxResult {
+  monthlyPropertyTax: number
+  propertyTaxSource: 'county-record' | 'city-override' | 'state-average'
+  taxIsBuildingLevel: boolean
+  /** State-average monthly figure used for building-level detection and exemption warnings */
+  stateAverageTax: number
+  /** County-record monthly figure (0 if Rentcast returned no data or negative) */
+  countyRecordTax: number
+}
+
+/**
+ * Pure helper that chooses the best property-tax estimate for a single unit.
+ *
+ * Source priority:
+ *   1. county-record  — Rentcast annualPropertyTax (positive and not building-level)
+ *   2. city-override  — statePropertyTaxRate already contains the CITY_RULES override;
+ *                       hasCityTaxOverride signals which badge label to show
+ *   3. state-average  — pure STATE_RULES fallback
+ *
+ * Building-level rejection: if the county-record monthly figure exceeds 3× the
+ * state-average estimate OR the annual amount exceeds 60% of the offer price,
+ * it almost certainly represents the entire building (e.g., NYC co-ops). Fall
+ * back to state-average (or city-override if available).
+ */
+export function resolvePropertyTax(input: {
+  annualPropertyTax: number | undefined
+  offerPrice: number
+  statePropertyTaxRate: number
+  hasCityTaxOverride: boolean
+  city: string
+  state: string
+}): ResolvePropertyTaxResult {
+  const { annualPropertyTax, offerPrice, statePropertyTaxRate, hasCityTaxOverride, city, state } =
+    input
+
+  const stateAverageTax = Math.round((offerPrice * statePropertyTaxRate) / 12)
+  const countyRecordTax =
+    annualPropertyTax != null && annualPropertyTax > 0
+      ? Math.round(annualPropertyTax / 12)
+      : 0
+
+  const taxIsBuildingLevel =
+    countyRecordTax > 0 &&
+    (countyRecordTax > stateAverageTax * 3 ||
+      (annualPropertyTax ?? 0) > Math.max(offerPrice, 1) * 0.6)
+
+  if (countyRecordTax > 0 && !taxIsBuildingLevel) {
+    return {
+      monthlyPropertyTax: countyRecordTax,
+      propertyTaxSource: 'county-record',
+      taxIsBuildingLevel: false,
+      stateAverageTax,
+      countyRecordTax,
+    }
+  }
+
+  if (taxIsBuildingLevel) {
+    logger.warn('property_tax.building_level_rejected', {
+      city,
+      state,
+      countyRecordMonthly: countyRecordTax,
+      stateAverageMonthly: stateAverageTax,
+      ratio: +(countyRecordTax / Math.max(stateAverageTax, 1)).toFixed(1),
+      annualTaxToOfferPricePct: +(((annualPropertyTax ?? 0) / Math.max(offerPrice, 1)) * 100).toFixed(1),
+      fallbackSource: hasCityTaxOverride ? 'city-override' : 'state-average',
+    })
+  } else {
+    logger.warn('property_tax.rentcast_missing', {
+      city,
+      state,
+      fallbackSource: hasCityTaxOverride ? 'city-override' : 'state-average',
+      stateAverageMonthly: stateAverageTax,
+      offerPrice,
+    })
+  }
+
+  return {
+    monthlyPropertyTax: stateAverageTax,
+    propertyTaxSource: hasCityTaxOverride ? 'city-override' : 'state-average',
+    taxIsBuildingLevel,
+    stateAverageTax,
+    countyRecordTax,
+  }
+}
+
 /**
  * Pure composition — all the math, warnings, triangulation, and data assembly
  * that used to live inside generateFullReport. Takes already-fetched external
@@ -1058,39 +1147,17 @@ export async function composeFullReport(
   const hasCityTaxOverride = typeof CITY_RULES[cityTaxKey]?.propertyTaxRate === 'number'
   let monthlyPropertyTax: number
   let propertyTaxSource: 'county-record' | 'city-override' | 'state-average'
-  // Building-level tax detection — same rule as the triangulation fix.
-  // NYC co-ops and some multi-unit records return the ENTIRE building's
-  // annual tax on every unit (Bronx 5700 Arlington Ave audit: $85,482/mo
-  // property tax on a $223K apartment when the 2026-04-13 triangulation
-  // fix had already flagged the assessment at 63× AVM). Without this
-  // sibling check, the tax leaks into monthly expenses → blows up DSCR,
-  // cash flow, and wealth projection.
-  const stateAverageTax = Math.round((offerPrice * stateRules.propertyTaxRate) / 12)
-  const countyRecordTax =
-    property.annual_property_tax && property.annual_property_tax > 0
-      ? Math.round(property.annual_property_tax / 12)
-      : 0
-  // If the county-record monthly tax exceeds 3× the state-average estimate
-  // OR more than 5% of the AVM per month (i.e., annual tax > 60% of AVM
-  // — structurally impossible for a single unit), it's almost certainly
-  // a building-level figure. Fall back to the state average.
-  const taxIsBuildingLevel =
-    countyRecordTax > 0 &&
-    (countyRecordTax > stateAverageTax * 3 ||
-      (property.annual_property_tax ?? 0) > Math.max(offerPrice, 1) * 0.6)
-
-  if (countyRecordTax > 0 && !taxIsBuildingLevel) {
-    monthlyPropertyTax = countyRecordTax
-    propertyTaxSource = 'county-record'
-  } else {
-    monthlyPropertyTax = stateAverageTax
-    propertyTaxSource = hasCityTaxOverride ? 'city-override' : 'state-average'
-    if (taxIsBuildingLevel) {
-      console.log(
-        `[reportGenerator] county-record tax ${countyRecordTax.toLocaleString()}/mo appears to be building-level (> 3× state average or > 60% of AVM/yr); falling back to state-average ${stateAverageTax.toLocaleString()}/mo`
-      )
-    }
-  }
+  let taxIsBuildingLevel: boolean
+  let stateAverageTax: number
+  let countyRecordTax: number
+  ;({ monthlyPropertyTax, propertyTaxSource, taxIsBuildingLevel, stateAverageTax, countyRecordTax } = resolvePropertyTax({
+    annualPropertyTax: property.annual_property_tax,
+    offerPrice,
+    statePropertyTaxRate: stateRules.propertyTaxRate,
+    hasCityTaxOverride,
+    city: report.city.trim().toUpperCase(),
+    state: report.state.trim().toUpperCase(),
+  }))
 
   // Exemption detection: when the county-record tax is materially below the
   // state-average estimate (< 50%), the prior owner likely carries a homestead,
@@ -1356,7 +1423,20 @@ export async function composeFullReport(
   // Blacksburg audit: AVM $540k vs sale-comp median $240k = 101% spread,
   // confidence=low, but ltrMetrics.verdict landed on DEAL after the rent
   // heuristic multiplied. The cap protects against heuristic/AVM error.
-  const valueUncertaintyCapped = valueConfidence === 'low' && valueSpread > 0.5
+  //
+  // Second path (Fort Lauderdale / Escalones audit): single-signal AVM with
+  // an internal band ≥40% wide. Cross-signal spread is zero (only one point
+  // estimate), so the existing check misses it — but the AVM provider itself
+  // is signalling ±20%+ uncertainty on the midpoint it returned. Treat a
+  // ≥40% internal band on a single-signal valuation the same as a wide
+  // cross-signal spread: cap DEAL → MARGINAL.
+  const avmBandSpread =
+    property.value_range_low && property.value_range_high && property.estimated_value > 0
+      ? (property.value_range_high - property.value_range_low) / property.estimated_value
+      : 0
+  const valueUncertaintyCapped =
+    (valueConfidence === 'low' && valueSpread > 0.5) ||
+    (valueConfidence === 'low' && avmBandSpread >= 0.40)
   const effectiveVerdict: typeof ltrMetrics.verdict =
     valueUncertaintyCapped && ltrMetrics.verdict === 'DEAL' ? 'MARGINAL' : ltrMetrics.verdict
   // The raw classifier returns 'PASS' meaning "pass ON this deal" (i.e.
@@ -1467,6 +1547,25 @@ export async function composeFullReport(
       ? 'inferred-condo-default'
       : 'not-captured',
   })
+
+  // AVM confidence band — mirror the preview warning so paying users also see
+  // it. Same two-tier logic: ≥40% → extremely wide (do not rely on midpoint),
+  // 30–40% → wide (verify before acting). avmBandSpread is computed alongside
+  // the verdict cap above.
+  if (avmBandSpread >= 0.40 && property.value_range_low && property.value_range_high) {
+    const lowEndPct = Math.round(
+      ((property.estimated_value - property.value_range_low) / property.estimated_value) * 100
+    )
+    warnings.push({
+      code: 'avm-extremely-wide',
+      message: `Value AVM has an extremely wide confidence band ($${property.value_range_low.toLocaleString()}–$${property.value_range_high.toLocaleString()}, ±${Math.round((avmBandSpread / 2) * 100)}%). The low end is ${lowEndPct}% below the midpoint — every derived metric (cap rate, DSCR, cash flow, IRR) changes materially across this range. Do NOT make an offer based on the midpoint alone. Get an independent CMA or in-person appraisal before trusting these numbers.`,
+    })
+  } else if (avmBandSpread > 0.30 && property.value_range_low && property.value_range_high) {
+    warnings.push({
+      code: 'avm-wide-range',
+      message: `Value AVM has a wide confidence band ($${property.value_range_low.toLocaleString()}–$${property.value_range_high.toLocaleString()}, ±${Math.round((avmBandSpread / 2) * 100)}%). The midpoint is uncertain; cross-check against Zillow / Redfin / a local agent before trusting.`,
+    })
+  }
 
   // Surface the sqft correction to the user so they know the displayed
   // figure was normalized. Keep it separate from the data-provenance-level

@@ -264,6 +264,13 @@ export async function POST(req: NextRequest) {
     // the AVM itself is uncertain. Grok caught this on 216 W Escalones
     // where the range was $1.97M-$3.25M (49% spread) but we showed $2.61M
     // as if it were precise.
+    //
+    // Two tiers:
+    //   ≥40% spread → "extremely wide" — every derived metric (cap rate,
+    //     cash flow, DSCR, IRR) changes materially across the band. The
+    //     midpoint may be far from reality; an independent CMA or appraisal
+    //     is mandatory before relying on the numbers.
+    //   ≥30% spread → "wide" — meaningful uncertainty, verify before acting.
     if (
       property.value_range_low &&
       property.value_range_high &&
@@ -271,10 +278,24 @@ export async function POST(req: NextRequest) {
     ) {
       const rangeSpread =
         (property.value_range_high - property.value_range_low) / property.estimated_value
-      if (rangeSpread > 0.30) {
+      if (rangeSpread >= 0.40) {
         const n = property.avm_comparables_count
-        // Include comp count when available so users can tell a 4-comp
-        // wide-band apart from a 20-comp one. Also flag low coverage (<5).
+        const compNote = typeof n === 'number'
+          ? n < 5
+            ? ` Based on only ${n} comparable${n === 1 ? '' : 's'} — low comp coverage.`
+            : ` Based on ${n} comparables.`
+          : ''
+        // At the low end of the band, the deal economics change materially —
+        // compute what the low-end AVM implies for breakeven context.
+        const lowEndPct = Math.round(
+          ((property.estimated_value - property.value_range_low) / property.estimated_value) * 100
+        )
+        warnings.push({
+          code: 'avm-extremely-wide',
+          message: `Value AVM has an extremely wide confidence band ($${property.value_range_low.toLocaleString()}–$${property.value_range_high.toLocaleString()}, ±${Math.round((rangeSpread / 2) * 100)}%).${compNote} The low end is ${lowEndPct}% below the midpoint — every derived metric (cap rate, DSCR, cash flow, IRR) changes materially across this range. Do NOT make an offer based on the midpoint alone. Get an independent CMA or in-person appraisal before trusting these numbers.`,
+        })
+      } else if (rangeSpread > 0.30) {
+        const n = property.avm_comparables_count
         const compNote = typeof n === 'number'
           ? n < 5
             ? ` Based on only ${n} comparable${n === 1 ? '' : 's'} — low comp coverage.`
@@ -282,7 +303,7 @@ export async function POST(req: NextRequest) {
           : ''
         warnings.push({
           code: 'avm-wide-range',
-          message: `Value AVM has a wide confidence band ($${property.value_range_low.toLocaleString()}-$${property.value_range_high.toLocaleString()}, ±${Math.round((rangeSpread / 2) * 100)}%).${compNote} The midpoint is uncertain; cross-check against Zillow / Redfin / a local agent before trusting.`,
+          message: `Value AVM has a wide confidence band ($${property.value_range_low.toLocaleString()}–$${property.value_range_high.toLocaleString()}, ±${Math.round((rangeSpread / 2) * 100)}%).${compNote} The midpoint is uncertain; cross-check against Zillow / Redfin / a local agent before trusting.`,
         })
       }
     }
