@@ -2,7 +2,7 @@ import { prisma } from './db'
 import { logger } from './logger'
 import type { Report } from '@prisma/client'
 import { runInvariantCheck, InvariantGateError, type InvariantFailure } from './invariantCheck'
-import type { ReviewConcern } from './reviewReport'
+import { runReviewLoop, type ReviewConcern } from './reviewReport'
 // Note: reviewReport.ts is retained in the tree but not imported here after
 // the reviewer loop was removed (see comment below in composeFullReport).
 import {
@@ -1974,12 +1974,69 @@ export async function composeFullReport(
     },
   }
 
-  // Reviewer pass removed from the critical path — it added ~50-60s for
-  // narrative-only checks (math contradictions are already caught by the
-  // invariant gate). runReviewLoop is still exported from ./reviewReport for
-  // the manual retry-ai route. Set reviewOutcome=null so downstream consumers
-  // (tests, diffs) see a consistent shape.
-  result.reviewOutcome = null
+  // ── Reviewer pass ────────────────────────────────────────────────────
+  // Second Sonnet call cross-checks the narrative against the structured
+  // data it was given. Runs inline (not fire-and-forget) so any correction
+  // lands in `result.dealDoctor` before persistence / PDF export.
+  //
+  // maxRounds: 2 = at most ONE rewrite, then one verification review.
+  //   round 1 review → verdict=rewrite → regenerate once → round 2 review
+  //   → loop exits on `round === maxRounds`, no further rewrites.
+  //
+  //   verdict 'clean'   → ship
+  //   verdict 'rewrite' (conf ≥ 0.80, concerns non-empty) → ONE regenerate
+  //       with `reviewCorrections` forwarded, then verify on round 2
+  //   verdict 'block'   → throw (math contradictions fail loudly)
+  //   reviewer throws / low confidence / empty concerns → ship original
+  if (dealDoctor) {
+    let originalDealDoctor: DealDoctorOutput | null = null
+    const loopResult = await runReviewLoop(
+      result,
+      dealDoctor as unknown as Record<string, unknown>,
+      async (concerns) => {
+        originalDealDoctor = dealDoctor
+        const rewritten = await runGenerator(concerns)
+        return rewritten as unknown as Record<string, unknown>
+      },
+      { maxRounds: 2, confidenceFloor: 0.80 }
+    )
+
+    if (loopResult.outcome.blocked) {
+      logger.error('reportGenerator.review_blocked', {
+        uuid: report.id,
+        address: report.address,
+        summary: loopResult.outcome.finalSummary,
+        concernCount: loopResult.outcome.finalConcerns.length,
+      })
+      throw new Error(`Review blocked: ${loopResult.outcome.finalSummary}`)
+    }
+
+    dealDoctor = loopResult.narrative as unknown as DealDoctorOutput
+    result.dealDoctor = dealDoctor
+    result.reviewOutcome = {
+      rounds: loopResult.outcome.rounds,
+      verdict: loopResult.outcome.finalVerdict,
+      confidence: loopResult.outcome.finalConfidence,
+      concerns: loopResult.outcome.finalConcerns,
+      summary: loopResult.outcome.finalSummary,
+      rewrote: originalDealDoctor !== null,
+      originalDealDoctor,
+      history: loopResult.outcome.history,
+    }
+
+    logger.info('reportGenerator.review_complete', {
+      uuid: report.id,
+      rounds: loopResult.outcome.rounds,
+      verdict: loopResult.outcome.finalVerdict,
+      confidence: loopResult.outcome.finalConfidence,
+      concernCount: loopResult.outcome.finalConcerns.length,
+      concernsPerRound: loopResult.outcome.history.map((h) => h.concerns.length),
+      reviewerErrored: loopResult.outcome.history.some((h) => !!h.error),
+      rewrote: originalDealDoctor !== null,
+    })
+  } else {
+    result.reviewOutcome = null
+  }
 
   return result
 }
