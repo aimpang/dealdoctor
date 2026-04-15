@@ -1979,13 +1979,14 @@ export async function composeFullReport(
   // data it was given. Runs inline (not fire-and-forget) so any correction
   // lands in `result.dealDoctor` before persistence / PDF export.
   //
-  // maxRounds: 2 = at most ONE rewrite, then one verification review.
-  //   round 1 review → verdict=rewrite → regenerate once → round 2 review
-  //   → loop exits on `round === maxRounds`, no further rewrites.
+  // maxRounds: 2 + verifyAfterRewrite: false = exactly ONE rewrite, no
+  // verification pass afterwards. Saves ~25-30s per rewritten report vs.
+  // the full review-rewrite-review cycle, at the cost of not catching
+  // regressions the rewrite itself introduces.
   //
   //   verdict 'clean'   → ship
   //   verdict 'rewrite' (conf ≥ 0.80, concerns non-empty) → ONE regenerate
-  //       with `reviewCorrections` forwarded, then verify on round 2
+  //       with `reviewCorrections` forwarded, then ship without re-review
   //   verdict 'block'   → throw (math contradictions fail loudly)
   //   reviewer throws / low confidence / empty concerns → ship original
   if (dealDoctor) {
@@ -1998,7 +1999,7 @@ export async function composeFullReport(
         const rewritten = await runGenerator(concerns)
         return rewritten as unknown as Record<string, unknown>
       },
-      { maxRounds: 2, confidenceFloor: 0.80 }
+      { maxRounds: 2, confidenceFloor: 0.80, verifyAfterRewrite: false }
     )
 
     if (loopResult.outcome.blocked) {

@@ -224,6 +224,8 @@ function parseReview(text: string, round: number): ReviewResult {
 export interface ReviewLoopConfig {
   maxRounds?: number            // default 3
   confidenceFloor?: number      // default 0.9 — exit early when this is met
+  verifyAfterRewrite?: boolean  // default true — when false, ship immediately
+                                // after a rewrite without a verification review
 }
 
 export interface ReviewLoopOutcome {
@@ -249,6 +251,7 @@ export async function runReviewLoop(
 ): Promise<{ narrative: Record<string, unknown>; outcome: ReviewLoopOutcome }> {
   const maxRounds = config.maxRounds ?? 3
   const confidenceFloor = config.confidenceFloor ?? 0.9
+  const verifyAfterRewrite = config.verifyAfterRewrite ?? true
   let narrative = initialNarrative
   const history: ReviewResult[] = []
   let blocked = false
@@ -293,6 +296,12 @@ export async function runReviewLoop(
       narrative = await regenerate(result.concerns)
     } catch {
       // Regenerator failed — ship what we have.
+      break
+    }
+    if (!verifyAfterRewrite) {
+      // Caller opted out of a post-rewrite verification pass — ship the
+      // rewrite as-is. Saves one reviewer call (~25-30s) at the cost of
+      // not catching regressions the rewrite may have introduced.
       break
     }
   }
