@@ -923,8 +923,19 @@ export const STATE_RULES: Record<string, {
   strNotes: string
 }> = {
   TX: { name: 'Texas', propertyTaxRate: 0.018, rentControl: false, landlordFriendly: true, strNotes: 'No statewide STR restrictions. Check municipal rules.' },
-  FL: { name: 'Florida', propertyTaxRate: 0.009, rentControl: false, landlordFriendly: true, strNotes: 'No statewide ban. Some cities restrict STR in residential zones.' },
-  CA: { name: 'California', propertyTaxRate: 0.0073, rentControl: true, landlordFriendly: false, strNotes: 'Many cities restrict STR. LA, SF require permits. Prop 13 caps assessment increases.' },
+  // FL: 0.9% is the homesteaded (Save Our Homes) rate — investors get NO SOH cap,
+  // so non-homesteaded effective rates run 1.1–1.8% depending on county. Use 1.1%
+  // as the non-homesteaded statewide fallback; high-tax counties (Broward, Miami-Dade)
+  // are overridden per-city in CITY_RULES. All FL STR revenue is subject to FL 6%
+  // sales tax + county Tourist Development Tax (TDT, typically 5–6%).
+  FL: { name: 'Florida', propertyTaxRate: 0.011, rentControl: false, landlordFriendly: true, strNotes: 'Investment properties are NOT eligible for Florida\'s Save Our Homes 3% assessment cap (homesteaded primary residences only) — effective non-homesteaded rates vary from ~1.1% (rural) to ~1.7% (Miami-Dade/Broward). All STR revenue is subject to FL 6% sales tax + county Tourist Development Tax (TDT, 5–6% depending on county). SB 714 (2024) limits some local STR bans but does not fully preempt county/city rules. Major markets require STR registration.' },
+  // CA: 0.73% reflects the statewide portfolio average suppressed by Prop 13 lock-in
+  // across long-held properties. For a NEW purchase the effective rate is ~1.1%.
+  // AB 1482 (Tenant Protection Act): SFRs are NOT automatically exempt when held in
+  // an LLC — exemption requires (1) natural-person owner, (2) written tenant notice
+  // per Civil Code §1946.2(e), (3) no corporate ownership. Most investors hold through
+  // LLCs and are therefore SUBJECT to the 5%+CPI / max 10% annual rent cap.
+  CA: { name: 'California', propertyTaxRate: 0.0073, rentControl: true, landlordFriendly: false, strNotes: 'Many cities restrict STR. LA, SF, and Sacramento require permits. Prop 13 locks assessed value at purchase — effective rate ~1.1% at acquisition. AB 1482 rent control applies to most rentals including LLC-held SFRs (5% + CPI annual cap, max 10%/yr). SFR exemption from AB 1482 requires owner to be a natural person (not LLC/corporation) AND provide written tenant notice per Civil Code §1946.2(e) — verify with counsel before assuming exemption.' },
   NY: { name: 'New York', propertyTaxRate: 0.017, rentControl: true, landlordFriendly: false, strNotes: 'NYC (all five boroughs) effectively bans most short-term rentals under 30 days under Local Law 18. Rules vary elsewhere in the state — Long Island, Hudson Valley, and upstate have municipality-by-municipality STR regulations. NYC also has strict rent stabilization. Check local rules for non-NYC addresses.' },
   OH: { name: 'Ohio', propertyTaxRate: 0.016, rentControl: false, landlordFriendly: true, strNotes: 'No statewide STR restrictions.' },
   GA: { name: 'Georgia', propertyTaxRate: 0.009, rentControl: false, landlordFriendly: true, strNotes: 'No statewide STR restrictions. Atlanta requires permits.' },
@@ -932,7 +943,10 @@ export const STATE_RULES: Record<string, {
   TN: { name: 'Tennessee', propertyTaxRate: 0.006, rentControl: false, landlordFriendly: true, strNotes: 'Nashville requires permits for non-owner-occupied STR.' },
   AZ: { name: 'Arizona', propertyTaxRate: 0.006, rentControl: false, landlordFriendly: true, strNotes: 'State law preempts local STR bans. Very STR-friendly.' },
   CO: { name: 'Colorado', propertyTaxRate: 0.005, rentControl: false, landlordFriendly: true, strNotes: 'Denver requires STR license. Mountain towns may restrict.' },
-  IN: { name: 'Indiana', propertyTaxRate: 0.008, rentControl: false, landlordFriendly: true, strNotes: 'No statewide STR restrictions.' },
+  // IN: state-average 0.8% is statewide blended including homesteads. Marion County
+  // (Indianapolis) non-homesteaded investment SFR runs ~2.0–2.2% (subject to Indiana's
+  // 2% circuit breaker cap for rental property). City-level override covers Marion County.
+  IN: { name: 'Indiana', propertyTaxRate: 0.008, rentControl: false, landlordFriendly: true, strNotes: 'Indiana levies a 7% state innkeeper\'s tax on all STR revenue; counties add their own rate (Marion County adds 6%, totaling ~13% in Indianapolis). Indiana\'s SFR investment property is subject to a 2% circuit breaker cap on property tax as a % of gross assessed value — Marion County\'s effective non-homesteaded rate is ~2.1%, far above the 0.8% statewide average. No statewide STR permitting, but check municipal rules.' },
   MI: { name: 'Michigan', propertyTaxRate: 0.015, rentControl: false, landlordFriendly: true, strNotes: 'No statewide STR ban. Some lakeside communities restrict.' },
   PA: { name: 'Pennsylvania', propertyTaxRate: 0.015, rentControl: false, landlordFriendly: true, strNotes: 'Philadelphia requires STR license.' },
   IL: { name: 'Illinois', propertyTaxRate: 0.021, rentControl: false, landlordFriendly: false, strNotes: 'Chicago RLTO governs landlord/tenant (strong tenant protections, security-deposit interest, written lease disclosures) but Chicago has NOT enacted rent control; IL repealed its statewide preemption in 2021. Chicago requires STR license with unit cap.' },
@@ -1042,6 +1056,192 @@ export const CITY_RULES: Record<string, Partial<{
   // Cook County + Chicago transfer stamps: 0.5% buyer-facing combined state +
   // county stamps, plus Chicago's 0.25% buyer Real Property Transfer Tax.
   'CHICAGO, IL': { transferTaxRate: 0.0075 },
+
+  // ── Florida: county-level property tax + STR lodging tax overrides ───────────
+  //
+  // FL homesteaded effective rate ~0.9% (Save Our Homes cap); non-homesteaded
+  // investment properties have no cap — county-level rates below reflect
+  // non-homesteaded combined millage. STR lodging tax = FL 6% sales tax +
+  // county Tourist Development Tax (TDT) per FSS §125.0104.
+  //
+  // Broward County (Fort Lauderdale metro): ~1.65% non-homesteaded, 12% STR HOT
+  'FORT LAUDERDALE, FL': {
+    propertyTaxRate: 0.0165,
+    hotelOccupancyTaxRate: 0.12,
+    strNotes: 'Fort Lauderdale requires vacation rental registration with DBPR and the city. FL 6% sales tax + 6% Broward County TDT = 12% on all STR gross revenue. Non-homesteaded investment properties: effective Broward County rate ~1.65% (no Save Our Homes cap).',
+  },
+  'HOLLYWOOD, FL': {
+    propertyTaxRate: 0.0165,
+    hotelOccupancyTaxRate: 0.12,
+    strNotes: 'Hollywood (Broward County) requires vacation rental registration. FL 6% sales tax + 6% Broward TDT = 12% on STR gross. Non-homesteaded effective rate ~1.65%.',
+  },
+  'POMPANO BEACH, FL': {
+    propertyTaxRate: 0.0165,
+    hotelOccupancyTaxRate: 0.12,
+    strNotes: 'Pompano Beach (Broward County). FL 6% sales tax + 6% Broward TDT = 12% on STR gross. Non-homesteaded effective rate ~1.65%.',
+  },
+  'DEERFIELD BEACH, FL': {
+    propertyTaxRate: 0.0165,
+    hotelOccupancyTaxRate: 0.12,
+    strNotes: 'Deerfield Beach (Broward County). FL 6% sales tax + 6% Broward TDT = 12% on STR gross. Non-homesteaded effective rate ~1.65%.',
+  },
+  'MIRAMAR, FL': {
+    propertyTaxRate: 0.0165,
+    hotelOccupancyTaxRate: 0.12,
+    strNotes: 'Miramar (Broward County). FL 6% sales tax + 6% Broward TDT = 12% on STR gross. Non-homesteaded effective rate ~1.65%.',
+  },
+  'PEMBROKE PINES, FL': {
+    propertyTaxRate: 0.0165,
+    hotelOccupancyTaxRate: 0.12,
+    strNotes: 'Pembroke Pines (Broward County). FL 6% sales tax + 6% Broward TDT = 12% on STR gross. Non-homesteaded effective rate ~1.65%.',
+  },
+  'CORAL SPRINGS, FL': {
+    propertyTaxRate: 0.0165,
+    hotelOccupancyTaxRate: 0.12,
+    strNotes: 'Coral Springs (Broward County). FL 6% sales tax + 6% Broward TDT = 12% on STR gross. Non-homesteaded effective rate ~1.65%.',
+  },
+  'PLANTATION, FL': {
+    propertyTaxRate: 0.0165,
+    hotelOccupancyTaxRate: 0.12,
+    strNotes: 'Plantation (Broward County). FL 6% sales tax + 6% Broward TDT = 12% on STR gross. Non-homesteaded effective rate ~1.65%.',
+  },
+  'SUNRISE, FL': {
+    propertyTaxRate: 0.0165,
+    hotelOccupancyTaxRate: 0.12,
+    strNotes: 'Sunrise (Broward County). FL 6% sales tax + 6% Broward TDT = 12% on STR gross. Non-homesteaded effective rate ~1.65%.',
+  },
+  'DAVIE, FL': {
+    propertyTaxRate: 0.0165,
+    hotelOccupancyTaxRate: 0.12,
+    strNotes: 'Davie (Broward County). FL 6% sales tax + 6% Broward TDT = 12% on STR gross. Non-homesteaded effective rate ~1.65%.',
+  },
+  'HALLANDALE BEACH, FL': {
+    propertyTaxRate: 0.0165,
+    hotelOccupancyTaxRate: 0.12,
+    strNotes: 'Hallandale Beach (Broward County). FL 6% sales tax + 6% Broward TDT = 12% on STR gross. Non-homesteaded effective rate ~1.65%.',
+  },
+  // Miami-Dade County: ~1.70% non-homesteaded, ~13% STR HOT
+  // (6% FL + 2% discretionary surtax + 3% TDT + 2% convention dev tax — exact
+  // blended rate varies by precise location within the county; 13% is the typical
+  // investor-facing combined rate for Miami-area short-term rentals.)
+  'MIAMI, FL': {
+    propertyTaxRate: 0.0170,
+    hotelOccupancyTaxRate: 0.13,
+    strNotes: 'Miami requires STR registration. FL sales tax + Miami-Dade TDT/convention levies = ~13% on STR gross. Non-homesteaded effective rate ~1.7%. Miami Beach operates additional strict STR enforcement (separate permit required).',
+  },
+  'MIAMI BEACH, FL': {
+    propertyTaxRate: 0.0170,
+    hotelOccupancyTaxRate: 0.13,
+    strNotes: 'Miami Beach has aggressive STR enforcement — city permit required, frequent inspections, significant fines for violations. FL + Miami-Dade combined lodging tax ~13% on STR gross. Non-homesteaded rate ~1.7%.',
+  },
+  'HIALEAH, FL': {
+    propertyTaxRate: 0.0170,
+    hotelOccupancyTaxRate: 0.13,
+    strNotes: 'Hialeah (Miami-Dade County). FL + Miami-Dade combined lodging tax ~13% on STR gross. Non-homesteaded effective rate ~1.7%.',
+  },
+  'CORAL GABLES, FL': {
+    propertyTaxRate: 0.0170,
+    hotelOccupancyTaxRate: 0.13,
+    strNotes: 'Coral Gables (Miami-Dade County) has strict residential STR ordinance — permit required, primary-residence restrictions in many zones. FL + Miami-Dade combined lodging tax ~13% on STR gross. Non-homesteaded rate ~1.7%.',
+  },
+  'MIAMI GARDENS, FL': {
+    propertyTaxRate: 0.0170,
+    hotelOccupancyTaxRate: 0.13,
+    strNotes: 'Miami Gardens (Miami-Dade County). FL + Miami-Dade combined lodging tax ~13% on STR gross. Non-homesteaded effective rate ~1.7%.',
+  },
+  // Palm Beach County: ~1.55% non-homesteaded, 12% STR HOT (6% FL + 6% PB TDT)
+  'WEST PALM BEACH, FL': {
+    propertyTaxRate: 0.0155,
+    hotelOccupancyTaxRate: 0.12,
+    strNotes: 'West Palm Beach (Palm Beach County). FL 6% sales tax + 6% Palm Beach TDT = 12% on STR gross. Non-homesteaded effective rate ~1.55%. City requires STR registration.',
+  },
+  'BOCA RATON, FL': {
+    propertyTaxRate: 0.0155,
+    hotelOccupancyTaxRate: 0.12,
+    strNotes: 'Boca Raton (Palm Beach County). FL 6% sales tax + 6% Palm Beach TDT = 12% on STR gross. Non-homesteaded effective rate ~1.55%.',
+  },
+  'DELRAY BEACH, FL': {
+    propertyTaxRate: 0.0155,
+    hotelOccupancyTaxRate: 0.12,
+    strNotes: 'Delray Beach (Palm Beach County). FL 6% sales tax + 6% Palm Beach TDT = 12% on STR gross. Non-homesteaded effective rate ~1.55%.',
+  },
+  'BOYNTON BEACH, FL': {
+    propertyTaxRate: 0.0155,
+    hotelOccupancyTaxRate: 0.12,
+    strNotes: 'Boynton Beach (Palm Beach County). FL 6% sales tax + 6% Palm Beach TDT = 12% on STR gross. Non-homesteaded effective rate ~1.55%.',
+  },
+  'LAKE WORTH, FL': {
+    propertyTaxRate: 0.0155,
+    hotelOccupancyTaxRate: 0.12,
+    strNotes: 'Lake Worth Beach (Palm Beach County). FL 6% sales tax + 6% Palm Beach TDT = 12% on STR gross. Non-homesteaded effective rate ~1.55%.',
+  },
+  // Hillsborough County / Tampa: ~1.40% non-homesteaded, 13% STR HOT
+  // (6% FL + 7% Hillsborough TDT)
+  'TAMPA, FL': {
+    propertyTaxRate: 0.0140,
+    hotelOccupancyTaxRate: 0.13,
+    strNotes: 'Tampa (Hillsborough County) requires STR registration. FL 6% sales tax + 7% Hillsborough TDT = 13% on STR gross. Non-homesteaded effective rate ~1.4%.',
+  },
+  'BRANDON, FL': {
+    propertyTaxRate: 0.0140,
+    hotelOccupancyTaxRate: 0.13,
+    strNotes: 'Brandon (Hillsborough County). FL 6% sales tax + 7% Hillsborough TDT = 13% on STR gross. Non-homesteaded effective rate ~1.4%.',
+  },
+  // Pinellas County / St. Pete: ~1.45% non-homesteaded, 13% STR HOT
+  // (6% FL + 7% Pinellas TDT)
+  'ST. PETERSBURG, FL': {
+    propertyTaxRate: 0.0145,
+    hotelOccupancyTaxRate: 0.13,
+    strNotes: 'St. Petersburg (Pinellas County). FL 6% sales tax + 7% Pinellas TDT = 13% on STR gross. Non-homesteaded effective rate ~1.45%.',
+  },
+  'CLEARWATER, FL': {
+    propertyTaxRate: 0.0145,
+    hotelOccupancyTaxRate: 0.13,
+    strNotes: 'Clearwater (Pinellas County). FL 6% sales tax + 7% Pinellas TDT = 13% on STR gross. Non-homesteaded effective rate ~1.45%.',
+  },
+  // Orange County / Orlando: ~1.35% non-homesteaded, 12.5% STR HOT
+  // (6% FL + 6.5% Orange County TDT)
+  'ORLANDO, FL': {
+    propertyTaxRate: 0.0135,
+    hotelOccupancyTaxRate: 0.125,
+    strNotes: 'Orlando (Orange County) requires vacation rental registration. FL 6% sales tax + 6.5% Orange County TDT = 12.5% on STR gross. Non-homesteaded effective rate ~1.35%.',
+  },
+  'KISSIMMEE, FL': {
+    propertyTaxRate: 0.0135,
+    hotelOccupancyTaxRate: 0.125,
+    strNotes: 'Kissimmee (Osceola County, adjacent to Orange; similar STR regime). FL 6% sales tax + ~6% TDT ≈ 12% on STR gross. Non-homesteaded rate ~1.35%. Heavy STR market — verify current permitting.',
+  },
+  // Duval County / Jacksonville: ~1.20% non-homesteaded, 12% STR HOT
+  // (6% FL + 6% Duval TDT)
+  'JACKSONVILLE, FL': {
+    propertyTaxRate: 0.0120,
+    hotelOccupancyTaxRate: 0.12,
+    strNotes: 'Jacksonville (Duval County). FL 6% sales tax + 6% Duval TDT = 12% on STR gross. Non-homesteaded effective rate ~1.2%.',
+  },
+
+  // ── Indiana: Marion County (Indianapolis) ────────────────────────────────────
+  //
+  // Indiana's SFR investment property is subject to a 2% circuit breaker cap on
+  // property tax as a % of gross assessed value. Marion County's effective non-
+  // homesteaded rate for investment SFR is ~2.0–2.2% — roughly 2.5× the 0.8%
+  // statewide average. Combined innkeeper's tax: 7% IN state + 6% Marion County = 13%.
+  'INDIANAPOLIS, IN': {
+    propertyTaxRate: 0.021,
+    hotelOccupancyTaxRate: 0.13,
+    strNotes: 'Indianapolis (Marion County). Indiana levies 7% state innkeeper\'s tax + 6% Marion County innkeeper\'s tax = 13% on all STR gross revenue. Marion County non-homesteaded investment SFR: effective rate ~2.0–2.2% (Indiana\'s 2% circuit breaker caps rental-property tax at 2% of gross assessed value). No statewide STR permit requirement; verify county zoning.',
+  },
+
+  // ── California: Sacramento County ────────────────────────────────────────────
+  //
+  // Prop 13 locks assessed value at purchase price — effective rate at acquisition
+  // is ~1.1% (base 1% + city/district levies). Sacramento city TOT: 12% on STR
+  // gross. STR permits: $267/yr hosted (owner present), ~$600/yr un-hosted.
+  'SACRAMENTO, CA': {
+    propertyTaxRate: 0.011,
+    hotelOccupancyTaxRate: 0.12,
+    strAnnualRegistrationFee: 600,
+    strNotes: 'Sacramento requires STR permits: $267/yr (hosted, owner-present) or ~$600/yr (un-hosted). 12% Transient Occupancy Tax (TOT) applies to all STR gross revenue. Prop 13: assessed at purchase price, effective rate ~1.1% at acquisition. AB 1482 rent control applies to most rentals including LLC-held SFRs (5% + CPI annual cap, max 10%) — SFR exemption requires natural-person owner and written tenant notice per Civil Code §1946.2(e).',
+  },
 }
 
 export function getJurisdictionRules(
