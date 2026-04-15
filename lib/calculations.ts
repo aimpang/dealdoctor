@@ -417,9 +417,18 @@ export function calculateFinancingAlternatives(params: {
   vacancyRate: number
   monthlyExpenses: number
   rehabBudget: number
+  propertyType?: string | null
 }): FinancingAlternative[] {
-  const { offerPrice, pmmsRate, monthlyRent, vacancyRate, monthlyExpenses, rehabBudget } = params
+  const { offerPrice, pmmsRate, monthlyRent, vacancyRate, monthlyExpenses, rehabBudget, propertyType } = params
   const effectiveRent = monthlyRent * (1 - vacancyRate)
+  const ptLower = (propertyType || '').toLowerCase()
+  const isSingleUnitCondoLike = /condo|apartment|co-?op|coop/.test(ptLower)
+  const isMultiFamily = /multi|duplex|triplex|fourplex|2-4|2_4/.test(ptLower)
+  const fhaEligibilityNote = isSingleUnitCondoLike
+    ? 'Requires owner-occupancy as primary residence. Building must be on the FHA-approved condo list — verify before writing an offer. MIP premium applies.'
+    : isMultiFamily
+    ? 'Requires owner-occupancy of one unit. 2-4 unit house-hack allows rental income from other units to offset the mortgage. MIP premium applies.'
+    : 'Requires owner-occupancy. House-hack 2-4 unit counts. MIP premium applies.'
 
   // Each scenario: rate, down, amortization, note.
   const scenarios: Array<Omit<FinancingAlternative, 'downPayment' | 'monthlyPayment' | 'monthlyCashFlow' | 'dscr' | 'cashToClose'>> = [
@@ -429,7 +438,7 @@ export function calculateFinancingAlternatives(params: {
       downPaymentPct: 0.035,
       annualRate: pmmsRate, // FHA prices near PMMS for owner-occ
       amortYears: 30,
-      eligibilityNote: 'Requires owner-occupancy. House-hack 2-4 unit counts. MIP premium applies.',
+      eligibilityNote: fhaEligibilityNote,
     },
     {
       id: 'conventional',

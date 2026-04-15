@@ -643,10 +643,12 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
                         <td
                           className={cn(
                             'py-2.5 text-right',
-                            f.dscr >= 1.25 ? 'text-emerald-700 dark:text-emerald-400 font-medium' : ''
+                            f.dscr >= 1.25 ? 'text-emerald-700 dark:text-emerald-400 font-medium' : '',
+                            f.dscr < 0 ? 'text-red-700 dark:text-red-400 font-medium' : ''
                           )}
+                          title={f.dscr < 0 ? 'NOI is negative — operating expenses exceed rent before debt service' : undefined}
                         >
-                          {f.dscr}x
+                          {f.dscr < 0 ? 'NOI-neg' : `${f.dscr}x`}
                         </td>
                         <td className="py-2.5 text-right font-bold">{fmt(f.cashToClose)}</td>
                       </tr>
@@ -706,10 +708,12 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
                           <td
                             className={cn(
                               'py-2 text-right',
-                              s.dscr >= 1.25 ? 'text-emerald-700 dark:text-emerald-400' : ''
+                              s.dscr >= 1.25 ? 'text-emerald-700 dark:text-emerald-400' : '',
+                              s.dscr < 0 ? 'text-red-700 dark:text-red-400' : ''
                             )}
+                            title={s.dscr < 0 ? 'NOI is negative — operating expenses exceed rent before debt service' : undefined}
                           >
-                            {s.dscr}x
+                            {s.dscr < 0 ? 'NOI-neg' : `${s.dscr}x`}
                           </td>
                           <td className="py-2 text-right">{fmt(s.fiveYrWealth)}</td>
                           <td className="py-2 text-right font-medium">
@@ -852,7 +856,10 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
                     </span>
                   </p>
                   <p className="mt-0.5 text-sm text-muted-foreground tabular-nums">
-                    DSCR: <span className="font-semibold text-foreground">{ltr.dscr}x</span>
+                    DSCR: <span className="font-semibold text-foreground">{ltr.dscr < 0 ? 'NOI-neg' : `${ltr.dscr}x`}</span>
+                    {ltr.dscr < 0 && (
+                      <span className="ml-2 text-[11px] text-red-700 dark:text-red-400">(operating expenses exceed rent)</span>
+                    )}
                   </p>
                 </div>
 
@@ -886,7 +893,7 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
                     </span>
                   </p>
                   <p className="mt-0.5 text-sm text-muted-foreground tabular-nums">
-                    DSCR: <span className="font-semibold text-foreground">{strProjection.annualDSCR}x</span>
+                    DSCR: <span className="font-semibold text-foreground">{strProjection.annualDSCR < 0 ? 'NOI-neg' : `${strProjection.annualDSCR}x`}</span>
                   </p>
                   <p className="mt-2 text-[11px] font-semibold text-foreground">
                     {strProjection.vsLTRMonthlyDelta > 0 ? (
@@ -1025,7 +1032,7 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
               />
               <MiniStat
                 label="DSCR"
-                value={`${ltr.dscr}x`}
+                value={ltr.dscr < 0 ? 'NOI-neg' : `${ltr.dscr}x`}
                 tone={ltr.dscr >= 1.25 ? 'pos' : 'neg'}
               />
               <MiniStat label="Cap Rate" value={`${ltr.capRate}%`} />
@@ -1218,14 +1225,44 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
                           county
                         </span>
                       )}
+                      {expenses.propertyTaxSource === 'state-average' && (
+                        <span
+                          title="State average applied — no county record for this parcel. Pull the actual tax bill before making an offer."
+                          className="rounded bg-amber-500/10 px-1 text-[9px] font-semibold text-amber-700 dark:text-amber-400"
+                        >
+                          state avg
+                        </span>
+                      )}
                     </span>
                   }
                   value={fmt(expenses.monthlyPropertyTax)}
                 />
                 <Line label="Insurance" value={fmt(expenses.monthlyInsurance)} />
                 <Line label="Maintenance" value={fmt(expenses.monthlyMaintenance)} />
-                {expenses.monthlyHOA > 0 && <Line label="HOA" value={fmt(expenses.monthlyHOA)} />}
+                {expenses.monthlyHOA > 0 && (
+                  <Line
+                    label={
+                      <span className="flex items-center gap-1.5">
+                        HOA
+                        {(expenses as { hoaSource?: string }).hoaSource === 'inferred-condo-default' && (
+                          <span
+                            title="HOA is a market default for a condo/apartment of this size, not a captured disclosure. The real number could be lower (older walk-up without elevator) or materially higher (building with a reserve-funded special assessment). Pull the listing's monthly dues before trusting the cash-flow number."
+                            className="rounded bg-amber-500/10 px-1 text-[9px] font-semibold text-amber-700 dark:text-amber-400"
+                          >
+                            assumed
+                          </span>
+                        )}
+                      </span>
+                    }
+                    value={fmt(expenses.monthlyHOA)}
+                  />
+                )}
               </div>
+              {(expenses as { hoaSource?: string }).hoaSource === 'inferred-condo-default' && (
+                <p className="mt-2 text-[10px] text-amber-600 dark:text-amber-400">
+                  HOA above is an estimated market default, not a captured disclosure. Confirm the listing's actual monthly dues — it's the single biggest driver of the cash-flow number.
+                </p>
+              )}
               {expenses.monthlyHOA === 0 &&
                 (property.propertyType || '').toLowerCase().includes('condo') && (
                   <p className="mt-2 text-[10px] text-amber-600 dark:text-amber-400">

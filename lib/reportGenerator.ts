@@ -2,7 +2,7 @@ import { prisma } from './db'
 import { logger } from './logger'
 import type { Report } from '@prisma/client'
 import { runInvariantCheck, InvariantGateError, type InvariantFailure } from './invariantCheck'
-import { runReviewLoop, type ReviewConcern, type ReviewLoopOutcome } from './reviewReport'
+import type { ReviewConcern } from './reviewReport'
 // Note: reviewReport.ts is retained in the tree but not imported here after
 // the reviewer loop was removed (see comment below in composeFullReport).
 import {
@@ -94,6 +94,8 @@ export interface ReportWarning {
     | 'property-tax-likely-exempted'
     | 'year-built-implausible'
     | 'price-per-sqft-implausible'
+    | 'property-classification-uncertain'
+    | 'thin-comp-set'
   message: string
 }
 
@@ -278,6 +280,41 @@ export function buildReportWarnings(input: {
     warnings.push({
       code: 'comps-cross-building',
       message: `All ${input.totalCompCount} sale comps are from nearby buildings, not the subject's own building. For condos / apartments that's materially weaker signal — same-building peers usually diverge from neighborhood comps by 10–20%. Cross-check the subject building's recent sales directly (Redfin / the listing agent) before trusting the median.`,
+    })
+  }
+
+  // Thin comp set — 0 or 1 sale comp returned. A single comp can't establish
+  // a median or confirm a price range; the AVM is essentially unchecked.
+  // Chicago 1847 N California audit: Rentcast returned one comp on a different
+  // street, missing three $635-640k same-block condo sales. Better to flag
+  // "valuation uncertain — independent appraisal recommended" than to anchor
+  // the buyer on a single stray data point.
+  if (
+    typeof input.totalCompCount === 'number' &&
+    input.totalCompCount <= 1
+  ) {
+    warnings.push({
+      code: 'thin-comp-set',
+      message: `Only ${input.totalCompCount} sale comp${input.totalCompCount === 1 ? '' : 's'} returned for this property. A valuation built on zero or one comps is effectively unchecked — the AVM has no peer anchors to verify against. Pull recent same-block / same-building sales from Redfin or your agent's MLS before trusting the ARV or offer math.`,
+    })
+  }
+
+  // Property classification uncertain — Rentcast's propertyType is notoriously
+  // weak in dense urban markets (Chicago, NYC, DC) where vintage 2-4 flats,
+  // condos, and multi-family units all get filed under "Apartment". When the
+  // HOA is an inferred market default (not captured from a real listing or
+  // building DB), we have a strong signal the subject is a condo/multi that
+  // needs manual verification — running single-unit math on what may be a
+  // whole 4-flat (or conversely, treating a condo as a standalone apartment)
+  // cascades errors through every downstream number.
+  if (
+    input.hoaSource === 'inferred-condo-default' &&
+    input.propertyType &&
+    /^apartment$/i.test(input.propertyType.trim())
+  ) {
+    warnings.push({
+      code: 'property-classification-uncertain',
+      message: `Property is classified as "${input.propertyType}" by our data source but the HOA above is an inferred market default — we have no real confirmation this is a standalone apartment vs. a condo unit in a converted building vs. a single floor of a multi-family. This is a data-classification gap that cascades into every number below (rent math, financing, HOA, cash flow). Before acting on this report, confirm on the actual listing whether you're buying a condo unit (HOA applies), a whole multi-family building (no HOA, rental income from other units offsets the mortgage), or a true single-unit apartment.`,
     })
   }
 
@@ -1468,6 +1505,7 @@ export async function composeFullReport(
     vacancyRate: 0.05,
     monthlyExpenses,
     rehabBudget,
+    propertyType: property.property_type,
   })
 
   const sensitivity = calculateSensitivity({
@@ -1936,82 +1974,12 @@ export async function composeFullReport(
     },
   }
 
-  // ── Reviewer pass ────────────────────────────────────────────────────
-  // Second Sonnet call cross-checks the narrative against the structured
-  // data it was given. Runs inline (not fire-and-forget) so any correction
-  // lands in `result.dealDoctor` before persistence / PDF export.
-  //
-  //   verdict 'clean'   → ship
-  //   verdict 'rewrite' (conf ≥ 0.7, concerns non-empty) → ONE regenerate
-  //       with `reviewCorrections` forwarded, then ship the rewrite
-  //   verdict 'block'   → throw (same pattern as InvariantGateError —
-  //       math-class contradiction should fail loudly, not paper over)
-  //   reviewer throws / low confidence / empty concerns → ship original
-  //
-  // Both the final narrative and the pre-rewrite original (when a rewrite
-  // ran) are persisted in reviewOutcome so we can diff in production and
-  // tell whether the rewrite actually improved things.
-  if (dealDoctor) {
-    let originalDealDoctor: DealDoctorOutput | null = null
-    const loopResult = await runReviewLoop(
-      result,
-      dealDoctor as unknown as Record<string, unknown>,
-      async (concerns) => {
-        originalDealDoctor = dealDoctor
-        const rewritten = await runGenerator(concerns)
-        return rewritten as unknown as Record<string, unknown>
-      },
-      { maxRounds: 2, confidenceFloor: 0.80 }
-    )
-
-    if (loopResult.outcome.blocked) {
-      logger.error('reportGenerator.review_blocked', {
-        uuid: report.id,
-        address: report.address,
-        summary: loopResult.outcome.finalSummary,
-        concernCount: loopResult.outcome.finalConcerns.length,
-      })
-      throw new Error(`Review blocked: ${loopResult.outcome.finalSummary}`)
-    }
-
-    dealDoctor = loopResult.narrative as unknown as DealDoctorOutput
-    result.dealDoctor = dealDoctor
-    // Persist the FULL per-round history, not just the final outcome. This
-    // captures three telemetry classes we'd otherwise lose:
-    //   1. Low-confidence concerns (verdict=rewrite, conf<0.7) — the reviewer
-    //      saw something off but wasn't sure enough to rewrite. Best training
-    //      data for new deterministic assertions: patterns it's noticing
-    //      but can't act on yet.
-    //   2. Round-1 concerns when a rewrite ran — what was actually wrong
-    //      with the original narrative, preserved even after round-2 shows
-    //      "clean" on the rewrite.
-    //   3. Reviewer-unavailable events (error field set) — distinguish
-    //      "reviewer said clean" from "reviewer died" when auditing rates.
-    result.reviewOutcome = {
-      rounds: loopResult.outcome.rounds,
-      verdict: loopResult.outcome.finalVerdict,
-      confidence: loopResult.outcome.finalConfidence,
-      concerns: loopResult.outcome.finalConcerns,
-      summary: loopResult.outcome.finalSummary,
-      rewrote: originalDealDoctor !== null,
-      originalDealDoctor,
-      history: loopResult.outcome.history,
-    }
-
-    logger.info('reportGenerator.review_complete', {
-      uuid: report.id,
-      rounds: loopResult.outcome.rounds,
-      verdict: loopResult.outcome.finalVerdict,
-      confidence: loopResult.outcome.finalConfidence,
-      concernCount: loopResult.outcome.finalConcerns.length,
-      concernsPerRound: loopResult.outcome.history.map((h) => h.concerns.length),
-      reviewerErrored: loopResult.outcome.history.some((h) => !!h.error),
-      rewrote: originalDealDoctor !== null,
-    })
-  } else {
-    // No narrative produced (AI call errored) — reviewer has nothing to do.
-    result.reviewOutcome = null
-  }
+  // Reviewer pass removed from the critical path — it added ~50-60s for
+  // narrative-only checks (math contradictions are already caught by the
+  // invariant gate). runReviewLoop is still exported from ./reviewReport for
+  // the manual retry-ai route. Set reviewOutcome=null so downstream consumers
+  // (tests, diffs) see a consistent shape.
+  result.reviewOutcome = null
 
   return result
 }
@@ -2025,8 +1993,12 @@ export async function generateFullReport(uuid: string): Promise<void> {
   const report = await prisma.report.findUnique({ where: { id: uuid } })
   if (!report || !report.teaserData) return
 
-  const rates = await getCurrentRates()
-  const property = await searchProperty(report.address)
+  // rates and the property record are independent; fetch in parallel to shave
+  // ~1-2s off the critical path before the first Rentcast fan-out.
+  const [rates, property] = await Promise.all([
+    getCurrentRates(),
+    searchProperty(report.address),
+  ])
   if (!property) return
 
   // Normalize "Apartment" → "Condo" for buildings we know are condominiums.
@@ -2049,7 +2021,12 @@ export async function generateFullReport(uuid: string): Promise<void> {
 
   const offerPriceForTax = report.offerPrice ?? property.estimated_value
 
-  const [rentRes, salesRes, rentCompsRes, marketRes] = await Promise.allSettled([
+  // All six external fetches run in parallel. Climate/location only need the
+  // coords + offerPriceForTax we already have from `property`, so there's no
+  // reason to serialize them behind the Rentcast fan-out. Collapsing the two
+  // Promise.allSettled blocks shaves the climate/location round-trip (~3-5s)
+  // off the critical path.
+  const [rentRes, salesRes, rentCompsRes, marketRes, climateRes, locationRes] = await Promise.allSettled([
     getRentEstimate(report.address, property.bedrooms),
     getComparableSales(report.city, report.state, property.bedrooms, coords, 1.0, {
       sqft: property.square_feet,
@@ -2059,20 +2036,6 @@ export async function generateFullReport(uuid: string): Promise<void> {
     }),
     getRentComps(report.address, property.bedrooms, property.property_type),
     getMarketSnapshot(report.zipCode),
-  ])
-
-  for (const [name, result] of [
-    ['rentEstimate', rentRes],
-    ['saleComps', salesRes],
-    ['rentComps', rentCompsRes],
-    ['marketSnapshot', marketRes],
-  ] as const) {
-    if (result.status === 'rejected') {
-      console.warn(`[reportGenerator] ${name} failed:`, result.reason?.message ?? result.reason)
-    }
-  }
-
-  const [climateRes, locationRes] = await Promise.allSettled([
     // Pass the already-known property coords so climate doesn't re-geocode
     // the same address (saves a Mapbox call AND keeps property/climate/
     // locationSignals aligned on identical lat/lng — prior behavior produced
@@ -2081,11 +2044,17 @@ export async function generateFullReport(uuid: string): Promise<void> {
     coords ? getLocationSignals(coords.lat, coords.lng) : Promise.resolve(null),
   ])
 
-  if (climateRes.status === 'rejected') {
-    console.warn('[reportGenerator] climate lookup failed:', climateRes.reason?.message)
-  }
-  if (locationRes.status === 'rejected') {
-    console.warn('[reportGenerator] location signals failed:', locationRes.reason?.message)
+  for (const [name, result] of [
+    ['rentEstimate', rentRes],
+    ['saleComps', salesRes],
+    ['rentComps', rentCompsRes],
+    ['marketSnapshot', marketRes],
+    ['climate', climateRes],
+    ['locationSignals', locationRes],
+  ] as const) {
+    if (result.status === 'rejected') {
+      console.warn(`[reportGenerator] ${name} failed:`, result.reason?.message ?? result.reason)
+    }
   }
 
   const fullReportData = await composeFullReport(report, {
