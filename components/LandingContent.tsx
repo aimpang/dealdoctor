@@ -11,7 +11,6 @@ import dynamic from 'next/dynamic'
 
 const MapPin3D = dynamic(() => import('@/components/MapPin3D'), { ssr: false })
 import {
-  ArrowRightIcon,
   ShieldCheckIcon,
   ZapIcon,
   BarChart3Icon,
@@ -31,7 +30,6 @@ import {
   PercentIcon,
   ChevronDownIcon,
 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import { FAQ } from '@/lib/faq'
 
 // ─── Editorial sections — organized as columns of an investment circular ──
@@ -271,7 +269,7 @@ export default function LandingContent() {
               <span className="font-semibold text-foreground">exact breakeven offer price</span>,
               {' '}a 5-year wealth projection with IRR, a DSCR stress test, financing alternatives,
               climate and location context, and an AI-written deal diagnosis with
-              property-specific negotiation scripts. First look free.
+              property-specific negotiation scripts. Start free; unlock the full report when you&apos;re ready.
             </p>
 
             <div
@@ -280,6 +278,9 @@ export default function LandingContent() {
                 'animate-in fade-in slide-in-from-bottom-2 fill-mode-backwards duration-700 delay-300'
               )}
             >
+              <p className="mb-2 font-mono text-[10.5px] uppercase tracking-[0.2em] text-foreground/55">
+                Start with an address
+              </p>
               <AddressInput
                 onResult={(data) => {
                   setResult(data)
@@ -548,23 +549,9 @@ export default function LandingContent() {
                 </ul>
               </div>
 
-              <Button
-                size="lg"
-                variant={tier.popular ? 'default' : 'outline'}
-                className={cn(
-                  'mt-8 w-full gap-2 rounded-none font-semibold uppercase tracking-[0.15em] text-[12px]',
-                  tier.popular
-                    ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]'
-                    : 'border-foreground/40 bg-transparent text-foreground hover:bg-foreground hover:text-[hsl(var(--background))]'
-                )}
-                onClick={() => {
-                  document.querySelector('input')?.focus()
-                  window.scrollTo({ top: 0, behavior: 'smooth' })
-                }}
-              >
-                Start Analysis
-                <ArrowRightIcon className="h-3.5 w-3.5" strokeWidth={2.5} />
-              </Button>
+              <p className="mt-8 border-t border-foreground/15 pt-5 text-center font-mono text-[10.5px] uppercase tracking-[0.18em] text-foreground/55">
+                Unlocked after analysis
+              </p>
             </div>
           ))}
         </div>

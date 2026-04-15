@@ -196,7 +196,7 @@ export function AddressInput({ onResult, onError }: AddressInputProps) {
             onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
             placeholder="742 Evergreen Terrace, Austin, TX 78701"
             className={cn(
-              "flex-1 bg-transparent px-3 py-4 text-base text-foreground outline-none",
+              "flex-1 bg-transparent px-3 py-4 text-lg text-foreground outline-none",
               "placeholder:text-muted-foreground/60",
               "font-sans"
             )}
@@ -219,7 +219,7 @@ export function AddressInput({ onResult, onError }: AddressInputProps) {
             ) : (
               <SearchIcon className="h-4 w-4" />
             )}
-            <span className="hidden sm:inline">{loading ? 'Analyzing...' : 'Analyze'}</span>
+            <span>{loading ? 'Analyzing...' : 'Analyze'}</span>
           </button>
         </div>
 
