@@ -258,11 +258,14 @@ export default async function MethodologyPage() {
 
       <Section number="09" eyebrow="Carrying costs" title="Insurance & Climate Risk">
         <p>
-          Insurance estimate uses NAIC state-level homeowners premium
-          averages, scaled linearly by dwelling value. A flood-zone add-on
-          applies when the property sits in a FEMA Special Flood Hazard Area
-          — queried live from the FEMA National Flood Hazard Layer REST API
-          using the property&apos;s geocoded coordinates.
+          Insurance estimate starts from NAIC state-level homeowners premium
+          averages, scaled linearly by dwelling value, then layered with an
+          age-of-home surcharge reflecting real carrier pricing on older
+          stock: pre-1940 +45%, 1940–1960 +30%, 1960–1980 +15%, post-1980
+          baseline. A FEMA flood-zone add-on applies when the property sits
+          in a Special Flood Hazard Area — queried live from the FEMA
+          National Flood Hazard Layer REST API using the property&apos;s
+          geocoded coordinates.
         </p>
         <p>
           Climate hazard scores (hurricane, wildfire, heat, drought, tornado)

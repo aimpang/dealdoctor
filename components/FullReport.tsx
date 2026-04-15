@@ -924,6 +924,12 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
                   <Line label="Utilities (owner)" value={fmt(strProjection.breakdown.utilities)} />
                   <Line label="Insurance (+50%)" value={fmt(strProjection.breakdown.insurance)} />
                   <Line label="Property tax" value={fmt(strProjection.breakdown.propertyTax)} />
+                  {strProjection.breakdown.hotelOccupancyTax > 0 && (
+                    <Line label="Hotel occupancy tax" value={fmt(strProjection.breakdown.hotelOccupancyTax)} />
+                  )}
+                  {strProjection.breakdown.strRegistrationFee > 0 && (
+                    <Line label="STR registration" value={fmt(strProjection.breakdown.strRegistrationFee)} />
+                  )}
                 </div>
               </div>
 
@@ -1482,7 +1488,7 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
           Property / rent / value — Rentcast AVM. Sale comps — Rentcast sold records within ~1 mile
           of subject property. Zip-level market trends — Rentcast /markets. Flood zone — FEMA NFHL.
           Location signals (walkability, amenities) — Mapbox Tilequery on Streets v8. Rates — Freddie
-          Mac PMMS + strategy-adjusted investor premium. Insurance baseline — NAIC state averages.
+          Mac PMMS + strategy-adjusted investor premium. Insurance — NAIC state baseline with age-of-home surcharge (pre-1940 +45%, 1940–60 +30%, 1960–80 +15%) and FEMA flood-zone add-on.
           State property-tax growth modeled per jurisdiction (Prop 13, Save-Our-Homes, TX uncapped).
           Climate scores, STR estimates, breakeven — DealDoctor models. Narrative + photo review —
           Anthropic. Full methodology at{' '}

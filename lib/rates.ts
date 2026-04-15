@@ -61,8 +61,8 @@ export async function getCurrentRates(): Promise<CurrentRates> {
       ).catch(() => null),
     ])
 
-    let mortgage30yr = 0.065 // fallback
-    let mortgage15yr = 0.058 // fallback
+    let mortgage30yr = 0.0637 // fallback — April 2026 PMMS
+    let mortgage15yr = 0.0560 // fallback — April 2026 PMMS 15yr
 
     if (rate30Res?.ok) {
       const data = await rate30Res.json()
@@ -87,8 +87,8 @@ export async function getCurrentRates(): Promise<CurrentRates> {
     return {
       fedFundsRate: 0.0450,
       treasuryYield10yr: 0.0420,
-      mortgage30yr: 0.0650,
-      mortgage15yr: 0.0580,
+      mortgage30yr: 0.0637,
+      mortgage15yr: 0.0560,
     }
   }
 }

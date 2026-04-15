@@ -546,6 +546,10 @@ export interface STRProjection {
     // Co = 13%; NYC ≈ 14.75%. Missing this was the biggest remaining STR
     // error in the 4518 Galesburg audit — $364/mo swing on $2,800 gross.
     hotelOccupancyTax: number
+    // STR registration fee, amortized to monthly ($23/mo on Houston's
+    // $275/yr ordinance). Small but visible when we claim jurisdiction
+    // precision.
+    strRegistrationFee: number
   }
 }
 
@@ -563,10 +567,13 @@ export function calculateSTRProjection(params: {
   // + Harris County). Scales with gross revenue. Defaults to 0 when the
   // jurisdiction rules don't specify one.
   hotelOccupancyTaxRate?: number
+  // Annual STR registration fee (e.g. Houston $275/yr ordinance). Amortized
+  // to a monthly P&L line.
+  strAnnualRegistrationFee?: number
 }): STRProjection {
   const { monthlyGrossRevenue, monthlyMortgagePayment,
           monthlyPropertyTax, monthlyInsuranceLTR, monthlyLTRCashFlow,
-          occupancyOverride, hotelOccupancyTaxRate } = params
+          occupancyOverride, hotelOccupancyTaxRate, strAnnualRegistrationFee } = params
 
   // Variable STR opex as % of gross revenue. Conservative middle-of-the-road
   // assumptions — adjust in the report UI if your market is self-managed or
@@ -577,8 +584,9 @@ export function calculateSTRProjection(params: {
   const utilities = Math.round(monthlyGrossRevenue * 0.07)
   const insurance = Math.round(monthlyInsuranceLTR * 1.5)
   const hotelOccupancyTax = Math.round(monthlyGrossRevenue * (hotelOccupancyTaxRate ?? 0))
+  const strRegistrationFee = Math.round((strAnnualRegistrationFee ?? 0) / 12)
 
-  const monthlyOpex = management + cleaning + suppliesAndPlatformFees + utilities + monthlyPropertyTax + insurance + hotelOccupancyTax
+  const monthlyOpex = management + cleaning + suppliesAndPlatformFees + utilities + monthlyPropertyTax + insurance + hotelOccupancyTax + strRegistrationFee
   const monthlyNetCashFlow = Math.round(monthlyGrossRevenue - monthlyMortgagePayment - monthlyOpex)
   const annualNOI = Math.round((monthlyGrossRevenue - monthlyOpex) * 12)
   const annualDebtService = monthlyMortgagePayment * 12
@@ -611,6 +619,7 @@ export function calculateSTRProjection(params: {
       propertyTax: monthlyPropertyTax,
       insurance,
       hotelOccupancyTax,
+      strRegistrationFee,
     },
   }
 }
@@ -984,6 +993,9 @@ export const CITY_RULES: Record<string, Partial<{
   // city has an override — when absent, the state default (0) applies and
   // the STR opex stack simply doesn't deduct HOT.
   hotelOccupancyTaxRate: number
+  // Annual STR registration / permit fee (Houston $275/yr as of Jan 2026).
+  // Small, but visible in the STR opex breakdown when jurisdiction has one.
+  strAnnualRegistrationFee: number
   // Buyer-side transfer / recordation tax, combined state + county + city,
   // expressed as a fraction of offer price. Used to inflate the flat 2.5%
   // closing-cost estimate in cities with material transaction taxes (NYC
@@ -1010,6 +1022,7 @@ export const CITY_RULES: Record<string, Partial<{
   'HOUSTON, TX': {
     propertyTaxRate: 0.0203,
     hotelOccupancyTaxRate: 0.13,
+    strAnnualRegistrationFee: 275,
     strNotes: 'Houston STR ordinance effective Jan 1, 2026: $275 annual registration, safety inspection, and human trafficking awareness training required. 13% combined hotel occupancy tax applies (6% TX + 7% Harris County). Event-venue advertising prohibited. STR is legal but factor the $275 registration + 13% HOT tax into net revenue.',
   },
   // NYC: NY state RPTT 0.4% + NYC RPTT 1.425% (residential > $500K) ≈ 1.825%.
@@ -1041,13 +1054,14 @@ export function getJurisdictionRules(
   landlordFriendly: boolean
   strNotes: string
   hotelOccupancyTaxRate: number
+  strAnnualRegistrationFee: number
   transferTaxRate: number
 } {
   const stateBase = STATE_RULES[state] || STATE_RULES['TX']
-  // STATE_RULES doesn't carry HOT or transfer tax yet; default both to 0 so
-  // callers get a safe baseline (STR opex stack / closing costs). Cities
-  // with data flow through CITY_RULES overrides.
-  const base = { ...stateBase, hotelOccupancyTaxRate: 0, transferTaxRate: 0 }
+  // STATE_RULES doesn't carry HOT, STR registration, or transfer tax yet;
+  // default each to 0 so callers get a safe baseline (STR opex stack /
+  // closing costs). Cities with data flow through CITY_RULES overrides.
+  const base = { ...stateBase, hotelOccupancyTaxRate: 0, strAnnualRegistrationFee: 0, transferTaxRate: 0 }
   if (!city) return base
   const key = `${city.trim().toUpperCase()}, ${state.trim().toUpperCase()}`
   const override = CITY_RULES[key]

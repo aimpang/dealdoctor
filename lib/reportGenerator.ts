@@ -1654,6 +1654,7 @@ export async function composeFullReport(
     monthlyInsuranceLTR: monthlyInsurance,
     monthlyLTRCashFlow: ltrMetrics.monthlyNetCashFlow,
     hotelOccupancyTaxRate: stateRules.hotelOccupancyTaxRate,
+    strAnnualRegistrationFee: stateRules.strAnnualRegistrationFee,
   })
 
   const recommendedOffers = calculateRecommendedOffers({

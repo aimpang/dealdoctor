@@ -745,8 +745,16 @@ describe('calculateSTRProjection', () => {
       r.breakdown.utilities +
       r.breakdown.propertyTax +
       r.breakdown.insurance +
-      r.breakdown.hotelOccupancyTax
+      r.breakdown.hotelOccupancyTax +
+      r.breakdown.strRegistrationFee
     expect(sum).toBe(r.monthlyOpex)
+  })
+
+  it('STR registration fee amortizes annual fee to monthly and deducts from net CF', () => {
+    const without = calculateSTRProjection(baseParams)
+    const withFee = calculateSTRProjection({ ...baseParams, strAnnualRegistrationFee: 275 })
+    expect(withFee.breakdown.strRegistrationFee).toBe(Math.round(275 / 12))
+    expect(withFee.monthlyNetCashFlow).toBe(without.monthlyNetCashFlow - Math.round(275 / 12))
   })
 
   it('hotel occupancy tax is deducted when jurisdiction provides a rate', () => {
