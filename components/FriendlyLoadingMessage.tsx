@@ -39,14 +39,33 @@ const FULL_STAGES = [
 interface Props {
   variant?: 'preview' | 'full'
   intervalMs?: number
+  progress?: number
 }
 
-export function FriendlyLoadingMessage({ variant = 'full', intervalMs = 4500 }: Props) {
+export function FriendlyLoadingMessage({ variant = 'full', intervalMs = 4500, progress }: Props) {
   const stages = variant === 'preview' ? PREVIEW_STAGES : FULL_STAGES
   const [i, setI] = useState(0)
   useEffect(() => {
     const id = setInterval(() => setI((v) => (v + 1) % stages.length), intervalMs)
     return () => clearInterval(id)
   }, [stages.length, intervalMs])
-  return <>{stages[i]}</>
+  return (
+    <>
+      <span>{stages[i]}</span>
+      {progress !== undefined && (
+        <div className="mt-3 w-64">
+          <div className="mb-1.5 flex items-center justify-between text-xs text-muted-foreground">
+            <span>Generating report</span>
+            <span className="tabular-nums font-medium text-foreground">{progress}%</span>
+          </div>
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-foreground/10">
+            <div
+              className="h-full rounded-full bg-primary transition-all duration-700 ease-out"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        </div>
+      )}
+    </>
+  )
 }

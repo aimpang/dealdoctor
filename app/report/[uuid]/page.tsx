@@ -27,6 +27,7 @@ export default function ReportPage() {
   const [error, setError] = useState('')
   const [timedOut, setTimedOut] = useState(false)
   const [retrying, setRetrying] = useState(false)
+  const [progress, setProgress] = useState(0)
   const pollStartRef = useRef<number>(Date.now())
 
   useEffect(() => {
@@ -56,11 +57,18 @@ export default function ReportPage() {
             setTimedOut(true)
             setLoading(false)
             stopped = true
+          } else {
+            // Simulated progress: fast start, asymptotes to 95% until server confirms done.
+            // Target ~45s median generation time; caps at 95 so 100 is reserved for completion.
+            const elapsed = (Date.now() - pollStartRef.current) / 1000
+            const pct = Math.min(95, Math.round((1 - Math.exp(-elapsed / 45)) * 100))
+            setProgress(pct)
           }
           return
         }
 
         // We have what we need
+        if (data.paid) setProgress(100)
         setLoading(false)
         stopped = true
       } catch {
@@ -88,6 +96,7 @@ export default function ReportPage() {
       // Restart the polling loop — reset timeout, re-enter loading state.
       setTimedOut(false)
       setLoading(true)
+      setProgress(0)
       pollStartRef.current = Date.now()
       const res = await fetch(`/api/report/${uuid}${isDebug ? '?debug=1' : ''}`)
       if (res.ok) setReport(await res.json())
@@ -167,7 +176,11 @@ export default function ReportPage() {
           <LoaderIcon className="h-8 w-8 animate-spin text-primary" />
           <div>
             <p className="font-semibold text-foreground">
-              {report?.paid ? <FriendlyLoadingMessage /> : <FriendlyLoadingMessage variant="preview" />}
+              {report?.paid ? (
+                <FriendlyLoadingMessage progress={progress} />
+              ) : (
+                <FriendlyLoadingMessage variant="preview" />
+              )}
             </p>
             {report?.paid && (
               <p className="mt-1 text-sm text-muted-foreground">
