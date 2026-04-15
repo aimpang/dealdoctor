@@ -161,7 +161,7 @@ export async function generateDealDoctor(
   const dealWorksAtAsk = breakEvenPrice >= askPrice
   const negotiationLock = dealWorksAtAsk
     ? `HARD LOCK — NEGOTIATION / TARGET PRICE:
-Breakeven is $${breakEvenPrice.toLocaleString()}, which is AT OR ABOVE the ask of $${askPrice.toLocaleString()}. The deal ALREADY WORKS at the asking price — no price reduction is needed to hit breakeven, and proposing a lower offer target would actively mislead the buyer. Do NOT frame breakeven ($${breakEvenPrice.toLocaleString()}) as a "drop to $X", "price reduction to $X", "target", "ceiling", or "negotiate down to $X" — it is higher than ask, not lower. Do NOT propose any offer figure below $${askPrice.toLocaleString()}. Frame NEG_1/NEG_2/NEG_3 around NON-PRICE concessions only: seller-paid closing costs, inspection-based repair credits, rate buy-downs (1-0 / 2-1 / permanent points), home warranty inclusion, or appliance/furniture inclusion. If you mention dollars, tie them to the concession (e.g. "$6,000 toward rate buy-down") — not to a target purchase price.`
+Breakeven is $${breakEvenPrice.toLocaleString()}, which is AT OR ABOVE the ask of $${askPrice.toLocaleString()}. The deal ALREADY WORKS at the asking price — no price reduction is needed to hit breakeven, and proposing a lower offer target would actively mislead the buyer. Do NOT frame breakeven ($${breakEvenPrice.toLocaleString()}) as a "drop to $X", "price reduction to $X", "target", "ceiling", or "negotiate down to $X" — it is higher than ask, not lower. Do NOT propose any offer figure below $${askPrice.toLocaleString()}. Frame NEG_1/NEG_2 around NON-PRICE concessions only: seller-paid closing costs, inspection-based repair credits, rate buy-downs (1-0 / 2-1 / permanent points), home warranty inclusion, or appliance/furniture inclusion. If you mention dollars, tie them to the concession (e.g. "$6,000 toward rate buy-down") — not to a target purchase price.`
     : `HARD LOCK — NEGOTIATION / TARGET PRICE:
 The ONLY valid price-reduction target is the breakeven: $${breakEvenPrice.toLocaleString()}.
 Whenever you mention a target price, offer ceiling, "drop to $X", "price reduction to $X",
@@ -220,16 +220,14 @@ WRITE exactly this structure (no markdown, plain text only, ONE value per line):
 
 DIAGNOSIS: [2-3 sentences. Plain English. Name the specific problem. Use the exact numbers above. No jargon. Tone: honest friend who knows real estate.]
 
-PROS: [SEMICOLON-separated list of 3-5 genuine positives about this specific deal. Reference actual numbers or location facts. No fluff. Use semicolons (;) between items, NEVER commas — dollar amounts like $2,110 contain commas and must not be split.]
+PROS: [SEMICOLON-separated list of 3-5 genuine positives. Must add contextual insight — WHY a fact matters for this deal, not what the number is. Do NOT restate metrics the investor can already see (e.g. do NOT write "DSCR of 1.1x" or "cap rate of 5.2%" or "cash flow of +$180/mo" — those are already on the page). Instead: explain consequences, compare to market norms, or flag a structural advantage. Use semicolons (;) between items, NEVER commas.]
 
-CONS: [SEMICOLON-separated list of 3-5 specific concerns. Reference actual numbers or location facts. No generic advice. Use semicolons (;) between items, NEVER commas.]
+CONS: [SEMICOLON-separated list of 3-5 specific concerns. Same rule: add insight, do NOT echo the numbers table. Not "negative cash flow of -$155/mo" — instead "thin margin leaves no buffer if the AC unit fails or vacancy runs two months". Use semicolons (;) between items, NEVER commas.]
 
 NEG_1_LEVER: [Short concession to ask the seller for — e.g. "Closing costs credit", "Inspection repairs credit", "Price reduction for rehab"]
 NEG_1_SCRIPT: [One sentence the buyer can actually say — specific dollar amount tied to a real issue]
-NEG_2_LEVER: [Different negotiation angle]
+NEG_2_LEVER: [Different negotiation angle — pick the one with the second-best leverage, not a weak fallback]
 NEG_2_SCRIPT: [Specific script]
-NEG_3_LEVER: [Third angle]
-NEG_3_SCRIPT: [Specific script]
 
 INSPECT_1_AREA: [Short area name — e.g. "Foundation", "Roof", "HVAC", "Plumbing", "Windows", "Electrical"]
 INSPECT_1_WHY: [One sentence on WHY this property specifically is at risk — tie to year built, location climate, or property type]
@@ -261,7 +259,7 @@ BOTTOM_LINE: [Single sentence starting with "Bottom line:" — what should they 
 
 Rules:
 - Never invent numbers. Use only the values provided above.
-- PROS and CONS must reference the actual provided data (cash flow, DSCR, rate, climate, state rules). Do NOT list generic "good property" or "be careful" items.
+- PROS and CONS must add insight, not restate what is already on the page. The investor can already see DSCR, cap rate, cash flow, and LTV in the summary table — repeating those numbers as a pro or con is wasted space. Instead: explain WHY a number is significant ("DSCR barely clears 1.0x — one month of vacancy eliminates the buffer"), compare to market norms ("5.2% cap rate is below the 6–7% typical for this market"), or surface a consequence the numbers alone don't convey. Do NOT write "Positive cash flow of +$180/mo" as a pro — say what that margin means in practice.
 - Negotiation scripts must name a SPECIFIC dollar amount when possible (tied to a real issue). Generic "negotiate hard" is worthless.
 - Inspection red flags must be property-specific. A 1950s home in FL has different risks than a 2015 home in AZ. Tie to year built + climate + property type. IF property type is a Condo / Apartment / High-Rise, focus on building-level concerns (HOA reserves, elevator / shared-systems age, garage membrane, window-seal failures, flood at lobby/garage level) — NEVER suggest "row home" / "SFR roof" / "foundation settling" red flags for a condo unit.
 - Fix 1: lowest effort path to a working deal
@@ -443,7 +441,7 @@ function parseDealDoctorResponse(text: string): DealDoctorOutput {
     bottomLine: get('BOTTOM_LINE'),
     pros: splitCommaList(get('PROS')),
     cons: splitCommaList(get('CONS')),
-    negotiationLevers: [1, 2, 3]
+    negotiationLevers: [1, 2]
       .map((n) => ({
         lever: get(`NEG_${n}_LEVER`),
         script: get(`NEG_${n}_SCRIPT`),
