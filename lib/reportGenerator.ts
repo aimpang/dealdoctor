@@ -90,6 +90,10 @@ export interface ReportWarning {
     | 'hoa-above-building-avg'
     | 'nyc-likely-coop'
     | 'rent-avm-below-comps'
+    | 'sqft-corrected'
+    | 'property-tax-likely-exempted'
+    | 'year-built-implausible'
+    | 'price-per-sqft-implausible'
   message: string
 }
 
@@ -111,6 +115,8 @@ export function buildReportWarnings(input: {
   bedrooms?: number | null
   bathrooms?: number | null
   squareFeet?: number | null
+  yearBuilt?: number | null
+  askPrice?: number | null
   rentCompRents?: Array<number>       // raw rent values (finite, >0) for spread analysis
   // Rent AVM (what Rentcast returns) vs. the comp median, for flagging a
   // systematic under-estimate in luxury markets where the AVM regularly
@@ -373,6 +379,35 @@ export function buildReportWarnings(input: {
       warnings.push({
         code: 'rent-avm-below-comps',
         message: `Rent AVM ($${Math.round(avm).toLocaleString()}/mo) is ${Math.round(gap * 100)}% BELOW the comp median ($${Math.round(median).toLocaleString()}/mo) across ${input.rentCompRents.length} comps. The financial model below uses the AVM — luxury markets systematically under-shoot here. An alternate scenario at the comp-median rent would lift monthly cash flow by roughly $${Math.round(median - avm).toLocaleString()}/mo before opex. Verify against current same-building listings before trusting the DEAL verdict either way.`,
+      })
+    }
+  }
+
+  // Reality-check bounds on raw inputs. Cheap, deterministic, catches
+  // data-vendor errors the reviewer can't (reviewer is narrative-vs-data,
+  // doesn't re-compute math or sanity-check magnitudes).
+  if (
+    input.yearBuilt != null &&
+    Number.isFinite(input.yearBuilt) &&
+    (input.yearBuilt < 1800 || input.yearBuilt > new Date().getFullYear() + 2)
+  ) {
+    warnings.push({
+      code: 'year-built-implausible',
+      message: `Year built (${input.yearBuilt}) is outside the plausible range (1800–present). Data source returned a malformed value — could be a renovation date misfiled as original construction, or a parcel-record error. Age drives maintenance, insurance, and depreciation assumptions; verify against the listing.`,
+    })
+  }
+
+  if (
+    input.askPrice &&
+    input.squareFeet &&
+    Number.isFinite(input.squareFeet) &&
+    input.squareFeet > 100
+  ) {
+    const ppsf = input.askPrice / input.squareFeet
+    if (ppsf < 20 || ppsf > 5000) {
+      warnings.push({
+        code: 'price-per-sqft-implausible',
+        message: `Price per square foot works out to $${Math.round(ppsf).toLocaleString()}/sqft — outside the plausible US-residential range of $20–$5,000/sqft. Either the price ($${input.askPrice.toLocaleString()}) or the square footage (${input.squareFeet.toLocaleString()}) is a data error. Verify both against the listing before trusting any comp-driven math.`,
       })
     }
   }
@@ -827,6 +862,36 @@ export async function composeFullReport(
       property.property_type = 'Condo'
     }
   }
+
+  // Sqft sanity for condo/apartment units. Rentcast occasionally returns
+  // the *building's* gross sqft on an individual unit record — 3200 N Lake
+  // Shore Dr #2408 audit: 32,400 sqft on a 3BR Lakeview unit. That figure
+  // cascades into $/sqft maintenance (~$1,296/mo vs $150 typical), sqft-
+  // bucketed comp dedupe clusters, value-triangulation confidence, AI
+  // narrative ("this 32,400 sqft unit..."), and PDF display. Cap condo
+  // units at 5,000 sqft; replace with bedroom-matched comp median, else
+  // fall back to a bedroom heuristic (~650 sqft/BR, min 500).
+  let sqftCorrection: { original: number; replaced: number; source: 'comp-median' | 'bedroom-heuristic' } | null = null
+  const CONDO_SQFT_CEILING = 5000
+  const isCondoish = /condo|apartment|co-?op/i.test(property.property_type || '')
+  if (isCondoish && typeof property.square_feet === 'number' && property.square_feet > CONDO_SQFT_CEILING) {
+    const compSqfts = saleComps
+      .map((c: any) => Number(c?.square_feet))
+      .filter((n: number) => Number.isFinite(n) && n > 200 && n < CONDO_SQFT_CEILING)
+      .sort((a: number, b: number) => a - b)
+    const compMedian = compSqfts.length > 0 ? compSqfts[Math.floor(compSqfts.length / 2)] : null
+    const bedroomFallback = Math.max(500, (property.bedrooms || 1) * 650)
+    const replaced = compMedian ?? bedroomFallback
+    sqftCorrection = {
+      original: property.square_feet,
+      replaced,
+      source: compMedian ? 'comp-median' : 'bedroom-heuristic',
+    }
+    console.warn(
+      `[reportGenerator] sqft sanity: ${property.property_type} sqft ${property.square_feet} > ${CONDO_SQFT_CEILING} — replaced with ${replaced} (${sqftCorrection.source})`
+    )
+    property.square_feet = replaced
+  }
   const marketSnapshot =
     results.marketSnapshot.status === 'fulfilled' ? results.marketSnapshot.value : null
   const climate =
@@ -930,6 +995,19 @@ export async function composeFullReport(
       )
     }
   }
+
+  // Exemption detection: when the county-record tax is materially below the
+  // state-average estimate (< 50%), the prior owner likely carries a homestead,
+  // senior-freeze, veteran, or similar exemption that doesn't transfer on sale.
+  // Investor buyers see their bill reset to the non-exempt rate — a classic
+  // first-year gotcha (Chicago audit: Harbor House unit showed $247/mo vs
+  // $500/mo state-average and $350-450/mo building actual). We keep the
+  // county-record number to avoid overstating, but surface a warning so the
+  // user verifies with the assessor before relying on the carrying cost.
+  const taxLikelyExempted =
+    propertyTaxSource === 'county-record' &&
+    stateAverageTax > 0 &&
+    countyRecordTax < stateAverageTax * 0.5
 
   // HOA capture: prefer the Rentcast-reported value. If the feed has no HOA
   // for a condo/apartment (Rentcast often doesn't carry HOA for urban condo
@@ -1219,6 +1297,8 @@ export async function composeFullReport(
     bedrooms: property.bedrooms,
     bathrooms: property.bathrooms,
     squareFeet: property.square_feet,
+    yearBuilt: property.year_built,
+    askPrice: offerPrice,
     rentCompRents: (rentComps || [])
       .map((c: any) => Number(c?.rent))
       .filter((v: number) => Number.isFinite(v) && v > 0),
@@ -1261,6 +1341,25 @@ export async function composeFullReport(
       ? 'inferred-condo-default'
       : 'not-captured',
   })
+
+  // Surface the sqft correction to the user so they know the displayed
+  // figure was normalized. Keep it separate from the data-provenance-level
+  // warnings above — this one says "we fixed a known data vendor bug".
+  if (sqftCorrection) {
+    warnings.push({
+      code: 'sqft-corrected',
+      message: `Data provider reported ${sqftCorrection.original.toLocaleString()} sqft for this unit — implausible for a ${property.property_type}. Using ${sqftCorrection.replaced.toLocaleString()} sqft (${sqftCorrection.source === 'comp-median' ? 'median of same-market comps' : 'bedroom heuristic'}) for carrying-cost estimates. Verify actual unit sqft on listing before making an offer.`,
+    })
+  }
+
+  if (taxLikelyExempted) {
+    const countyAnnual = countyRecordTax * 12
+    const stateAnnual = stateAverageTax * 12
+    warnings.push({
+      code: 'property-tax-likely-exempted',
+      message: `County records show property tax of $${countyRecordTax.toLocaleString()}/mo ($${countyAnnual.toLocaleString()}/yr) — materially below the state-average estimate of $${stateAverageTax.toLocaleString()}/mo ($${stateAnnual.toLocaleString()}/yr) for this price. The seller likely carries a homestead, senior-freeze, or veteran exemption that resets on sale. Verify the non-exempt tax bill with the county assessor before underwriting — your actual carrying cost could be ~$${(stateAverageTax - countyRecordTax).toLocaleString()}/mo higher.`,
+    })
+  }
 
   const monthlyPITI = ltrMetrics.monthlyMortgagePayment + monthlyPropertyTax + monthlyInsurance
   const cashToClose = calculateCashToClose(offerPrice, downPaymentPct, rehabBudget, monthlyPITI)
@@ -1862,7 +1961,7 @@ export async function composeFullReport(
         const rewritten = await runGenerator(concerns)
         return rewritten as unknown as Record<string, unknown>
       },
-      { maxRounds: 2, confidenceFloor: 0.7 }
+      { maxRounds: 2, confidenceFloor: 0.80 }
     )
 
     if (loopResult.outcome.blocked) {

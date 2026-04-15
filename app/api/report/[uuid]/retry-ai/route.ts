@@ -148,7 +148,7 @@ export async function POST(
         const rewritten = await runGenerator(concerns)
         return rewritten as unknown as Record<string, unknown>
       },
-      { maxRounds: 2, confidenceFloor: 0.7 }
+      { maxRounds: 2, confidenceFloor: 0.80 }
     )
 
     if (loopResult.outcome.blocked) {
