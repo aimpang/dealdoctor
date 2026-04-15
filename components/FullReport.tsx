@@ -1260,7 +1260,7 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
               </div>
               {(expenses as { hoaSource?: string }).hoaSource === 'inferred-condo-default' && (
                 <p className="mt-2 text-[10px] text-amber-600 dark:text-amber-400">
-                  HOA above is an estimated market default, not a captured disclosure. Confirm the listing's actual monthly dues — it's the single biggest driver of the cash-flow number.
+                  HOA above is an estimated market default, not a captured disclosure. Confirm the listing&apos;s actual monthly dues — it&apos;s the single biggest driver of the cash-flow number.
                 </p>
               )}
               {expenses.monthlyHOA === 0 &&
