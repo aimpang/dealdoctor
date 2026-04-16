@@ -1228,19 +1228,14 @@ export async function composeFullReport(
   // when the rate is actually a county effective figure.
   const cityTaxKey = `${report.city.trim().toUpperCase()}, ${report.state.trim().toUpperCase()}`
   const hasCityTaxOverride = typeof CITY_RULES[cityTaxKey]?.propertyTaxRate === 'number'
-  let monthlyPropertyTax: number
-  let propertyTaxSource: 'county-record' | 'city-override' | 'state-average'
-  let taxIsBuildingLevel: boolean
-  let stateAverageTax: number
-  let countyRecordTax: number
-  ;({ monthlyPropertyTax, propertyTaxSource, taxIsBuildingLevel, stateAverageTax, countyRecordTax } = resolvePropertyTax({
+  const { monthlyPropertyTax, propertyTaxSource, taxIsBuildingLevel, stateAverageTax, countyRecordTax } = resolvePropertyTax({
     annualPropertyTax: property.annual_property_tax,
     offerPrice,
     statePropertyTaxRate: stateRules.propertyTaxRate,
     hasCityTaxOverride,
     city: report.city.trim().toUpperCase(),
     state: report.state.trim().toUpperCase(),
-  }))
+  })
 
   // Exemption detection: when the county-record tax is materially below the
   // state-average estimate (< 50%), the prior owner likely carries a homestead,
