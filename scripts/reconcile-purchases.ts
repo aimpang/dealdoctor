@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client'
 
 interface LemonSqueezyOrderRecord {
   id: string
+  createdAt: string | null
   refundedAt: string | null
 }
 
@@ -9,6 +10,16 @@ interface ReconciliationSummary {
   ledgerOnlyPurchaseCount: number
   lemonsqueezyOnlyOrderCount: number
   statusMismatchCount: number
+}
+
+interface LemonSqueezyOrderPayloadRecord {
+  attributes?: Record<string, unknown>
+  id?: string | number
+}
+
+interface LemonSqueezyOrderPayload {
+  data?: LemonSqueezyOrderPayloadRecord[]
+  links?: { next?: string | null }
 }
 
 const DEFAULT_LOOKBACK_DAYS = 30
@@ -38,11 +49,11 @@ const fetchAllOrders = async (lookbackDays: number) => {
     throw new Error('LEMONSQUEEZY_API_KEY and LEMONSQUEEZY_STORE_ID are required')
   }
 
-  const cutoffIso = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000).toISOString()
+  const cutoffDate = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000)
   const orders = new Map<string, LemonSqueezyOrderRecord>()
   let nextPageUrl: string | null =
     `https://api.lemonsqueezy.com/v1/orders?page[number]=1&page[size]=${MAX_PAGE_SIZE}` +
-    `&filter[store_id]=${storeId}&filter[created_at][gte]=${encodeURIComponent(cutoffIso)}`
+    `&filter[store_id]=${storeId}`
 
   while (nextPageUrl) {
     const response = await fetch(nextPageUrl, {
@@ -60,15 +71,10 @@ const fetchAllOrders = async (lookbackDays: number) => {
       throw new Error(`Failed to fetch LemonSqueezy orders: ${response.status}`)
     }
 
-    const payload = (await response.json()) as {
-      data?: Array<{
-        attributes?: Record<string, unknown>
-        id?: string | number
-      }>
-      links?: { next?: string | null }
-    }
+    const payload = (await response.json()) as LemonSqueezyOrderPayload
+    const currentPageOrders = payload.data ?? []
 
-    for (const order of payload.data ?? []) {
+    for (const order of currentPageOrders) {
       const id =
         typeof order.id === 'number'
           ? String(order.id)
@@ -80,17 +86,45 @@ const fetchAllOrders = async (lookbackDays: number) => {
         continue
       }
 
+      const createdAtValue = order.attributes?.created_at
       const refundedAtValue = order.attributes?.refunded_at
+      const createdAt =
+        typeof createdAtValue === 'string' ? new Date(createdAtValue) : null
+
+      if (createdAt && createdAt < cutoffDate) {
+        continue
+      }
+
       orders.set(id, {
         id,
+        createdAt: typeof createdAtValue === 'string' ? createdAtValue : null,
         refundedAt: typeof refundedAtValue === 'string' ? refundedAtValue : null,
       })
+    }
+
+    if (hasReachedLookbackBoundary(currentPageOrders, cutoffDate)) {
+      break
     }
 
     nextPageUrl = payload.links?.next ?? null
   }
 
   return orders
+}
+
+const hasReachedLookbackBoundary = (
+  currentPageOrders: LemonSqueezyOrderPayloadRecord[],
+  cutoffDate: Date
+) => {
+  const lastOrderRecord = currentPageOrders.at(-1)
+  const lastCreatedAtValue = lastOrderRecord?.attributes?.created_at
+
+  if (typeof lastCreatedAtValue !== 'string') {
+    return false
+  }
+
+  const lastCreatedAt = new Date(lastCreatedAtValue)
+  return lastCreatedAt < cutoffDate
 }
 
 const buildUnauthorizedMessage = (apiKey: string, storeId: string) => {
