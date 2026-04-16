@@ -7,6 +7,29 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum PurchaseSource {
+  webhook
+  backfill_migration
+}
+
+enum PurchasePlan {
+  single
+  five_pack
+  unlimited
+}
+
+enum PurchaseKind {
+  one_time
+  subscription
+}
+
+enum PurchaseStatus {
+  active
+  cancelled
+  expired
+  refunded
+}
+
 // Buyers of single/5-pack/unlimited tiers. Email-keyed, no auth required.
 // An opaque accessToken (random 32 bytes hex) is the "session" identifier —
 // we set it as a cookie so subsequent /api/preview calls on the same browser
@@ -22,15 +45,16 @@ model Customer {
   // pasting the code at /retrieve. The magic-link flow stays the primary
   // recovery path; this is the fallback for buyers who can't find the email.
   recoveryCode            String?   @unique
-  entitlementType         String?   // 'single' | '5pack' | 'unlimited'
-  reportsRemaining        Int       @default(0)    // for 5-pack
-  unlimitedUntil          DateTime?                  // for unlimited subscription
+  entitlementType         String?   // Legacy fallback: 'single' | '5pack' | 'unlimited'
+  reportsRemaining        Int       @default(0)    // Legacy fallback for 5-pack
+  unlimitedUntil          DateTime?                  // Legacy fallback for unlimited subscription
   lemonSqueezyCustomerId  String?
   lemonSqueezySubscriptionId String?
-  subscriptionStatus      String?   // 'active' | 'cancelled' | 'expired'
+  subscriptionStatus      String?   // Legacy fallback: 'active' | 'cancelled' | 'expired' | 'refunded'
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 
+  purchases               Purchase[]
   reports                 Report[]
 
   @@index([accessToken])
@@ -96,7 +120,9 @@ model Report {
   // Null for reports that haven't been paid yet (or were paid before the
   // customer system existed, pre-2026-04-13 migration).
   customerId      String?
-  customer        Customer? @relation(fields: [customerId], references: [id])
+  customer        Customer? @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  purchaseId      String?
+  purchase        Purchase? @relation(fields: [purchaseId], references: [id], onDelete: Restrict)
 
   // Teaser data (generated free)
   teaserData      String?  // JSON: {estimatedValue, estimatedRent, neighbourhoodScore}
@@ -123,6 +149,51 @@ model Report {
 
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+
+  @@index([purchaseId])
+}
+
+model Purchase {
+  id                     String          @id @default(cuid())
+  customerId             String
+  customer               Customer        @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  source                 PurchaseSource  @default(webhook)
+  plan                   PurchasePlan
+  purchaseKind           PurchaseKind
+  status                 PurchaseStatus
+  providerOrderId        String?         @unique
+  providerSubscriptionId String?         @unique
+  initialCredits         Int?
+  remainingCredits       Int?
+  unlimitedUntil         DateTime?
+  purchasedAt            DateTime        @default(now())
+  cancelledAt            DateTime?
+  expiredAt              DateTime?
+  refundedAt             DateTime?
+
+  reports                Report[]
+  events                 PurchaseEvent[]
+
+  @@index([customerId, status])
+  @@index([customerId, plan, status])
+  @@index([providerSubscriptionId, status])
+}
+
+model PurchaseEvent {
+  id                  String   @id @default(cuid())
+  purchaseId          String
+  purchase            Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  providerEventId     String   @unique
+  eventName           String
+  providerOrderId     String?
+  refundedAmountCents Int?
+  orderTotalCents     Int?
+  payloadJson         String?
+  eventCreatedAt      DateTime?
+  receivedAt          DateTime @default(now())
+
+  @@index([purchaseId, receivedAt])
+  @@index([providerOrderId])
 }
 
 // Durable rate-limit buckets. Replaces the prior in-memory Map which reset

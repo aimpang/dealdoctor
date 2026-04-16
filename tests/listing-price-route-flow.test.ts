@@ -9,10 +9,13 @@ const mockGetRentEstimate = vi.fn()
 const mockPrismaReportFindFirst = vi.fn()
 const mockPrismaReportCreate = vi.fn()
 const mockPrismaReportFindUnique = vi.fn()
+const mockPrismaReportUpdate = vi.fn()
 const mockCreateCheckout = vi.fn()
 const mockLemonSqueezySetup = vi.fn()
 const mockGetCurrentCustomer = vi.fn()
 const mockGenerateFullReport = vi.fn()
+const mockGetActiveEntitlementForCustomer = vi.fn()
+const mockDebitFivePackPurchaseForReport = vi.fn()
 
 vi.mock('@/lib/rateLimit', () => ({
   rateLimit: mockRateLimit,
@@ -76,6 +79,11 @@ vi.mock('@/lib/entitlements', () => ({
   debitForNewReport: vi.fn(() => ({ debited: false })),
 }))
 
+vi.mock('@/lib/purchase-ledger', () => ({
+  getActiveEntitlementForCustomer: mockGetActiveEntitlementForCustomer,
+  debitFivePackPurchaseForReport: mockDebitFivePackPurchaseForReport,
+}))
+
 vi.mock('@/lib/reportGenerator', () => ({
   generateFullReport: mockGenerateFullReport,
 }))
@@ -86,6 +94,7 @@ vi.mock('@/lib/db', () => ({
       findFirst: mockPrismaReportFindFirst,
       create: mockPrismaReportCreate,
       findUnique: mockPrismaReportFindUnique,
+      update: mockPrismaReportUpdate,
     },
   },
 }))
@@ -158,7 +167,14 @@ beforeEach(() => {
   })
   mockPrismaReportFindFirst.mockResolvedValue(null)
   mockPrismaReportCreate.mockResolvedValue(undefined)
+  mockPrismaReportUpdate.mockResolvedValue(undefined)
   mockGetCurrentCustomer.mockResolvedValue(null)
+  mockGetActiveEntitlementForCustomer.mockResolvedValue(null)
+  mockDebitFivePackPurchaseForReport.mockResolvedValue({
+    debited: false,
+    purchaseId: null,
+    remainingCredits: null,
+  })
   mockCreateCheckout.mockResolvedValue({
     data: {
       data: {

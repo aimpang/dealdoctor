@@ -26,6 +26,10 @@ import {
   enforceEntitlementExpiry,
   debitForNewReport,
 } from '@/lib/entitlements'
+import {
+  debitFivePackPurchaseForReport,
+  getActiveEntitlementForCustomer,
+} from '@/lib/purchase-ledger'
 import { generateFullReport } from '@/lib/reportGenerator'
 import { buildPropertyProfileAudit, isUnsupportedPropertyType } from '@/lib/qualityAudit'
 import {
@@ -519,7 +523,11 @@ export async function POST(req: NextRequest) {
     // Lazy sweep: if the customer's unlimited subscription expired and the
     // `subscription_expired` webhook never arrived, zero it out now.
     if (customer) customer = await enforceEntitlementExpiry(customer)
-    const entitlement = customer ? hasActiveEntitlement(customer) : { active: false }
+    const purchaseEntitlement = customer
+      ? await getActiveEntitlementForCustomer(customer.id)
+      : null
+    const entitlement =
+      customer && !purchaseEntitlement ? hasActiveEntitlement(customer) : { active: false }
 
     // Double-click dedup: if the same address was submitted (by anyone) in
     // the last 30 seconds and is still unpaid + waiting for checkout, return
@@ -544,16 +552,14 @@ export async function POST(req: NextRequest) {
     const reusedExisting = !!recentMatch
     const finalUuid = recentMatch?.id ?? uuid
 
-    // Debit BEFORE marking the report paid. A concurrent pair of previews on
-    // a 5-pack customer's last credit used to race: both reads saw
-    // reportsRemaining=1, both created paid reports, and only one debit
-    // succeeded — user got 2 reports for 1 credit. debitForNewReport now
-    // uses an atomic conditional update; paid status follows the debit.
-    let debitResult: { debited: boolean; newRemaining?: number } = { debited: false }
-    if (!reusedExisting && customer && entitlement.active) {
-      debitResult = await debitForNewReport(customer)
-    }
-    const effectivelyPaid = debitResult.debited
+    const shouldAutopayFromPurchaseUnlimited =
+      !reusedExisting && customer && purchaseEntitlement?.plan === 'unlimited'
+    const shouldAutopayFromLegacyUnlimited =
+      !reusedExisting &&
+      customer &&
+      !purchaseEntitlement &&
+      entitlement.active &&
+      entitlement.type === 'unlimited'
 
     if (!reusedExisting) {
       await prisma.report.create({
@@ -564,12 +570,15 @@ export async function POST(req: NextRequest) {
           state,
           zipCode: property.zip_code,
           teaserData: JSON.stringify(teaserData),
-          ...(effectivelyPaid && customer
+          ...((shouldAutopayFromPurchaseUnlimited || shouldAutopayFromLegacyUnlimited) && customer
             ? {
                 paid: true,
                 customerId: customer.id,
                 customerEmail: customer.email,
                 paidAt: new Date(),
+                ...(shouldAutopayFromPurchaseUnlimited
+                  ? { purchaseId: purchaseEntitlement?.purchaseId }
+                  : {}),
               }
             : {}),
         },
@@ -582,12 +591,63 @@ export async function POST(req: NextRequest) {
       until?: string
     } = null
 
-    if (effectivelyPaid && customer && !reusedExisting) {
-      autopaid = {
-        entitlement: entitlement.type!,
-        remaining: debitResult.newRemaining,
-        until: entitlement.until?.toISOString(),
+    if (!reusedExisting && customer) {
+      if (purchaseEntitlement?.plan === 'five_pack') {
+        const purchaseDebitResult = await debitFivePackPurchaseForReport({
+          customerId: customer.id,
+          reportId: finalUuid,
+        })
+
+        if (purchaseDebitResult.debited) {
+          await prisma.report.update({
+            where: { id: finalUuid },
+            data: {
+              paid: true,
+              customerId: customer.id,
+              customerEmail: customer.email,
+              paidAt: new Date(),
+            },
+          })
+
+          autopaid = {
+            entitlement: '5pack',
+            remaining: purchaseDebitResult.remainingCredits ?? undefined,
+          }
+        }
+      } else if (purchaseEntitlement?.plan === 'unlimited') {
+        autopaid = {
+          entitlement: 'unlimited',
+          until: purchaseEntitlement.unlimitedUntil?.toISOString(),
+        }
+      } else if (entitlement.active) {
+        if (entitlement.type === 'unlimited') {
+          autopaid = {
+            entitlement: 'unlimited',
+            until: entitlement.until?.toISOString(),
+          }
+        } else if (entitlement.type === '5pack') {
+          const legacyDebitResult = await debitForNewReport(customer)
+          if (legacyDebitResult.debited) {
+            await prisma.report.update({
+              where: { id: finalUuid },
+              data: {
+                paid: true,
+                customerId: customer.id,
+                customerEmail: customer.email,
+                paidAt: new Date(),
+              },
+            })
+
+            autopaid = {
+              entitlement: '5pack',
+              remaining: legacyDebitResult.newRemaining,
+            }
+          }
+        }
       }
+    }
+
+    if (autopaid && !reusedExisting) {
       // Generate full report async — don't block preview response
       generateFullReport(finalUuid).catch((err) =>
         console.error('[preview] auto-pay report generation failed for', finalUuid, err)

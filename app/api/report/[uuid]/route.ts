@@ -95,6 +95,7 @@ export async function GET(
       debugRequested: searchParams.get('debug') === '1',
       reportCustomerId: (report as any).customerId,
       reportId: uuid,
+      reportPurchaseId: (report as any).purchaseId,
       tokenCandidate: searchParams.get('t'),
     })
     const isDebug = access.isDebug

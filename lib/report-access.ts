@@ -9,6 +9,7 @@ export interface ReportAccessOptions {
   debugRequested?: boolean
   reportCustomerId?: string | null
   reportId: string
+  reportPurchaseId?: string | null
   resolvedCookieCustomerId?: string | null
   resolvedTokenValid?: boolean
   tokenCandidate?: string | null
@@ -47,25 +48,33 @@ export const resolveReportAccess = async (
       resolvedCookieCustomerId === options.reportCustomerId
   )
 
-  let tokenRevokedByRefund = false
-  if (tokenValid && options.reportCustomerId) {
+  let purchaseRevokedByRefund = false
+  let legacyRefundRevokedToken = false
+  if (options.reportPurchaseId) {
+    const reportPurchase = await prisma.purchase.findUnique({
+      where: { id: options.reportPurchaseId },
+      select: { status: true },
+    })
+    purchaseRevokedByRefund = reportPurchase?.status === 'refunded'
+  } else if (options.reportCustomerId) {
     const reportOwner = await prisma.customer.findUnique({
       where: { id: options.reportCustomerId },
       select: { subscriptionStatus: true },
     })
-    tokenRevokedByRefund = reportOwner?.subscriptionStatus === 'refunded'
+    legacyRefundRevokedToken = reportOwner?.subscriptionStatus === 'refunded'
   }
 
-  const effectiveTokenValid = tokenValid && !tokenRevokedByRefund
+  const effectiveTokenValid = tokenValid && !purchaseRevokedByRefund && !legacyRefundRevokedToken
+  const effectiveOwner = options.reportPurchaseId ? isOwner && !purchaseRevokedByRefund : isOwner
   const isDebug = Boolean(
     options.allowDebug &&
       options.debugRequested &&
       isDebugAccessAuthorized(options.debugKey)
   )
-  const hasAccess = isDebug || isOwner || effectiveTokenValid
+  const hasAccess = isDebug || effectiveOwner || effectiveTokenValid
   const accessGrantedVia = isDebug
     ? 'debug'
-    : isOwner
+    : effectiveOwner
     ? 'owner'
     : effectiveTokenValid
     ? 'share-token'
@@ -77,7 +86,7 @@ export const resolveReportAccess = async (
     hasAccess,
     isDebug,
     isOwner,
-    tokenRevokedByRefund,
+    tokenRevokedByRefund: purchaseRevokedByRefund || legacyRefundRevokedToken,
     tokenValid,
   }
 }
