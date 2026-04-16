@@ -10,6 +10,8 @@ import {
 import { resolvePropertyValueSignals } from './property-value-signals'
 
 const API_KEY = process.env.PROPERTY_API_KEY || ''
+const IS_PRODUCTION = process.env.NODE_ENV === 'production'
+const PROPERTY_API_CONFIGURED = Boolean(API_KEY && API_KEY !== 'your_key_here')
 
 export interface PropertyData {
   property_id: string
@@ -91,8 +93,12 @@ export async function searchProperty(
   address: string,
   options: SearchPropertyOptions = {}
 ): Promise<PropertyData | null> {
-  if (API_KEY && API_KEY !== 'your_key_here') {
+  if (PROPERTY_API_CONFIGURED) {
     return await searchPropertyRentcast(address, options)
+  }
+  if (IS_PRODUCTION) {
+    logger.error('property_api.misconfigured', { address })
+    return null
   }
   return generateStubProperty(address)
 }
@@ -657,7 +663,7 @@ export interface MarketSnapshot {
 }
 
 export async function getMarketSnapshot(zipCode: string): Promise<MarketSnapshot | null> {
-  if (!API_KEY || API_KEY === 'your_key_here' || !zipCode) return null
+  if (!PROPERTY_API_CONFIGURED || !zipCode) return null
   try {
     const url = new URL('https://api.rentcast.io/v1/markets')
     url.searchParams.set('zipCode', zipCode)
@@ -737,7 +743,7 @@ export async function getRentComps(
   propertyType?: string | null,
   subjectBathrooms?: number | null
 ): Promise<RentComp[]> {
-  if (!API_KEY || API_KEY === 'your_key_here') return []
+  if (!PROPERTY_API_CONFIGURED) return []
   try {
     const url = new URL('https://api.rentcast.io/v1/avm/rent/long-term')
     url.searchParams.set('address', address)
@@ -837,7 +843,7 @@ export async function getRentComps(
 
 // Get rent estimate for a property
 export async function getRentEstimate(address: string, bedrooms: number): Promise<RentEstimate | null> {
-  if (API_KEY && API_KEY !== 'your_key_here') {
+  if (PROPERTY_API_CONFIGURED) {
     try {
       const url = new URL('https://api.rentcast.io/v1/avm/rent/long-term')
       url.searchParams.set('address', address)
@@ -895,7 +901,7 @@ export async function getComparableSales(
     address?: string | null       // used to identify same-building comps
   } | null
 ) {
-  if (API_KEY && API_KEY !== 'your_key_here') {
+  if (PROPERTY_API_CONFIGURED) {
     try {
       const url = new URL('https://api.rentcast.io/v1/properties')
       if (coords) {
