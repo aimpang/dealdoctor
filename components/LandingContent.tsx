@@ -94,6 +94,11 @@ const SECTIONS = [
         title: 'Location Quality',
         desc: 'Walkability, amenity counts (groceries, transit, schools, parks) within ~½ mile via Mapbox Tilequery.',
       },
+      {
+        icon: ShieldCheckIcon,
+        title: 'One-Click Cross-Checks',
+        desc: 'Every paid report links back to Zillow, Redfin, and Realtor for the same address so you can verify the listing and sanity-check the inputs fast.',
+      },
     ],
   },
   {
