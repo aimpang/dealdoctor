@@ -3,8 +3,6 @@ import { logger } from './logger'
 import type { Report } from '@prisma/client'
 import { runInvariantCheck, InvariantGateError, type InvariantFailure } from './invariantCheck'
 import { runReviewLoop, type ReviewConcern } from './reviewReport'
-// Note: reviewReport.ts is retained in the tree but not imported here after
-// the reviewer loop was removed (see comment below in composeFullReport).
 import {
   searchProperty,
   getRentEstimate,
@@ -2124,13 +2122,6 @@ export async function composeFullReport(
 
   try {
     dealDoctor = await runGenerator()
-    // Note: the prior Haiku+Sonnet-reviewer loop was removed after the
-    // pressure test showed 9/10 reports failing to converge — Haiku's
-    // rewrites introduced more bugs than they fixed. Sonnet now writes the
-    // narrative directly (see MODEL_ID in lib/dealDoctor.ts), eliminating
-    // the loop. lib/reviewReport.ts is retained in the tree as an opt-in
-    // tool if we want to re-introduce review on specific report classes
-    // later, but it's no longer wired into the default pipeline.
   } catch (err: any) {
     const status = err?.status ?? err?.response?.status
     const apiError = err?.error ? JSON.stringify(err.error) : null
@@ -2189,6 +2180,11 @@ export async function composeFullReport(
       investorPremiumBps: Math.round(INVESTOR_PREMIUM[strategy] * 10000),
       mortgage15yr: rates.mortgage15yr,
       fedFunds: rates.fedFundsRate,
+    },
+    dealDoctorInputs: {
+      canonicalBreakEvenPrice: canonicalBreakEven,
+      strNetMonthlyCashFlow: strProjection?.monthlyNetCashFlow ?? null,
+      strProhibited,
     },
     breakeven: (() => {
       // Canonical breakeven reconciled above (teaser preferred, else the
@@ -2629,6 +2625,11 @@ export async function generateFullReport(uuid: string): Promise<void> {
         },
       })
     }
+    // Cache the reviewer's block verdict on the row itself. Without this,
+    // the polling frontend kept re-running the full 30-60s pipeline on every
+    // refresh (audit: 414 Water St, Baltimore — 6× re-runs at 30-60s each).
+    // With the sentinel persisted to fullReportData, the route short-circuits
+    // on subsequent reads and returns the cached reason immediately.
     throw err
   }
 

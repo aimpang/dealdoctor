@@ -1,6 +1,10 @@
 export const DEFAULT_SITE_URL = 'https://dealdoctor.us'
+export const DEFAULT_SUPPORT_EMAIL = 'support@dealdoctor.us'
 
 export const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL ?? DEFAULT_SITE_URL).replace(/\/$/, '')
+export const SUPPORT_EMAIL = (process.env.SUPPORT_EMAIL ?? DEFAULT_SUPPORT_EMAIL).trim()
+export const SUPPORT_MAILTO_URL = `mailto:${SUPPORT_EMAIL}`
+export const RETRIEVE_URL = `${BASE_URL}/retrieve`
 
 export const DISPLAY_SITE_HOSTNAME = (() => {
   try {

@@ -37,6 +37,47 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 const TOKEN_SECRET = envSecret || DEV_DEFAULT_SECRET
+const SHARE_TOKEN_TTL_DAYS = 30
+const SHARE_TOKEN_TTL_MS = SHARE_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000
+
+interface ShareTokenPayload {
+  exp: number
+  uuid: string
+}
+
+const signShareTokenPayload = (encodedPayload: string): string =>
+  crypto
+    .createHmac('sha256', TOKEN_SECRET)
+    .update(encodedPayload)
+    .digest('base64url')
+    .slice(0, 24)
+
+const parseShareToken = (candidate: string | null | undefined): {
+  encodedPayload: string
+  payload: ShareTokenPayload
+  signature: string
+} | null => {
+  if (!candidate) return null
+  const [encodedPayload, signature] = candidate.split('.')
+  if (!encodedPayload || !signature) return null
+
+  try {
+    const payload = JSON.parse(
+      Buffer.from(encodedPayload, 'base64url').toString('utf8')
+    ) as ShareTokenPayload
+    if (
+      !payload ||
+      typeof payload.uuid !== 'string' ||
+      typeof payload.exp !== 'number' ||
+      payload.exp <= Date.now()
+    ) {
+      return null
+    }
+    return { encodedPayload, payload, signature }
+  } catch {
+    return null
+  }
+}
 
 /**
  * Produce a short base64url HMAC over the report UUID. Deterministic — the
@@ -44,20 +85,26 @@ const TOKEN_SECRET = envSecret || DEV_DEFAULT_SECRET
  * output is plenty: 2^96 search space, the attacker would still have to
  * guess a 32-char random alphabet to forge.
  */
-export function signShareToken(uuid: string): string {
-  return crypto
-    .createHmac('sha256', TOKEN_SECRET)
-    .update(uuid)
-    .digest('base64url')
-    .slice(0, 16) // 16 chars of base64url = 12 bytes of entropy
+export function signShareToken(uuid: string, expiresInMs: number = SHARE_TOKEN_TTL_MS): string {
+  const payload: ShareTokenPayload = {
+    uuid,
+    exp: Date.now() + expiresInMs,
+  }
+  const encodedPayload = Buffer.from(JSON.stringify(payload)).toString('base64url')
+  const signature = signShareTokenPayload(encodedPayload)
+  return `${encodedPayload}.${signature}`
 }
 
 export function verifyShareToken(uuid: string, candidate: string | null | undefined): boolean {
-  if (!candidate) return false
-  const expected = signShareToken(uuid)
-  if (candidate.length !== expected.length) return false
+  const parsedShareToken = parseShareToken(candidate)
+  if (!parsedShareToken || parsedShareToken.payload.uuid !== uuid) return false
+  const expectedSignature = signShareTokenPayload(parsedShareToken.encodedPayload)
+  if (parsedShareToken.signature.length !== expectedSignature.length) return false
   try {
-    return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(candidate))
+    return crypto.timingSafeEqual(
+      Buffer.from(expectedSignature),
+      Buffer.from(parsedShareToken.signature)
+    )
   } catch {
     return false
   }

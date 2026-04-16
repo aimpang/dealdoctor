@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { lemonSqueezySetup, createCheckout } from '@lemonsqueezy/lemonsqueezy.js'
 import { prisma } from '@/lib/db'
-import { absoluteUrl } from '@/lib/seo'
+import { absoluteUrl, SUPPORT_EMAIL } from '@/lib/seo'
 import {
   hasResolvedListingPrice,
   isManualListingPriceConfirmationStale,
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
           "We couldn't verify the current listing price for this property, so checkout is blocked until the ask price is resolved.",
         code: 'listing-price-unresolved',
         retryable: true,
-        supportContact: 'support@dealdoctor.app',
+        supportContact: SUPPORT_EMAIL,
       },
       { status: 409 }
     )
@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
           'The confirmed ask price is stale. Refresh the address and reconfirm the current listing price before checkout.',
         code: 'listing-price-stale',
         retryable: true,
-        supportContact: 'support@dealdoctor.app',
+        supportContact: SUPPORT_EMAIL,
       },
       { status: 409 }
     )
@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
           error: 'Checkout provider did not return a URL',
           code: 'checkout_no_url',
           retryable: true,
-          supportContact: 'support@dealdoctor.app',
+          supportContact: SUPPORT_EMAIL,
         },
         { status: 502 }
       )
@@ -108,7 +108,7 @@ export async function POST(req: NextRequest) {
         error: 'We couldn\'t reach our payment processor. Try again in a moment, or contact support if this keeps happening.',
         code: 'checkout_unreachable',
         retryable: true,
-        supportContact: 'support@dealdoctor.app',
+        supportContact: SUPPORT_EMAIL,
         detail: process.env.NODE_ENV !== 'production' ? String(err?.message ?? err) : undefined,
       },
       { status: 502 }

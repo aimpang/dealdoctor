@@ -46,6 +46,7 @@ export function BlurredReport({ uuid, address }: BlurredReportProps) {
   const [checkoutError, setCheckoutError] = useState<{
     message: string
     retryable: boolean
+    code?: string
     supportContact?: string
   } | null>(null)
 
@@ -61,6 +62,7 @@ export function BlurredReport({ uuid, address }: BlurredReportProps) {
       const data = await res.json()
       if (!res.ok) {
         setCheckoutError({
+          code: data.code,
           message: data.error || 'Checkout failed. Please try again.',
           retryable: data.retryable ?? true,
           supportContact: data.supportContact,
@@ -74,7 +76,8 @@ export function BlurredReport({ uuid, address }: BlurredReportProps) {
       setCheckoutError({
         message: 'Network error — check your connection and try again.',
         retryable: true,
-        supportContact: 'support@dealdoctor.app',
+        code: 'network-error',
+        supportContact: 'support@dealdoctor.us',
       })
     } finally {
       setLoading(false)
@@ -221,6 +224,14 @@ export function BlurredReport({ uuid, address }: BlurredReportProps) {
                 <p className="text-sm font-semibold text-foreground">Checkout couldn&apos;t start</p>
                 <p className="mt-0.5 text-xs text-foreground/65">{checkoutError.message}</p>
                 <div className="mt-2 flex flex-wrap gap-2">
+                  {checkoutError.code === 'listing-price-stale' && (
+                    <a
+                      href="/"
+                      className="border border-[hsl(var(--primary))] bg-[hsl(var(--primary))] px-3 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-primary-foreground hover:bg-[hsl(var(--primary))]/90"
+                    >
+                      Search again
+                    </a>
+                  )}
                   {checkoutError.retryable && (
                     <button
                       type="button"

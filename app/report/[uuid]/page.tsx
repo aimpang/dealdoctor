@@ -8,6 +8,7 @@ import { PhotoAnalysis } from '@/components/PhotoAnalysis'
 import { ReportFeedback } from '@/components/ReportFeedback'
 import { FriendlyLoadingMessage } from '@/components/FriendlyLoadingMessage'
 import { Logo } from '@/components/Logo'
+import { SUPPORT_EMAIL, SUPPORT_MAILTO_URL } from '@/lib/seo'
 import { LoaderIcon, CheckCircle2Icon, MapPinIcon, AlertTriangleIcon } from 'lucide-react'
 
 // After 180s (6× the "30–45 seconds" user-facing promise) we stop polling
@@ -158,10 +159,10 @@ export default function ReportPage() {
           <p className="mt-6 text-xs text-foreground/55">
             Still not working? Email{' '}
             <a
-              href="mailto:support@dealdoctor.com"
+              href={SUPPORT_MAILTO_URL}
               className="underline decoration-dotted underline-offset-2 hover:text-foreground"
             >
-              support@dealdoctor.com
+              {SUPPORT_EMAIL}
             </a>{' '}
             with this URL and we&apos;ll hand-generate it.
           </p>

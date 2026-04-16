@@ -1,3 +1,5 @@
+import { RETRIEVE_URL, SUPPORT_EMAIL } from './seo'
+
 interface SendEmailParams {
   to: string
   subject: string
@@ -5,16 +7,26 @@ interface SendEmailParams {
   text?: string
 }
 
-const FROM_DEFAULT = process.env.EMAIL_FROM || 'DealDoctor <onboarding@resend.dev>'
+const DEFAULT_EMAIL_FROM = 'DealDoctor <onboarding@resend.dev>'
+const CONFIGURED_EMAIL_FROM = process.env.EMAIL_FROM?.trim() || ''
+const FROM_DEFAULT = CONFIGURED_EMAIL_FROM || DEFAULT_EMAIL_FROM
 const REPLY_TO = process.env.EMAIL_REPLY_TO
 
 export async function sendEmail(
   params: SendEmailParams
 ): Promise<{ sent: boolean; id?: string; error?: string }> {
   const key = process.env.RESEND_API_KEY
+  const invalidProductionSender =
+    process.env.NODE_ENV === 'production' &&
+    (!CONFIGURED_EMAIL_FROM || CONFIGURED_EMAIL_FROM.includes('resend.dev'))
+
   if (!key) {
     console.warn('[email] RESEND_API_KEY not set - skipping email:', params.subject)
     return { sent: false, error: 'RESEND_API_KEY not configured' }
+  }
+  if (invalidProductionSender) {
+    console.error('[email] EMAIL_FROM must be configured with a verified sender in production')
+    return { sent: false, error: 'EMAIL_FROM not configured for production delivery' }
   }
 
   try {
@@ -100,10 +112,10 @@ export function buildPurchaseReceiptEmail(params: {
   <hr style="border:none;border-top:1px solid #e4e4e7;margin:32px 0 16px;">
   <p style="font-size:12px;color:#52525b;line-height:1.6;"><b>Need to open on another device?</b><br>Use this restore link to re-establish your session. It expires in ${claimLinkExpiryLabel}: <a href="${magicLinkUrl}" style="color:#f97316;">Restore access</a></p>
   ${recoveryCode ? `
-  <p style="font-size:12px;color:#52525b;line-height:1.6;margin-top:16px;"><b>Lost this email?</b><br>Save this recovery code in a password manager - paste it at <a href="${reportUrl.split('/report/')[0]}/retrieve" style="color:#f97316;">dealdoctor.app/retrieve</a> on any device to get back in:</p>
+  <p style="font-size:12px;color:#52525b;line-height:1.6;margin-top:16px;"><b>Lost this email?</b><br>Save this recovery code in a password manager - paste it at <a href="${RETRIEVE_URL}" style="color:#f97316;">${RETRIEVE_URL}</a> on any device to get back in:</p>
   <p style="margin:8px 0 0;padding:12px 16px;background:#fef3c7;border:1px solid #fde68a;border-radius:6px;font-family:ui-monospace,monospace;font-size:15px;font-weight:700;letter-spacing:1px;color:#713f12;text-align:center;">${recoveryCode}</p>
   ` : ''}
-  <p style="font-size:11px;color:#a1a1aa;margin-top:24px;">Questions or refunds within 7 days? Just reply to this email.</p>
+  <p style="font-size:11px;color:#a1a1aa;margin-top:24px;">Questions or refunds within 7 days? Reply to this email or contact ${SUPPORT_EMAIL}.</p>
 </body></html>`
   const text = `Your DealDoctor report is ready\n\n${planLabel} - ${address}\n\nOpen: ${reportUrl}\n\n${entitlement}\n\nRestore access on another device (expires in ${claimLinkExpiryLabel}): ${magicLinkUrl}${recoveryCode ? `\n\nLost this email? Recovery code: ${recoveryCode}\n(Paste at /retrieve on any device)` : ''}`
   return { html, text }

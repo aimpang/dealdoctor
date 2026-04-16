@@ -33,6 +33,7 @@ import {
   hasResolvedListingPrice,
   resolveListingPriceResolution,
 } from '@/lib/listing-price-resolution'
+import { estimateInsuranceFast } from '@/lib/climateRisk'
 
 interface PreviewRequestBody {
   address?: string
@@ -41,7 +42,7 @@ interface PreviewRequestBody {
 }
 
 export async function POST(req: NextRequest) {
-  // Rate limit: 3 previews per IP per day. IP resolution uses
+  // Rate limit: 15 previews per IP per day. IP resolution uses
   // platform-trusted headers — trusting the raw X-Forwarded-For chain would
   // let any caller rotate a spoofed value per request to create fresh
   // buckets and drain Rentcast / Anthropic budget.
@@ -456,12 +457,14 @@ export async function POST(req: NextRequest) {
         : previewBuildingHoa
           ? previewBuildingHoa.monthlyHoa
           : previewInferredCondoHOA
+    const previewMonthlyInsurance = Math.round(estimateInsuranceFast(state, listingPrice) / 12)
     const previewMonthlyMaintenance = Math.max(
       150,
       property.square_feet ? Math.round(property.square_feet * 0.04) : 150
     )
     const breakevenPrice = calculateBreakEvenPrice(estimatedRent, investorRate, {
       propertyTaxRate: stateRulesForBE.propertyTaxRate,
+      monthlyInsurance: previewMonthlyInsurance,
       monthlyHOA: previewMonthlyHOA,
       monthlyMaintenance: previewMonthlyMaintenance,
       offerPrice: listingPrice,
@@ -488,8 +491,13 @@ export async function POST(req: NextRequest) {
       bathrooms: property.bathrooms,
       sqft: property.square_feet,
       yearBuilt: property.year_built,
+      propertyType: property.property_type,
       currentRate: investorRate, // display the rate our math actually used
       pmmsRate: rates.mortgage30yr, // reference: owner-occupied PMMS
+      monthlyInsurance: previewMonthlyInsurance,
+      monthlyMaintenance: previewMonthlyMaintenance,
+      monthlyHOA: previewMonthlyHOA,
+      propertyTaxRate: stateRulesForBE.propertyTaxRate,
       valueSource: property.value_source,
       valueRangeLow: property.value_range_low,
       valueRangeHigh: property.value_range_high,
@@ -522,12 +530,13 @@ export async function POST(req: NextRequest) {
       where: {
         address: property.address,
         zipCode: property.zip_code,
-        paid: false,
         createdAt: { gt: new Date(Date.now() - 30_000) },
         // If the current request has a logged-in customer, only dedup
         // against rows that customer already created — don't let user A
         // steal user B's just-created row.
-        ...(customer ? { customerId: customer.id } : { customerId: null }),
+        ...(customer
+          ? { customerId: customer.id }
+          : { customerId: null, paid: false }),
       },
       orderBy: { createdAt: 'desc' },
       select: { id: true },

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { rotateAccessTokenByEmail } from '@/lib/entitlements'
+import { generateAccessToken } from '@/lib/entitlements'
 import { sendEmail, buildMagicLinkEmail } from '@/lib/email-service'
 import { prisma } from '@/lib/db'
 import { rateLimit } from '@/lib/rateLimit'
@@ -18,7 +18,7 @@ import {
 
 export async function POST(req: NextRequest) {
   const ip = getClientIp(req)
-  if (await rateLimit(ip, 5, { bucket: 'magic-link' })) {
+  if (await rateLimit(ip, 5, { bucket: 'magic-link', failOpen: false })) {
     return NextResponse.json({ error: 'Too many requests. Try again later.' }, { status: 429 })
   }
 
@@ -27,14 +27,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid email' }, { status: 400 })
   }
 
-  // Rotate token so any previously-stolen cookie stops working as soon as the
-  // legitimate owner requests a new link.
-  const customer = await rotateAccessTokenByEmail(email.toLowerCase().trim())
+  const normalizedEmail = email.toLowerCase().trim()
+  const customer = await prisma.customer.findUnique({
+    where: { email: normalizedEmail },
+    select: {
+      id: true,
+      email: true,
+      accessToken: true,
+      reportsRemaining: true,
+      unlimitedUntil: true,
+    },
+  })
 
   if (customer) {
     const baseUrl = BASE_URL
+    const rotatedAccessToken = generateAccessToken()
     const claimToken = createClaimToken({
-      accessToken: customer.accessToken,
+      accessToken: rotatedAccessToken,
       customerId: customer.id,
       expiresInMs: CLAIM_TOKEN_TTL_MS,
     })
@@ -70,10 +79,19 @@ export async function POST(req: NextRequest) {
       html,
       text,
     })
-    // Email-enumeration protection means we still return 200, but ops must
-    // see when Resend is silently failing (bad API key, unverified domain,
-    // quota hit) so we don't ship dead magic links for days.
-    if (!result.sent) {
+    if (result.sent) {
+      await prisma.customer
+        .update({
+          where: { id: customer.id },
+          data: { accessToken: rotatedAccessToken },
+        })
+        .catch((error) => {
+          logger.error('magic_link.access_token_rotation_failed', {
+            customerId: customer.id,
+            error,
+          })
+        })
+    } else {
       logger.error('magic_link.email_failed', {
         customerId: customer.id,
         error: result.error,

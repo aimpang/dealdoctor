@@ -5,7 +5,7 @@ import { rateLimit } from '@/lib/rateLimit'
 import { CUSTOMER_COOKIE } from '@/lib/entitlements'
 import { logger } from '@/lib/logger'
 
-// Post-payment photo analysis. Users can drop 1-5 listing photos and Gemini Vision
+// Post-payment photo analysis. Users can drop 1-5 listing photos and Claude Vision
 // flags observable condition concerns. We never claim this replaces a licensed
 // inspection — the UI surfaces that disclaimer alongside the findings.
 const MAX_IMAGES = 5
@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
     // on every image; a paid customer running a loop could rack up real
     // bills on a single $24.99 entitlement. 20/hr is comfortably above any
     // legitimate use.
-    if (await rateLimit(uuid, 20, { bucket: 'photos', windowMs: 60 * 60 * 1000 })) {
+    if (await rateLimit(uuid, 20, { bucket: 'photos', failOpen: false, windowMs: 60 * 60 * 1000 })) {
       return NextResponse.json(
         { error: 'Too many photo analyses for this report. Try again in an hour.' },
         { status: 429 }

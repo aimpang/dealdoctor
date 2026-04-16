@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { signShareToken, verifyShareToken } from './shareToken'
 
 // Gap #4 regression — signed share-link tokens. Without these, anyone who
@@ -6,28 +6,14 @@ import { signShareToken, verifyShareToken } from './shareToken'
 // forever. Tokens bind the shared URL to the report UUID + a secret, so a
 // leaked raw UUID alone cannot grant access.
 describe('signShareToken / verifyShareToken', () => {
-  it('produces a deterministic token for a given UUID (same in = same out)', () => {
-    const uuid = '550e8400-e29b-41d4-a716-446655440000'
-    const a = signShareToken(uuid)
-    const b = signShareToken(uuid)
-    expect(a).toBe(b)
-  })
-
-  it('produces DIFFERENT tokens for different UUIDs', () => {
-    const a = signShareToken('550e8400-e29b-41d4-a716-446655440000')
-    const b = signShareToken('550e8400-e29b-41d4-a716-446655440001')
-    expect(a).not.toBe(b)
-  })
-
   it('verifies a valid token', () => {
-    const uuid = 'abc-123'
-    const t = signShareToken(uuid)
-    expect(verifyShareToken(uuid, t)).toBe(true)
+    const token = signShareToken('abc-123', 60_000)
+    expect(verifyShareToken('abc-123', token)).toBe(true)
   })
 
-  it('rejects a token forged for a different UUID', () => {
-    const t = signShareToken('uuid-A')
-    expect(verifyShareToken('uuid-B', t)).toBe(false)
+  it('rejects a token for a different uuid', () => {
+    const token = signShareToken('uuid-A', 60_000)
+    expect(verifyShareToken('uuid-B', token)).toBe(false)
   })
 
   it('rejects null / undefined / empty token', () => {
@@ -36,7 +22,7 @@ describe('signShareToken / verifyShareToken', () => {
     expect(verifyShareToken('uuid', '')).toBe(false)
   })
 
-  it('rejects a token of the wrong length (constant-time guard)', () => {
+  it('rejects malformed tokens', () => {
     expect(verifyShareToken('uuid', 'too-short')).toBe(false)
     expect(verifyShareToken(
       'uuid',
@@ -46,15 +32,22 @@ describe('signShareToken / verifyShareToken', () => {
 
   it('rejects a single-character flip in an otherwise-valid token', () => {
     const uuid = 'x'
-    const t = signShareToken(uuid)
-    // flip the first character
-    const flipped = (t[0] === 'a' ? 'b' : 'a') + t.slice(1)
+    const t = signShareToken(uuid, 60_000)
+    const flipped = (t[t.length - 1] === 'a' ? 'b' : 'a') + t.slice(1)
     expect(verifyShareToken(uuid, flipped)).toBe(false)
   })
 
-  it('produces a token of reasonable length (16 chars base64url)', () => {
-    const t = signShareToken('any-uuid')
-    expect(t).toHaveLength(16)
-    expect(t).toMatch(/^[A-Za-z0-9_-]+$/)
+  it('expires tokens', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-04-16T12:00:00Z'))
+    const token = signShareToken('expiring-report', 1_000)
+    vi.advanceTimersByTime(1_500)
+    expect(verifyShareToken('expiring-report', token)).toBe(false)
+    vi.useRealTimers()
+  })
+
+  it('produces a payload.signature token shape', () => {
+    const token = signShareToken('any-uuid', 60_000)
+    expect(token).toMatch(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/)
   })
 })

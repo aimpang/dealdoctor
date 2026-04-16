@@ -104,6 +104,7 @@ vi.mock('@lemonsqueezy/lemonsqueezy.js', () => ({
 
 vi.mock('@/lib/seo', () => ({
   absoluteUrl: (path: string) => `https://dealdoctor.us${path}`,
+  SUPPORT_EMAIL: 'support@dealdoctor.us',
 }))
 
 const baseAddress = '123 Main St, Austin, TX 78701'

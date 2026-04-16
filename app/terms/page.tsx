@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ArrowLeftIcon } from 'lucide-react'
-import { absoluteUrl } from '@/lib/seo'
+import { absoluteUrl, SUPPORT_EMAIL, SUPPORT_MAILTO_URL } from '@/lib/seo'
 
 export const metadata: Metadata = {
   title: 'Terms of Service',
@@ -71,10 +71,10 @@ export default function TermsPage() {
           purchase if the report failed to generate or if the underlying property data was
           materially wrong. Email{' '}
           <a
-            href="mailto:support@dealdoctor.com"
+            href={SUPPORT_MAILTO_URL}
             className="underline decoration-dotted underline-offset-2 hover:text-foreground"
           >
-            support@dealdoctor.com
+            {SUPPORT_EMAIL}
           </a>
           . Unlimited subscriptions may be cancelled at any time through LemonSqueezy; cancellation
           ends future renewals but does not pro-rate the current billing period.

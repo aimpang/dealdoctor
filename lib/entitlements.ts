@@ -239,7 +239,7 @@ const RECOVERY_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789' // no 0/O/1/I — h
 
 export function generateRecoveryCode(): string {
   const pick = () =>
-    RECOVERY_ALPHABET[Math.floor(Math.random() * RECOVERY_ALPHABET.length)]
+    RECOVERY_ALPHABET[randomBytes(1)[0] % RECOVERY_ALPHABET.length]
   const group = (n: number) => Array.from({ length: n }, pick).join('')
   return `DD-${group(4)}-${group(4)}`
 }

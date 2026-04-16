@@ -49,13 +49,20 @@ export async function POST(req: NextRequest) {
     const teaser = JSON.parse(report.teaserData) as {
       estimatedRent: number
       currentRate: number
+      monthlyHOA?: number
+      monthlyInsurance?: number
+      monthlyMaintenance?: number
+      propertyTaxRate?: number
     }
 
     const stateRules = STATE_RULES[report.state] || STATE_RULES['TX']
-    const monthlyPropertyTax = Math.round((price * stateRules.propertyTaxRate) / 12)
+    const propertyTaxRate = teaser.propertyTaxRate ?? stateRules.propertyTaxRate
+    const monthlyPropertyTax = Math.round((price * propertyTaxRate) / 12)
     const monthlyInsurance = Math.round(estimateInsuranceFast(report.state, price) / 12)
-    const monthlyMaintenance = 150
-    const monthlyExpenses = monthlyPropertyTax + monthlyInsurance + monthlyMaintenance
+    const monthlyMaintenance = teaser.monthlyMaintenance ?? 150
+    const monthlyHOA = teaser.monthlyHOA ?? 0
+    const monthlyExpenses =
+      monthlyPropertyTax + monthlyInsurance + monthlyMaintenance + monthlyHOA
 
     const metrics = calculateDealMetrics(
       {
@@ -79,8 +86,9 @@ export async function POST(req: NextRequest) {
       teaser.currentRate,
       {
         downPaymentPct: downPct,
-        propertyTaxRate: stateRules.propertyTaxRate,
+        propertyTaxRate,
         monthlyInsurance,
+        monthlyHOA,
         monthlyMaintenance,
         offerPrice: price,
       }

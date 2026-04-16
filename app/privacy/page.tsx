@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ArrowLeftIcon } from 'lucide-react'
-import { absoluteUrl } from '@/lib/seo'
+import { absoluteUrl, SUPPORT_EMAIL, SUPPORT_MAILTO_URL } from '@/lib/seo'
 
 export const metadata: Metadata = {
   title: 'Privacy Policy',
@@ -75,10 +75,10 @@ export default function PrivacyPage() {
           part of what you paid for. You can request deletion of your email record and any associated
           reports by writing to{' '}
           <a
-            href="mailto:support@dealdoctor.com"
+            href={SUPPORT_MAILTO_URL}
             className="underline decoration-dotted underline-offset-2 hover:text-foreground"
           >
-            support@dealdoctor.com
+            {SUPPORT_EMAIL}
           </a>
           . Reports that have not been paid for are eligible for cleanup at our discretion after 90
           days.
@@ -86,10 +86,10 @@ export default function PrivacyPage() {
         <p className="text-[12.5px] text-foreground/55">
           Questions, deletion requests, or data-subject inquiries (GDPR / CCPA): email{' '}
           <a
-            href="mailto:support@dealdoctor.com"
+            href={SUPPORT_MAILTO_URL}
             className="underline decoration-dotted underline-offset-2 hover:text-foreground"
           >
-            support@dealdoctor.com
+            {SUPPORT_EMAIL}
           </a>
           .
         </p>

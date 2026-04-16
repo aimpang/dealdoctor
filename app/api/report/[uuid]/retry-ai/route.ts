@@ -8,6 +8,7 @@ import { rateLimit } from '@/lib/rateLimit'
 import { runReviewLoop, type ReviewConcern } from '@/lib/reviewReport'
 import { logger } from '@/lib/logger'
 import { resolveReportAccess } from '@/lib/report-access'
+import { isStrProhibitedForInvestor } from '@/lib/calculations'
 
 /**
  * Re-run the Claude "Deal Doctor" narration for a report that was generated
@@ -69,7 +70,7 @@ export async function POST(
   // Cap Anthropic retry cost per report: 10/hour. Each retry burns a paid
   // Sonnet call and writes to the DB; 10/hr is generous for a legitimate
   // user debugging a failed generation but blocks a hostile loop.
-  if (await rateLimit(uuid, 10, { bucket: 'retry-ai', windowMs: 60 * 60 * 1000 })) {
+  if (await rateLimit(uuid, 10, { bucket: 'retry-ai', failOpen: false, windowMs: 60 * 60 * 1000 })) {
     return NextResponse.json(
       { error: 'Too many AI retries for this report. Try again in an hour.' },
       { status: 429 }
@@ -99,6 +100,33 @@ export async function POST(
   const investorRate = rates.mortgage30yrInvestor
   const climate: ClimateAndInsurance | undefined = data.climate || undefined
   const bedrooms = property.bedrooms
+  const propertyType = property.propertyType ?? property.property_type ?? null
+  const persistedDealDoctorInputs =
+    data.dealDoctorInputs && typeof data.dealDoctorInputs === 'object'
+      ? data.dealDoctorInputs
+      : {}
+  const canonicalBreakEvenPrice =
+    typeof persistedDealDoctorInputs.canonicalBreakEvenPrice === 'number' &&
+    Number.isFinite(persistedDealDoctorInputs.canonicalBreakEvenPrice) &&
+    persistedDealDoctorInputs.canonicalBreakEvenPrice > 0
+      ? persistedDealDoctorInputs.canonicalBreakEvenPrice
+      : typeof data.breakeven?.price === 'number' &&
+          Number.isFinite(data.breakeven.price) &&
+          data.breakeven.price > 0
+        ? data.breakeven.price
+        : undefined
+  const strProhibited =
+    typeof persistedDealDoctorInputs.strProhibited === 'boolean'
+      ? persistedDealDoctorInputs.strProhibited
+      : isStrProhibitedForInvestor(report.state, report.city)
+  const strNetMonthlyCashFlow =
+    typeof persistedDealDoctorInputs.strNetMonthlyCashFlow === 'number' &&
+    Number.isFinite(persistedDealDoctorInputs.strNetMonthlyCashFlow)
+      ? persistedDealDoctorInputs.strNetMonthlyCashFlow
+      : typeof data.strProjection?.monthlyNetCashFlow === 'number' &&
+          Number.isFinite(data.strProjection.monthlyNetCashFlow)
+        ? data.strProjection.monthlyNetCashFlow
+        : null
   const comps = Array.isArray(data.comparableSales) ? data.comparableSales : []
   const compValues = comps
     .map((c: any) => Number(c.estimated_value))
@@ -139,12 +167,12 @@ export async function POST(
       bedrooms,
       arvEstimate,
       property.rehabBudget || undefined,
-      undefined, // canonicalBreakEvenPrice — not persisted in fullReportData under a stable key
-      property.property_type ?? null,
+      canonicalBreakEvenPrice,
+      propertyType,
       property.year_built ?? null,
       property.square_feet ?? null,
-      undefined, // strProhibited — not persisted
-      undefined, // strNetMonthlyCashFlow — not persisted
+      strProhibited,
+      strNetMonthlyCashFlow,
       reviewCorrections,
       invariantWarnings
     )

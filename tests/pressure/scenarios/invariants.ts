@@ -55,6 +55,7 @@ export const EXPECTED_FULL_REPORT_KEYS = [
   'crossCheckLinks',
   'ltr',
   'dealDoctor',
+  'dealDoctorInputs',
   'dealDoctorError',
   'dealDoctorErrorDetail',
   'comparableSales',

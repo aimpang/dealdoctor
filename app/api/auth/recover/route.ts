@@ -14,7 +14,7 @@ import { rateLimit } from '@/lib/rateLimit'
 
 export async function POST(req: NextRequest) {
   const ip = getClientIp(req)
-  if (await rateLimit(ip, 10, { bucket: 'recovery-code', windowMs: 60 * 60 * 1000 })) {
+  if (await rateLimit(ip, 10, { bucket: 'recovery-code', failOpen: false, windowMs: 60 * 60 * 1000 })) {
     return NextResponse.json({ error: 'Too many recovery attempts. Try again in an hour.' }, { status: 429 })
   }
 

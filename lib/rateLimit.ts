@@ -13,11 +13,13 @@
 // legit users from submitting their address.
 
 import { prisma } from './db'
+import { logger } from './logger'
 
 const DEFAULT_WINDOW_MS = 24 * 60 * 60 * 1000 // 24 hours
 
-type RateLimitOpts = {
+interface RateLimitOpts {
   bucket?: string
+  failOpen?: boolean
   windowMs?: number
 }
 
@@ -66,7 +68,13 @@ export async function rateLimit(
   } catch (err) {
     // Fail open — a DB hiccup should not lock out legit users. The call
     // we're protecting (Rentcast, Anthropic) has its own quota guards.
-    console.error('[rateLimit] DB error, failing open:', err)
-    return false
+    const shouldFailOpen = opts.failOpen ?? true
+    logger.error('rate_limit.db_error', {
+      bucket,
+      failOpen: shouldFailOpen,
+      identifier,
+      error: err,
+    })
+    return shouldFailOpen ? false : true
   }
 }
