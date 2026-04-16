@@ -26,6 +26,6 @@ export const FAQ: readonly FaqItem[] = [
   },
   {
     q: 'How is this different from BiggerPockets or DealCheck?',
-    a: "Three things: the investor-rate premium over PMMS is applied by default (they don't), the exact breakeven offer price is the flagship metric, and the AI diagnosis gives property-specific negotiation scripts with dollar amounts — not generic advice.",
+    a: "DealDoctor is built around refusal discipline, not feature sprawl. If the listing price, rent, comps, or property profile are too weak or contradictory, we downgrade or block the report instead of pretending the answer is clean. When a report does ship, every paid report links back to Zillow, Redfin, and Realtor so you can verify the subject in one click.",
   },
 ]

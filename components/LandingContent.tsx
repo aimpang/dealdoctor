@@ -175,7 +175,12 @@ const VOLUME_STAMP = (() => {
 export default function LandingContent() {
   const [result, setResult] = useState<any>(null)
   const [error, setError] = useState('')
-  const [expandedFaq, setExpandedFaq] = useState<number | null>(0)
+  const biggerPocketsFaqIndex = FAQ.findIndex((item) =>
+    item.q.includes('BiggerPockets') || item.q.includes('DealCheck')
+  )
+  const [expandedFaq, setExpandedFaq] = useState<number | null>(
+    biggerPocketsFaqIndex >= 0 ? biggerPocketsFaqIndex : 0
+  )
 
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-[hsl(var(--background))] text-foreground">
