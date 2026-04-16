@@ -14,6 +14,9 @@ interface ReconciliationSummary {
 const DEFAULT_LOOKBACK_DAYS = 30
 const MAX_PAGE_SIZE = 100
 const LOOKBACK_FLAG = '--days='
+const JWT_SEGMENT_COUNT = 3
+const MASK_VISIBLE_PREFIX_LENGTH = 4
+const MASK_VISIBLE_SUFFIX_LENGTH = 4
 
 const databaseClient = new PrismaClient()
 
@@ -50,6 +53,10 @@ const fetchAllOrders = async (lookbackDays: number) => {
     })
 
     if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error(buildUnauthorizedMessage(apiKey, storeId))
+      }
+
       throw new Error(`Failed to fetch LemonSqueezy orders: ${response.status}`)
     }
 
@@ -84,6 +91,36 @@ const fetchAllOrders = async (lookbackDays: number) => {
   }
 
   return orders
+}
+
+const buildUnauthorizedMessage = (apiKey: string, storeId: string) => {
+  const maskedKey = maskSecret(apiKey)
+  const tokenLooksLikeJwt = looksLikeJwt(apiKey)
+  const tokenHint = tokenLooksLikeJwt
+    ? ' The configured key looks like a JWT or session token, not a LemonSqueezy dashboard API key.'
+    : ''
+
+  return (
+    `LemonSqueezy API returned 401 for store ${storeId}. ` +
+    `Verify LEMONSQUEEZY_API_KEY is a valid API key from LemonSqueezy Settings > API and that it belongs to the same live/test account as LEMONSQUEEZY_STORE_ID. ` +
+    `Current key: ${maskedKey}.${tokenHint}`
+  )
+}
+
+const looksLikeJwt = (value: string) => {
+  return value.startsWith('eyJ') || value.split('.').length === JWT_SEGMENT_COUNT
+}
+
+const maskSecret = (value: string) => {
+  if (value.length <= MASK_VISIBLE_PREFIX_LENGTH + MASK_VISIBLE_SUFFIX_LENGTH) {
+    return '[too-short]'
+  }
+
+  return (
+    value.slice(0, MASK_VISIBLE_PREFIX_LENGTH) +
+    '...' +
+    value.slice(value.length - MASK_VISIBLE_SUFFIX_LENGTH)
+  )
 }
 
 const main = async () => {
