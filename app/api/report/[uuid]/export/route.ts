@@ -62,6 +62,16 @@ export async function GET(
     }
 
     const data = JSON.parse(report.fullReportData)
+    if (data?.__error === 'quality-blocked' || data?.__error === 'review-blocked') {
+      return NextResponse.json(
+        {
+          error: 'Report export unavailable because the report was blocked by quality review.',
+          code: data.__error,
+          reason: data.reason ?? null,
+        },
+        { status: 502 }
+      )
+    }
     const wb = XLSX.utils.book_new()
 
     // --- Sheet 1: Summary ---
@@ -85,6 +95,11 @@ export async function GET(
       ['5-Year Total Wealth Built', data.wealthProjection?.hero?.totalWealthBuilt5yr ?? ''],
       ['5-Year IRR', data.wealthProjection?.hero?.irr5yr ?? ''],
       ['Total Cash to Close', data.cashToClose?.totalCashToClose ?? ''],
+      ['', ''],
+      ['Blocking Quality Audit', data.qualityAudit?.status ?? 'unknown'],
+      ['Blocking Audit Summary', data.qualityAudit?.summary ?? ''],
+      ['Market Cross-Check', data.marketAudit?.status ?? 'pending'],
+      ['Market Cross-Check Summary', data.marketAudit?.summary ?? ''],
       ['', ''],
       ['Generated', data.generatedAt ?? ''],
     ]
@@ -213,6 +228,36 @@ export async function GET(
       ['Estimated Annual Insurance', climate.estimatedAnnualInsurance],
     ]
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(assm), 'Assumptions')
+
+    // --- Sheet 9: Quality Audit ---
+    const qualityRows: any[][] = [
+      ['Section', 'Status', 'Code', 'Message'],
+      ['Blocking audit', data.qualityAudit?.status ?? 'unknown', '', data.qualityAudit?.summary ?? ''],
+    ]
+    if (Array.isArray(data.qualityAudit?.hardFailures)) {
+      for (const finding of data.qualityAudit.hardFailures) {
+        qualityRows.push(['Hard failure', finding.severity ?? '', finding.code ?? '', finding.message ?? ''])
+      }
+    }
+    if (Array.isArray(data.qualityAudit?.warnings)) {
+      for (const finding of data.qualityAudit.warnings) {
+        qualityRows.push(['Warning', finding.severity ?? '', finding.code ?? '', finding.message ?? ''])
+      }
+    }
+    if (Array.isArray(data.marketAudit?.findings)) {
+      qualityRows.push(['Market audit', data.marketAudit?.status ?? 'unknown', '', data.marketAudit?.summary ?? ''])
+      for (const finding of data.marketAudit.findings) {
+        qualityRows.push(['Market warning', finding.severity ?? '', finding.code ?? '', finding.message ?? ''])
+      }
+    }
+    if (Array.isArray(data.qualityAudit?.stages?.authority?.citations)) {
+      qualityRows.push(['', '', '', ''])
+      qualityRows.push(['Authority citations', '', '', ''])
+      for (const citation of data.qualityAudit.stages.authority.citations) {
+        qualityRows.push(['Citation', '', citation.label ?? '', citation.url ?? ''])
+      }
+    }
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(qualityRows), 'Quality Audit')
 
     // Emit workbook as binary buffer
     const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })

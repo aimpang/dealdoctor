@@ -27,6 +27,7 @@ import {
   debitForNewReport,
 } from '@/lib/entitlements'
 import { generateFullReport } from '@/lib/reportGenerator'
+import { buildPropertyProfileAudit, isUnsupportedPropertyType } from '@/lib/qualityAudit'
 
 export async function POST(req: NextRequest) {
   // Rate limit: 3 previews per IP per day. IP resolution uses
@@ -125,9 +126,43 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    if (isUnsupportedPropertyType(property.property_type)) {
+      return NextResponse.json(
+        {
+          error: 'Unsupported property type',
+          unsupportedPropertyType: true,
+          propertyType: property.property_type,
+          resolvedAddress: property.address,
+          message: `We currently underwrite residential properties only. "${property.property_type}" records need a different model than DealDoctor's house/condo/townhome pipeline, so we block them instead of showing fake precision.`,
+        },
+        { status: 422 }
+      )
+    }
+
     const rentEstimate = await getRentEstimate(address, property.bedrooms)
     const state = property.state || getStateFromZipCode(property.zip_code)
     const rawRentAvm = rentEstimate?.estimated_rent || Math.round(property.estimated_value * 0.005)
+    const propertyProfileAudit = buildPropertyProfileAudit({
+      propertyType: property.property_type,
+      estimatedValue: property.estimated_value,
+      squareFeet: property.square_feet,
+      monthlyRent: rawRentAvm,
+      valueSource: property.value_source,
+    })
+    if (propertyProfileAudit.status === 'blocked') {
+      return NextResponse.json(
+        {
+          error: 'Suspicious property record',
+          suspiciousPropertyRecord: true,
+          propertyType: property.property_type,
+          resolvedAddress: property.address,
+          reasons: propertyProfileAudit.hardFailures,
+          message:
+            'Our data provider returned a property profile that does not look like a real residential rental subject. We are blocking this address instead of generating misleading numbers.',
+        },
+        { status: 422 }
+      )
+    }
 
     // Student-housing heuristic: if this looks like a per-bedroom AVM, multiply
     // by bedroom count to get whole-property rent for all math. Applied BEFORE

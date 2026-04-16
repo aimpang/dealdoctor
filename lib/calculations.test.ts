@@ -194,6 +194,28 @@ describe('calculateDealMetrics', () => {
   })
 })
 
+describe('calculateDealMetrics DSCR reconciliation', () => {
+  it('recomputes DSCR from the returned NOI and annual debt service', () => {
+    const m = calculateDealMetrics(
+      {
+        purchasePrice: 300_000,
+        downPaymentPct: 0.2,
+        annualRate: 0.07,
+        amortizationYears: 30,
+        state: 'TX',
+      },
+      {
+        estimatedMonthlyRent: 2_500,
+        vacancyRate: 0.05,
+        monthlyExpenses: 500,
+      },
+      'TX'
+    )
+    const recomputed = calculateDSCR(m.noiAnnual, m.monthlyMortgagePayment * 12)
+    expect(recomputed).toBeCloseTo(m.dscr, 1)
+  })
+})
+
 describe('calculateRenewalScenarios', () => {
   it('produces one scenario per refi rate (5% → 8% in 0.5% steps)', () => {
     const scenarios = calculateRenewalScenarios(240_000, 0.07, 30, 5, 2500, 0.05, 500)

@@ -1,66 +1,41 @@
 import { describe, it, expect, beforeAll } from 'vitest'
-import { replayFixture, assertAlwaysOnInvariants } from './invariants'
+import { replayFixture } from './invariants'
+import { QualityAuditError } from '../../../lib/qualityAudit'
 
 /**
- * 1500 W Anderson Ln, Austin TX — vanilla SFR, the happy-path control.
+ * 1500 W Anderson Ln, Austin TX — recorded provider mismatch.
  *
- * No known bugs anchored to this address. Serves as the regression canary:
- * if any fix or refactor accidentally breaks the normal flow, this is the
- * test that catches it. A "healthy" Austin 3BR/2BA with a normal rent/value
- * ratio should produce a clean, internally-consistent report.
+ * The current fixture resolves to a "Land" parcel with a ~$27.5M assessed
+ * value, not a real residential subject we can underwrite. This test locks
+ * in the launch-safe behavior: block unsupported property classes instead of
+ * treating them as houses and emitting garbage math.
  */
 
-describe('pressure · austin-baseline (vanilla SFR, happy path)', () => {
-  let data: Awaited<ReturnType<typeof replayFixture>>
+describe('pressure · austin-baseline (unsupported property gate)', () => {
+  let error: unknown
 
   beforeAll(async () => {
-    data = await replayFixture('austin-baseline')
-  })
-
-  it('passes always-on invariants', () => {
-    assertAlwaysOnInvariants(data)
-  })
-
-  it('produces a verdict from the known enum', () => {
-    // reportGenerator now derives a surfaced verdict that includes 'FAIL'
-    // (rewritten from raw 'PASS' or low dealScore) so UI auditors don't
-    // misread 'PASS' as approval. All four labels are valid outputs.
-    expect(['DEAL', 'MARGINAL', 'PASS', 'FAIL']).toContain(data.ltr.verdict)
-  })
-
-  it('DSCR is a finite number in a plausible range', () => {
-    // DSCR can be negative when NOI is negative (unprofitable deal) — that's
-    // valid output, not a bug. What matters is finiteness and sanity bounds.
-    expect(Number.isFinite(data.ltr.dscr)).toBe(true)
-    expect(data.ltr.dscr).toBeLessThan(50)
-    expect(data.ltr.dscr).toBeGreaterThan(-50)
-  })
-
-  it('cash-to-close > down payment (includes closing + reserves + rehab)', () => {
-    const ctc = data.cashToClose.totalCashToClose
-    const dp = data.property.offerPrice * data.property.downPaymentPct
-    expect(ctc, 'cash-to-close must include more than just down payment').toBeGreaterThanOrEqual(dp)
-  })
-
-  it('5yr wealth hero: all fields finite (except irr5yr which may legitimately be NaN)', () => {
-    const hero = data.wealthProjection.hero
-    expect(Number.isFinite(hero.totalWealthBuilt5yr)).toBe(true)
-    expect(Number.isFinite(hero.cumulativeCashFlow5yr)).toBe(true)
-    expect(Number.isFinite(hero.equityFromPaydown5yr)).toBe(true)
-    expect(Number.isFinite(hero.propertyValue5yr)).toBe(true)
-    // irr5yr can be NaN for deeply-negative scenarios — that's by design.
-    // Only assert it's not the old clamp-ceiling bug value (10 = 1000%).
-    if (Number.isFinite(hero.irr5yr)) {
-      expect(hero.irr5yr).toBeLessThan(5)
+    try {
+      await replayFixture('austin-baseline')
+    } catch (err) {
+      error = err
     }
   })
 
-  it('breakeven price is positive and less than 10× subject', () => {
-    expect(data.breakeven.price).toBeGreaterThan(0)
-    expect(data.breakeven.price).toBeLessThan(data.property.offerPrice * 10)
+  it('blocks fixture replay with a quality audit error', () => {
+    expect(error).toBeInstanceOf(QualityAuditError)
   })
 
-  it('state rules match report state', () => {
-    expect(data.stateRules.state).toBe(data.property.state)
+  it('identifies the unsupported land parcel explicitly', () => {
+    const audit = (error as QualityAuditError).audit
+    expect(audit.status).toBe('blocked')
+    expect(audit.hardFailures.map((f) => f.code)).toContain('unsupported-property-type')
+    expect(audit.stages.propertyProfile.summary).toMatch(/unsupported/i)
+  })
+
+  it('does not misclassify the parcel as a supported residential subject', () => {
+    const audit = (error as QualityAuditError).audit
+    const unsupported = audit.hardFailures.find((f) => f.code === 'unsupported-property-type')
+    expect(unsupported?.message).toMatch(/Land/i)
   })
 })

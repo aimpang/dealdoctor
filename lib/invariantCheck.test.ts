@@ -91,6 +91,38 @@ describe('runInvariantCheck', () => {
     expect(res.warnings.map((w) => w.code)).toContain('dscr-implausible')
   })
 
+  describe('DSCR warning band', () => {
+    it('does not warn at the lower boundary (0.40)', () => {
+      const input = passing()
+      input.dscr = 0.4
+      const res = runInvariantCheck(input)
+      expect(res.warnings.map((w) => w.code)).not.toContain('dscr-implausible')
+    })
+
+    it('warns just below the lower boundary (0.39)', () => {
+      const input = passing()
+      input.dscr = 0.39
+      const res = runInvariantCheck(input)
+      expect(res.ok).toBe(true)
+      expect(res.warnings.map((w) => w.code)).toContain('dscr-implausible')
+    })
+
+    it('does not warn at the upper boundary (3.00)', () => {
+      const input = passing()
+      input.dscr = 3
+      const res = runInvariantCheck(input)
+      expect(res.warnings.map((w) => w.code)).not.toContain('dscr-implausible')
+    })
+
+    it('warns just above the upper boundary (3.01)', () => {
+      const input = passing()
+      input.dscr = 3.01
+      const res = runInvariantCheck(input)
+      expect(res.ok).toBe(true)
+      expect(res.warnings.map((w) => w.code)).toContain('dscr-implausible')
+    })
+  })
+
   it('WARNs on HOA = $0 for a condo property type', () => {
     const input = passing()
     input.propertyType = 'Condo'

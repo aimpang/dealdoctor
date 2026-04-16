@@ -18,7 +18,6 @@ describe('fuzz · schema snapshot', () => {
       'fort-myers-oasis',
       'bradley-dr',
       'escalones',
-      'austin-baseline',
       'phoenix-townhouse',
     ]
     for (const slug of slugs) {

@@ -50,6 +50,15 @@ import {
   crossCheckRentAgainstComps,
 } from './studentHousing'
 import { lookupBuildingHoa, isKnownCondoBuilding } from './buildingHoa'
+import {
+  attachReviewStage,
+  buildAuthorityAudit,
+  buildMarketAudit,
+  buildPropertyProfileAudit,
+  buildQualityAudit,
+  createPendingMarketAudit,
+  QualityAuditError,
+} from './qualityAudit'
 
 /**
  * The inputs composeFullReport needs. All external-service calls happen in
@@ -98,11 +107,18 @@ export interface ReportWarning {
     | 'price-per-sqft-implausible'
     | 'property-classification-uncertain'
     | 'thin-comp-set'
+    | 'condo-weak-same-building-support'
     | 'condo-misclassified'
+    | 'florida-condo-structural-diligence'
+    | 'florida-condo-insurance-diligence'
     | 'sqft-bedroom-mismatch'
     | 'avm-wide-range'
     | 'avm-extremely-wide'
   message: string
+}
+
+function isCondoLikePropertyType(propertyType?: string | null): boolean {
+  return /condo|apartment|high[\s-]?rise|co[- ]?op/i.test(propertyType || '')
 }
 
 /**
@@ -174,6 +190,8 @@ export function buildReportWarnings(input: {
 }): ReportWarning[] {
   const warnings: ReportWarning[] = []
   const pt = input.propertyType || ''
+  const condoLikeSubject =
+    isCondoLikePropertyType(pt) || (input.sameBuildingUnitCompCount ?? 0) >= 2
 
   // Rentcast /properties 404'd → we synthesized bed/bath/sqft/year-built from
   // AVM comparables rather than direct measurement. The report is still
@@ -301,6 +319,24 @@ export function buildReportWarnings(input: {
   // "valuation uncertain — independent appraisal recommended" than to anchor
   // the buyer on a single stray data point.
   if (
+    condoLikeSubject &&
+    input.subjectHasBuildingKey &&
+    typeof input.totalCompCount === 'number' &&
+    input.totalCompCount > 1 &&
+    (input.sameBuildingCompCount ?? 0) === 1
+  ) {
+    warnings.push({
+      code: 'condo-weak-same-building-support',
+      message: `Only 1 same-building sale comp supports this condo valuation; the other ${Math.max(
+        input.totalCompCount - 1,
+        0
+      )} comp${input.totalCompCount - 1 === 1 ? '' : 's'} are from nearby buildings. That is not enough in-building evidence to call the value tight. Treat ARV, DSCR, and offer guidance as low-confidence until you confirm more recent same-building sales.`,
+    })
+  }
+
+  // Thin comp set: 0 or 1 sale comp returned. A single comp cannot establish
+  // a median or confirm a price range; the AVM is essentially unchecked.
+  if (
     typeof input.totalCompCount === 'number' &&
     input.totalCompCount <= 1
   ) {
@@ -343,6 +379,17 @@ export function buildReportWarnings(input: {
     warnings.push({
       code: 'condo-misclassified',
       message: `Property is labeled "Single Family" but ${input.sameBuildingUnitCompCount} sale comps at the same street address carry unit numbers — the building is almost certainly multi-unit and this is a condo unit misclassified by our data source. HOA ($0 assumed), financing eligibility, and cash-flow math below are likely wrong. Pull the actual listing before acting on this report.`,
+    })
+  }
+
+  if (input.state.trim().toUpperCase() === 'FL' && condoLikeSubject) {
+    warnings.push({
+      code: 'florida-condo-structural-diligence',
+      message: `Florida condo underwriting is incomplete without the association documents. Before trusting this report, verify the milestone inspection / reserve study status, current reserve funding, board minutes, deferred-maintenance items, and any pending or recently approved special assessments.`,
+    })
+    warnings.push({
+      code: 'florida-condo-insurance-diligence',
+      message: `Florida condo cash flow can move fast on insurance and dues repricing. Verify the current master-policy premium, wind/flood coverage, deductible structure, litigation status, and any planned HOA dues increase before relying on the monthly cash flow or DSCR below.`,
     })
   }
 
@@ -504,6 +551,42 @@ export function buildReportWarnings(input: {
   }
 
   return warnings
+}
+
+export function deriveValueConfidence(input: {
+  signalPoints: number[]
+  estimatedValue: number
+  propertyType?: string | null
+  subjectHasBuildingKey?: boolean
+  sameBuildingCompCount?: number
+  sameBuildingUnitCompCount?: number
+}): { spread: number; confidence: 'high' | 'medium' | 'low' } {
+  const signalPoints = input.signalPoints.filter((value) => Number.isFinite(value) && value > 0)
+  const spread =
+    signalPoints.length > 1 && input.estimatedValue > 0
+      ? (Math.max(...signalPoints) - Math.min(...signalPoints)) / input.estimatedValue
+      : 0
+
+  const rawConfidence: 'high' | 'medium' | 'low' =
+    spread < 0.1 ? 'high' : spread < 0.25 ? 'medium' : 'low'
+
+  let confidence: 'high' | 'medium' | 'low' =
+    signalPoints.length < 2 ? 'low' : rawConfidence
+
+  const condoLikeSubject =
+    isCondoLikePropertyType(input.propertyType) ||
+    (input.sameBuildingUnitCompCount ?? 0) >= 2
+
+  if (condoLikeSubject && input.subjectHasBuildingKey) {
+    const sameBuildingCompCount = input.sameBuildingCompCount ?? 0
+    if (sameBuildingCompCount <= 1) {
+      confidence = 'low'
+    } else if (sameBuildingCompCount === 2 && confidence === 'high') {
+      confidence = 'medium'
+    }
+  }
+
+  return { spread, confidence }
 }
 
 /**
@@ -1270,6 +1353,20 @@ export async function composeFullReport(
   // should count as 1 data point for the median, not 3 — otherwise one
   // complex's pricing artificially anchors the whole comp analysis.
   const dedupedSaleComps = dedupeNearDuplicateComps(saleComps)
+  const subjectBuildingKeyForWarning = buildingKey(report.address)
+  const sameBuildingCompCount = dedupedSaleComps.filter((c: any) => c?.same_building).length
+  const sameBuildingUnitCompCount = dedupedSaleComps.filter(
+    (c: any) => c?.same_building && isUnitLikeAddress(c?.address || '')
+  ).length
+  const sameBuildingValues = dedupedSaleComps
+    .filter((c: any) => c?.same_building)
+    .map((c: any) => Number(c.estimated_value))
+    .filter((v: number) => Number.isFinite(v) && v > 0)
+    .sort((a: number, b: number) => a - b)
+  const sameBuildingMedian =
+    sameBuildingValues.length > 0
+      ? sameBuildingValues[Math.floor(sameBuildingValues.length / 2)]
+      : null
   // Same-building preference: when ANY comp in the returned set shares the
   // subject's building, use only those for the median. Mixing same-building
   // and cross-neighborhood comps produces spurious triangulation divergence
@@ -1399,19 +1496,19 @@ export async function composeFullReport(
   // $215k-$316k was being stretched over the same denominator. The AVM
   // band is surfaced separately via the `avm-wide-range` warning.
   const signalPoints = valueSignals.map((s) => s.value)
-  const valueSpread =
-    signalPoints.length > 1
-      ? (Math.max(...signalPoints) - Math.min(...signalPoints)) / property.estimated_value
-      : 0
+  const { spread: valueSpread, confidence: valueConfidence } = deriveValueConfidence({
+    signalPoints,
+    estimatedValue: property.estimated_value,
+    propertyType: property.property_type,
+    subjectHasBuildingKey: subjectBuildingKeyForWarning !== null,
+    sameBuildingCompCount,
+    sameBuildingUnitCompCount,
+  })
   // Single-signal triangulation can't be called "triangulated" at all —
   // one AVM with no cross-check (no sale-comp median, tax assessment, or
   // grown-sale) is by definition unverified. Force 'low' whenever we have
   // fewer than 2 independent value signals (DC Jefferson House audit: one
   // Rentcast AVM across a 25% price band was labeling "high/medium").
-  const rawConfidence: 'high' | 'medium' | 'low' =
-    valueSpread < 0.1 ? 'high' : valueSpread < 0.25 ? 'medium' : 'low'
-  const valueConfidence: 'high' | 'medium' | 'low' =
-    signalPoints.length < 2 ? 'low' : rawConfidence
 
   // Value-uncertainty verdict cap. If the value triangulation has LOW
   // confidence AND the spread between the highest and lowest value signal
@@ -1491,7 +1588,6 @@ export async function composeFullReport(
   // Report-level warnings — class-of-property and data-gap caveats that live
   // on the FULL report (not just the teaser) so paying users see them too.
   // Computed by the pure helper below so it can be unit-tested standalone.
-  const subjectBuildingKeyForWarning = buildingKey(report.address)
   const warnings = buildReportWarnings({
     propertyType: property.property_type,
     monthlyHOA,
@@ -1530,11 +1626,9 @@ export async function composeFullReport(
     bedroomMatchedCompMedian: arvEstimate,
     bedroomMatchedCompCount: compValues.length,
     subjectHasBuildingKey: subjectBuildingKeyForWarning !== null,
-    sameBuildingCompCount: dedupedSaleComps.filter((c: any) => c?.same_building).length,
+    sameBuildingCompCount,
     totalCompCount: dedupedSaleComps.length,
-    sameBuildingUnitCompCount: dedupedSaleComps.filter(
-      (c: any) => c?.same_building && isUnitLikeAddress(c?.address || '')
-    ).length,
+    sameBuildingUnitCompCount,
     zipAppreciation12mo: marketSnapshot?.salePriceGrowth12mo,
     zipRentGrowth12mo: marketSnapshot?.rentGrowth12mo,
     valueSignalCount: signalPoints.length,
@@ -1858,6 +1952,37 @@ export async function composeFullReport(
       invariantResult.warnings.map((w: InvariantFailure) => w.code).join(', ')
     )
   }
+  const auditCheckedAt = new Date().toISOString()
+  const propertyProfileAudit = buildPropertyProfileAudit({
+    propertyType: property.property_type,
+    checkedAt: auditCheckedAt,
+  })
+  const authorityAudit = buildAuthorityAudit({
+    state: report.state,
+    city: report.city,
+    stateRulesMissing,
+    propertyTaxSource,
+    checkedAt: auditCheckedAt,
+  })
+  let qualityAudit = buildQualityAudit({
+    checkedAt: auditCheckedAt,
+    propertyProfileAudit,
+    mathWarnings: invariantResult.warnings.map((warning) => ({
+      code: warning.code,
+      message: warning.message,
+    })),
+    authorityAudit,
+  })
+  const validationFlagsForNarrator = [
+    ...invariantResult.warnings,
+    ...authorityAudit.warnings.map((warning) => ({
+      code: warning.code,
+      message: warning.message,
+    })),
+  ]
+  if (qualityAudit.status === 'blocked') {
+    throw new QualityAuditError(`Quality audit blocked: ${qualityAudit.summary}`, qualityAudit)
+  }
 
   // Deal Doctor AI narration. If the model fails (rate limit, quota exhausted,
   // network), we still return the rest of the report — the math and climate
@@ -1910,10 +2035,9 @@ export async function composeFullReport(
       // win" when LTR actually nets more (Chicago 1720 S Michigan audit).
       strProjection?.monthlyNetCashFlow ?? null,
       reviewCorrections,
-      // Invariant WARN flags. FAIL-severity already threw upstream; WARN
-      // figures (DSCR band, GRM extremes, HOA/rent ratio) flow in as hard
-      // constraints so the narrative can't re-assert them as strengths.
-      invariantResult.warnings,
+      // Blocking math/authority audit warnings flow in as hard constraints so
+      // the narrative cannot talk past known risk signals.
+      validationFlagsForNarrator,
     )
 
   try {
@@ -2126,19 +2250,12 @@ export async function composeFullReport(
       spread: valueSpread,
       confidence: valueConfidence,
       askPrice,
-      sameBuildingMedian: (() => {
-        const sameBldgValues = dedupedSaleComps
-          .filter((c: any) => c?.same_building)
-          .map((c: any) => Number(c.estimated_value))
-          .filter((v: number) => Number.isFinite(v) && v > 0)
-          .sort((a: number, b: number) => a - b)
-        return sameBldgValues.length > 0
-          ? sameBldgValues[Math.floor(sameBldgValues.length / 2)]
-          : null
-      })(),
+      sameBuildingMedian,
     }),
     rentWarnings,
     warnings,
+    qualityAudit,
+    marketAudit: createPendingMarketAudit(),
     // Invariant-gate WARN flags persisted alongside the report so retry-ai
     // (which rebuilds the generateDealDoctor call from fullReportData
     // rather than re-running the full pipeline) can forward the same
@@ -2199,6 +2316,7 @@ export async function composeFullReport(
   //   reviewer throws / low confidence / empty concerns → ship original
   if (dealDoctor) {
     let originalDealDoctor: DealDoctorOutput | null = null
+    const failClosedReviewer = aiGenerator === generateDealDoctor
     const loopResult = await runReviewLoop(
       result,
       dealDoctor as unknown as Record<string, unknown>,
@@ -2207,8 +2325,24 @@ export async function composeFullReport(
         const rewritten = await runGenerator(concerns)
         return rewritten as unknown as Record<string, unknown>
       },
-      { maxRounds: 2, confidenceFloor: 0.80, verifyAfterRewrite: false }
+      {
+        maxRounds: 2,
+        confidenceFloor: 0.80,
+        verifyAfterRewrite: false,
+        reviewerErrorPolicy: failClosedReviewer ? 'block' : 'ship',
+      }
     )
+    qualityAudit = attachReviewStage(qualityAudit, {
+      checkedAt: new Date().toISOString(),
+      blocked: loopResult.outcome.blocked,
+      summary: loopResult.outcome.finalSummary,
+      reviewerErrored: loopResult.outcome.history.some((h) => !!h.error),
+      failClosed: failClosedReviewer,
+      verdict: loopResult.outcome.finalVerdict,
+      confidence: loopResult.outcome.finalConfidence,
+      concernCount: loopResult.outcome.finalConcerns.length,
+    })
+    result.qualityAudit = qualityAudit
 
     if (loopResult.outcome.blocked) {
       logger.error('reportGenerator.review_blocked', {
@@ -2217,7 +2351,10 @@ export async function composeFullReport(
         summary: loopResult.outcome.finalSummary,
         concernCount: loopResult.outcome.finalConcerns.length,
       })
-      throw new Error(`Review blocked: ${loopResult.outcome.finalSummary}`)
+      throw new QualityAuditError(
+        `Quality audit blocked: ${loopResult.outcome.finalSummary}`,
+        qualityAudit
+      )
     }
 
     dealDoctor = loopResult.narrative as unknown as DealDoctorOutput
@@ -2248,6 +2385,33 @@ export async function composeFullReport(
   }
 
   return result
+}
+
+async function persistAsyncMarketAudit(
+  uuid: string,
+  fullReportData: Record<string, any>
+): Promise<void> {
+  const marketAudit = buildMarketAudit({
+    checkedAt: new Date().toISOString(),
+    valueConfidence: fullReportData.valueTriangulation?.confidence ?? null,
+    valueSpread:
+      typeof fullReportData.valueTriangulation?.spreadPct === 'number'
+        ? fullReportData.valueTriangulation.spreadPct / 100
+        : null,
+    reportWarnings: Array.isArray(fullReportData.warnings) ? fullReportData.warnings : [],
+    rentWarnings: Array.isArray(fullReportData.rentWarnings) ? fullReportData.rentWarnings : [],
+    crossCheckLinks: fullReportData.crossCheckLinks ?? null,
+  })
+
+  await prisma.report.update({
+    where: { id: uuid },
+    data: {
+      fullReportData: JSON.stringify({
+        ...fullReportData,
+        marketAudit,
+      }),
+    },
+  })
 }
 
 /**
@@ -2336,6 +2500,19 @@ export async function generateFullReport(uuid: string): Promise<void> {
       locationSignals: locationRes,
     })
   } catch (err: any) {
+    if (err?.name === 'QualityAuditError' && err?.audit) {
+      await prisma.report.update({
+        where: { id: uuid },
+        data: {
+          fullReportData: JSON.stringify({
+            __error: 'quality-blocked',
+            reason: err.audit.summary,
+            at: new Date().toISOString(),
+            audit: err.audit,
+          }),
+        },
+      })
+    }
     // Cache the reviewer's block verdict on the row itself. Without this,
     // the polling frontend kept re-running the full 30-60s pipeline on every
     // refresh (audit: 414 Water St, Baltimore — 6× re-runs at 30-60s each).
@@ -2360,5 +2537,13 @@ export async function generateFullReport(uuid: string): Promise<void> {
   await prisma.report.update({
     where: { id: uuid },
     data: { fullReportData: JSON.stringify(fullReportData) },
+  })
+
+  void persistAsyncMarketAudit(uuid, fullReportData).catch((err) => {
+    logger.warn('reportGenerator.market_audit_failed', {
+      uuid,
+      address: report.address,
+      error: err,
+    })
   })
 }

@@ -112,6 +112,8 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
     valueTriangulation,
     rentWarnings,
     warnings,
+    qualityAudit,
+    marketAudit,
     crossCheckLinks,
   } = data
 
@@ -553,6 +555,65 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
               </div>
             )
           })}
+        </section>
+      )}
+
+      {qualityAudit && (
+        <section className="mb-5 rounded-lg border border-border/70 bg-card p-4">
+          <div className="mb-2 flex items-center gap-2">
+            <ActivityIcon className="h-4 w-4 text-primary" />
+            <Eyebrow>Quality Audit</Eyebrow>
+          </div>
+          <p className="text-sm text-foreground">{qualityAudit.summary}</p>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Blocking checks cover deterministic math and local tax/legal rules before the report is allowed to ship.
+          </p>
+          {Array.isArray(qualityAudit.warnings) && qualityAudit.warnings.length > 0 && (
+            <div className="mt-3 space-y-2">
+              {qualityAudit.warnings.map((warning: { code: string; message: string }, i: number) => (
+                <div
+                  key={`${warning.code}-${i}`}
+                  className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2"
+                >
+                  <p className="text-xs leading-relaxed text-foreground">{warning.message}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {marketAudit && (
+        <section
+          className={cn(
+            'mb-5 rounded-lg border p-4',
+            marketAudit.status === 'warning'
+              ? 'border-amber-500/40 bg-amber-500/5'
+              : 'border-border/70 bg-card'
+          )}
+        >
+          <div className="mb-2 flex items-center gap-2">
+            <BarChart3Icon className="h-4 w-4 text-primary" />
+            <Eyebrow>Market Cross-Check</Eyebrow>
+          </div>
+          <p className="text-sm text-foreground">{marketAudit.summary}</p>
+          {marketAudit.status === 'pending' && (
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              This runs after the report is first generated so outside-market verification does not slow down the paid report path.
+            </p>
+          )}
+          {Array.isArray(marketAudit.findings) && marketAudit.findings.length > 0 && (
+            <div className="mt-3 space-y-2">
+              {marketAudit.findings.map((finding: { code: string; message: string }, i: number) => (
+                <div
+                  key={`${finding.code}-${i}`}
+                  className="rounded-md border border-amber-500/40 bg-background/80 px-3 py-2"
+                >
+                  <p className="text-xs leading-relaxed text-foreground">{finding.message}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       )}
 

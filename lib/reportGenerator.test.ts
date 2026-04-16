@@ -3,6 +3,7 @@ import {
   buildReportWarnings,
   buildSameBuildingRentCompWarning,
   buildValueTriangulationOutput,
+  deriveValueConfidence,
   dedupeNearDuplicateComps,
   resolveCanonicalBreakeven,
   resolvePropertyTax,
@@ -239,6 +240,56 @@ describe('buildReportWarnings', () => {
   // blends both pools and under-prints on a studio. Our bedroom-matched
   // comp median DOES filter by bedroom count; the warning fires when the
   // two diverge enough to be suspicious.
+  describe('condo weak same-building support', () => {
+    it('flags condo valuations supported by only one same-building comp', () => {
+      const w = buildReportWarnings({
+        ...base,
+        propertyType: 'Condo',
+        subjectHasBuildingKey: true,
+        sameBuildingCompCount: 1,
+        totalCompCount: 4,
+      })
+      expect(w.map((x) => x.code)).toContain('condo-weak-same-building-support')
+    })
+
+    it('does not flag once two or more same-building comps exist', () => {
+      const w = buildReportWarnings({
+        ...base,
+        propertyType: 'Condo',
+        subjectHasBuildingKey: true,
+        sameBuildingCompCount: 2,
+        totalCompCount: 4,
+      })
+      expect(w.map((x) => x.code)).not.toContain('condo-weak-same-building-support')
+    })
+  })
+
+  describe('Florida condo diligence warnings', () => {
+    it('adds structural and insurance diligence warnings for Florida condos', () => {
+      const w = buildReportWarnings({
+        ...base,
+        state: 'FL',
+        propertyType: 'Condo',
+        monthlyHOA: 650,
+      })
+      const codes = w.map((x) => x.code)
+      expect(codes).toContain('florida-condo-structural-diligence')
+      expect(codes).toContain('florida-condo-insurance-diligence')
+    })
+
+    it('does not add Florida condo diligence warnings outside Florida', () => {
+      const w = buildReportWarnings({
+        ...base,
+        state: 'TX',
+        propertyType: 'Condo',
+        monthlyHOA: 650,
+      })
+      const codes = w.map((x) => x.code)
+      expect(codes).not.toContain('florida-condo-structural-diligence')
+      expect(codes).not.toContain('florida-condo-insurance-diligence')
+    })
+  })
+
   describe('bedroom-matched-comp-divergence', () => {
     it('fires when same-bed comp median is 18% above AVM with 4 comps (Dupont case)', () => {
       const w = buildReportWarnings({
@@ -792,6 +843,42 @@ describe('buildValueTriangulationOutput — avmEqualsAsk suppression', () => {
 // concession haircut; the haircut must ALSO be applied mechanically to
 // the rentEstimate so that breakeven / DSCR / wealth projection downstream
 // reflect effective rent, not a top-of-band asking number.
+describe('deriveValueConfidence', () => {
+  it('forces low confidence for condo values with only one same-building comp', () => {
+    const out = deriveValueConfidence({
+      signalPoints: [500_000, 510_000],
+      estimatedValue: 500_000,
+      propertyType: 'Condo',
+      subjectHasBuildingKey: true,
+      sameBuildingCompCount: 1,
+    })
+    expect(out.spread).toBeCloseTo(0.02, 3)
+    expect(out.confidence).toBe('low')
+  })
+
+  it('caps tight-spread condo valuations at medium confidence when only two same-building comps exist', () => {
+    const out = deriveValueConfidence({
+      signalPoints: [500_000, 510_000],
+      estimatedValue: 500_000,
+      propertyType: 'Condo',
+      subjectHasBuildingKey: true,
+      sameBuildingCompCount: 2,
+    })
+    expect(out.confidence).toBe('medium')
+  })
+
+  it('preserves high confidence for non-condo tight-spread valuations', () => {
+    const out = deriveValueConfidence({
+      signalPoints: [500_000, 510_000],
+      estimatedValue: 500_000,
+      propertyType: 'Single Family',
+      subjectHasBuildingKey: true,
+      sameBuildingCompCount: 0,
+    })
+    expect(out.confidence).toBe('high')
+  })
+})
+
 describe('computeConcessionHaircutFactor (414 Water St rent audit)', () => {
   const subjectAddress = '414 Water St #1501, Baltimore, MD 21202'
   const freshSameBuilding = [

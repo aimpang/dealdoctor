@@ -50,6 +50,19 @@ export async function GET(
     if (report.fullReportData) {
       try {
         const parsed = JSON.parse(report.fullReportData)
+        if (parsed && parsed.__error === 'quality-blocked') {
+          return NextResponse.json(
+            {
+              error: 'This report was blocked by our quality gate.',
+              code: 'quality-blocked',
+              reason: parsed.reason,
+              blockedAt: parsed.at,
+              audit: parsed.audit ?? null,
+              uuid,
+            },
+            { status: 502 }
+          )
+        }
         if (parsed && parsed.__error === 'review-blocked') {
           return NextResponse.json(
             {
@@ -115,6 +128,18 @@ export async function GET(
                 actual: f.actual,
                 expected: f.expected,
               })),
+            },
+            { status: 502 }
+          )
+        }
+        if (err?.name === 'QualityAuditError') {
+          return NextResponse.json(
+            {
+              error: 'This report was blocked by our quality gate.',
+              code: 'quality-blocked',
+              uuid,
+              reason: err?.audit?.summary ?? err?.message,
+              audit: err?.audit ?? null,
             },
             { status: 502 }
           )

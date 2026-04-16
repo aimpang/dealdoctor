@@ -21,6 +21,7 @@ export default function ReportPage() {
   const uuid = params.uuid as string
   const isSuccess = searchParams.get('success') === 'true'
   const isDebug = searchParams.get('debug') === '1'
+  const isAutopaid = searchParams.get('autopaid') === '1'
 
   const [report, setReport] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -136,7 +137,7 @@ export default function ReportPage() {
             Report generation is taking longer than expected.
           </h1>
           <p className="mt-4 text-sm leading-relaxed text-foreground/70">
-            Your payment went through and the report is saved, but the AI narration step
+            Your access is confirmed and the report is saved, but the AI narration step
             didn&apos;t finish inside our normal window. This usually clears up on a retry —
             no charge, no lost entitlement.
           </p>
@@ -173,9 +174,10 @@ export default function ReportPage() {
     // Show the full activity log as soon as we know this is a paid generation:
     // - report.paid flips after the first fast poll (~200ms)
     // - isSuccess means the user just came from checkout (paid, definitely generating)
+    // - isAutopaid means an active entitlement unlocked the report from preview
     // - isDebug means the GET blocks for the full generation duration (report stays
     //   null the whole time), so we need to show the log from the very first render
-    const showFullLog = Boolean(report?.paid || isSuccess || isDebug)
+    const showFullLog = Boolean(report?.paid || isSuccess || isDebug || isAutopaid)
     return (
       <div className="flex min-h-screen items-center justify-center p-4">
         {showFullLog ? (

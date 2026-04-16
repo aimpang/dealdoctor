@@ -280,8 +280,12 @@ export default function LandingContent() {
               </p>
               <AddressInput
                 onResult={(data) => {
-                  setResult(data)
                   setError('')
+                  if (data?.autopaid?.entitlement && data?.uuid) {
+                    window.location.assign(`/report/${data.uuid}?autopaid=1`)
+                    return
+                  }
+                  setResult(data)
                   setTimeout(() => {
                     document.getElementById('results')?.scrollIntoView({ behavior: 'smooth' })
                   }, 100)

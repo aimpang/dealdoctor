@@ -163,6 +163,7 @@ function buildPrompt(
     strProjection: (sd.strProjection as Record<string, unknown> | undefined) ?? null,
     recommendedOffers: (sd.recommendedOffers as Record<string, unknown> | undefined) ?? null,
     valueTriangulation: (sd.valueTriangulation as Record<string, unknown> | undefined) ?? null,
+    qualityAudit: (sd.qualityAudit as Record<string, unknown> | undefined) ?? null,
     warnings: sd.warnings ?? null,
     ltr: sd.ltr ?? null,
     // NOT included: raw comp lists, climate granular data, marketSnapshot —
@@ -226,6 +227,8 @@ export interface ReviewLoopConfig {
   confidenceFloor?: number      // default 0.9 — exit early when this is met
   verifyAfterRewrite?: boolean  // default true — when false, ship immediately
                                 // after a rewrite without a verification review
+  reviewerErrorPolicy?: 'ship' | 'block'
+  review?: (input: ReviewInput) => Promise<ReviewResult>
 }
 
 export interface ReviewLoopOutcome {
@@ -252,12 +255,14 @@ export async function runReviewLoop(
   const maxRounds = config.maxRounds ?? 3
   const confidenceFloor = config.confidenceFloor ?? 0.9
   const verifyAfterRewrite = config.verifyAfterRewrite ?? true
+  const reviewerErrorPolicy = config.reviewerErrorPolicy ?? 'ship'
+  const review = config.review ?? reviewNarrative
   let narrative = initialNarrative
   const history: ReviewResult[] = []
   let blocked = false
 
   for (let round = 1; round <= maxRounds; round++) {
-    const result = await reviewNarrative({ structuredData, narrative, round })
+    const result = await review({ structuredData, narrative, round })
     history.push(result)
 
     if (result.verdict === 'block') {
@@ -266,8 +271,11 @@ export async function runReviewLoop(
     }
     if (result.error) {
       // Reviewer was unavailable or returned unparseable output — ship the
-      // current narrative rather than gamble on another rewrite. Distinguish
-      // this from a genuine 'clean' outcome via the error field.
+      // current narrative rather than gamble on another rewrite, unless the
+      // caller opts into fail-closed behavior for buyer-facing quality gates.
+      if (reviewerErrorPolicy === 'block') {
+        blocked = true
+      }
       break
     }
     if (result.verdict === 'clean') {
@@ -307,6 +315,10 @@ export async function runReviewLoop(
   }
 
   const final = history[history.length - 1]
+  const finalSummary =
+    blocked && final?.error
+      ? `Reviewer unavailable — blocked by quality gate (${final.error})`
+      : final?.summary ?? '(no review completed)'
   return {
     narrative,
     outcome: {
@@ -314,7 +326,7 @@ export async function runReviewLoop(
       finalVerdict: final?.verdict ?? 'clean',
       finalConfidence: final?.confidence ?? 0,
       finalConcerns: final?.concerns ?? [],
-      finalSummary: final?.summary ?? '(no review completed)',
+      finalSummary,
       history,
       blocked,
     },
