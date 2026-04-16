@@ -1953,6 +1953,8 @@ export async function composeFullReport(
     breakevenPrice: canonicalBreakEven,
   })
   const firstPageTrust = evaluateFirstPageTrust({
+    bathrooms: property.bathrooms,
+    bedrooms: property.bedrooms,
     climateFloodInsuranceRequired: climate?.floodInsuranceRequired,
     dataCompleteness: property.data_completeness,
     hoaSource: hoaFromBuildingDb
@@ -1975,10 +1977,12 @@ export async function composeFullReport(
     rentWarnings,
     reportWarnings: warnings,
     insuranceSource: insuranceEstimate.insuranceSource,
+    squareFeet: property.square_feet,
     sameBuildingRentCompCount,
     taxLikelyExempted,
     totalRentCompCount: rentComps?.length ?? 0,
     valueConfidence,
+    yearBuilt: property.year_built,
   })
   Object.assign(cappedLtrMetrics, {
     dealScore: firstPageTrust.adjustedScore,

@@ -2,6 +2,11 @@ import {
   hasMaterialListingPriceConflict,
   isListingPriceCheckStale,
 } from './listing-price-resolution'
+import {
+  getLaunchTrustContracts,
+  getLaunchTrustMetricContract,
+  type LaunchTrustFieldKey,
+} from './launch-trust-contract'
 
 const CRITICAL_WEAK_FIELD_PENALTY_POINTS = 16
 const CRITICAL_ESTIMATED_FIELD_PENALTY_POINTS = 6
@@ -47,6 +52,8 @@ export interface FirstPageTrustAssessment {
 }
 
 export interface EvaluateFirstPageTrustInput {
+  bathrooms?: number | null
+  bedrooms?: number | null
   climateFloodInsuranceRequired?: boolean
   dataCompleteness?: 'full' | 'avm-only' | null
   hoaSource?: 'listing' | 'building-avg' | 'inferred-condo-default' | 'not-captured' | null
@@ -69,14 +76,26 @@ export interface EvaluateFirstPageTrustInput {
   rentWarnings?: string[]
   reportWarnings?: FirstPageTrustReportWarning[]
   referenceTimeMs?: number
+  squareFeet?: number | null
   sameBuildingRentCompCount?: number
   taxLikelyExempted?: boolean
   totalRentCompCount?: number
   valueConfidence?: 'high' | 'medium' | 'low' | null
+  yearBuilt?: number | null
 }
 
 const isCondoLikeProperty = (propertyType?: string | null): boolean => {
   return /condo|apartment|co[- ]?op|high[\s-]?rise/i.test(propertyType || '')
+}
+
+const isHoaSensitiveProperty = (propertyType?: string | null): boolean => {
+  return /condo|apartment|co[- ]?op|high[\s-]?rise|townhouse|townhome|rowhouse/i.test(
+    propertyType || ''
+  )
+}
+
+const isPresentNumber = (value?: number | null): boolean => {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
 }
 
 const buildField = (
@@ -100,32 +119,17 @@ const calculatePenalty = (
   fields: FirstPageTrustFields
 ): number => {
   let scorePenalty = 0
-  const criticalFieldNames: Array<keyof FirstPageTrustFields> = [
-    'facts',
-    'listingPrice',
-    'rent',
-    'hoa',
-    'propertyTax',
-  ]
-  const secondaryFieldNames: Array<keyof FirstPageTrustFields> = [
-    'insurance',
-    'value',
-  ]
+  const fieldContracts = getLaunchTrustContracts()
 
-  for (const fieldName of criticalFieldNames) {
-    const field = fields[fieldName]
-    if (field.status === 'weak') {
+  for (const fieldContract of fieldContracts) {
+    const field = fields[fieldContract.fieldKey]
+    if (fieldContract.requiredForTrusted && field.status === 'weak') {
       scorePenalty += CRITICAL_WEAK_FIELD_PENALTY_POINTS
-    } else if (field.status === 'estimated') {
+    } else if (fieldContract.requiredForTrusted && field.status === 'estimated') {
       scorePenalty += CRITICAL_ESTIMATED_FIELD_PENALTY_POINTS
-    }
-  }
-
-  for (const fieldName of secondaryFieldNames) {
-    const field = fields[fieldName]
-    if (field.status === 'weak') {
+    } else if (!fieldContract.requiredForTrusted && field.status === 'weak') {
       scorePenalty += SECONDARY_WEAK_FIELD_PENALTY_POINTS
-    } else if (field.status === 'estimated') {
+    } else if (!fieldContract.requiredForTrusted && field.status === 'estimated') {
       scorePenalty += SECONDARY_ESTIMATED_FIELD_PENALTY_POINTS
     }
   }
@@ -182,8 +186,14 @@ export const evaluateFirstPageTrust = (
   const staleManualListingPrice =
     Boolean(input.listingPriceUserSupplied) &&
     isListingPriceCheckStale(input.listingPriceCheckedAt, input.referenceTimeMs)
+  const propertyFactsMissing =
+    !isPresentNumber(input.bedrooms) ||
+    !isPresentNumber(input.bathrooms) ||
+    !isPresentNumber(input.squareFeet) ||
+    !isPresentNumber(input.yearBuilt)
 
   const factsField =
+    propertyFactsMissing ||
     input.dataCompleteness === 'avm-only' ||
     hasWarningCode(reportWarnings, 'property-profile-inferred') ||
     hasWarningCode(reportWarnings, 'property-classification-uncertain') ||
@@ -248,6 +258,14 @@ export const evaluateFirstPageTrust = (
           'weak',
           'Rent estimate conflicts with the available rent comps, so cash-flow and 5-year projections are fragile.'
         )
+      : condoLikeProperty &&
+        (input.sameBuildingRentCompCount ?? 0) < 1 &&
+        (input.totalRentCompCount ?? 0) < 3
+      ? buildField(
+          'Rent',
+          'weak',
+          'Condo rent estimate is not backed by same-building or sufficient nearby comps, so page-one decision math is not dependable.'
+        )
       : (input.sameBuildingRentCompCount ?? 0) >= 2
       ? buildField(
           'Rent',
@@ -260,18 +278,24 @@ export const evaluateFirstPageTrust = (
           'supported',
           'Rent estimate is supported by nearby comps, but not by multiple same-building matches.'
         )
-      : buildField(
+      : (input.totalRentCompCount ?? 0) >= 2
+      ? buildField(
           'Rent',
           'estimated',
-          'Rent estimate is mostly AVM-driven because the comp support is thin.'
+          'Rent estimate has only thin comp support, so page-one rent assumptions need caution.'
+        )
+      : buildField(
+          'Rent',
+          'weak',
+          'Rent estimate is mostly AVM-driven because the comp support is too thin for a clean first-page decision.'
         )
 
   const hoaField =
-    condoLikeProperty && input.hoaSource === 'not-captured'
+    isHoaSensitiveProperty(input.propertyType) && input.hoaSource === 'not-captured'
       ? buildField(
           'HOA',
           'weak',
-          'Condo dues were not captured, so expense math on page one is unreliable.'
+          'HOA dues were not captured for a property type that usually depends on them, so expense math on page one is unreliable.'
         )
       : input.hoaSource === 'listing'
       ? buildField(
@@ -289,7 +313,7 @@ export const evaluateFirstPageTrust = (
       ? buildField(
           'HOA',
           'weak',
-          'HOA is inferred, not captured, so expense math needs verification.'
+          'HOA is inferred, not captured, so expense math needs verification before trusting page one.'
         )
       : buildField(
           'HOA',
@@ -313,8 +337,8 @@ export const evaluateFirstPageTrust = (
       : input.propertyTaxSource === 'city-override'
       ? buildField(
           'Property tax',
-          'estimated',
-          'Property tax uses a local override rather than a parcel-specific tax record.'
+          'supported',
+          'Property tax uses a local jurisdiction override instead of a parcel-specific tax record.'
         )
       : buildField(
           'Property tax',
@@ -329,6 +353,12 @@ export const evaluateFirstPageTrust = (
           'Insurance',
           'weak',
           'Insurance is unusually fragile here and should not be treated as a precise carrying-cost input.'
+        )
+      : input.insuranceSource === 'climate-model'
+      ? buildField(
+          'Insurance',
+          'supported',
+          'Insurance uses the state and climate model rather than a quoted policy.'
         )
       : input.insuranceSource === 'hoa-adjusted-condo' ||
         input.insuranceSource === 'hoa-adjusted-townhouse'
@@ -371,32 +401,30 @@ export const evaluateFirstPageTrust = (
     rent: rentField,
     value: valueField,
   }
+  const fieldContracts = getLaunchTrustContracts()
+  const weakUnsupportedFields = fieldContracts.filter((fieldContract) => {
+    return fieldContract.unsupportedWhenWeak && fields[fieldContract.fieldKey].status === 'weak'
+  })
+  const trustedThresholdMisses = fieldContracts.filter((fieldContract) => {
+    return (
+      fieldContract.requiredForTrusted &&
+      !fieldContract.trustedStatuses.includes(fields[fieldContract.fieldKey].status)
+    )
+  })
+  const estimatedCautionFields = fieldContracts.filter((fieldContract) => {
+    return fieldContract.cautionWhenEstimated && fields[fieldContract.fieldKey].status === 'estimated'
+  })
+  const secondaryWeakFields = fieldContracts.filter((fieldContract) => {
+    return !fieldContract.unsupportedWhenWeak && fields[fieldContract.fieldKey].status === 'weak'
+  })
 
-  const criticalWeakCount = [
-    factsField,
-    listingPriceField,
-    rentField,
-    hoaField,
-    propertyTaxField,
-  ].filter((field) => field.status === 'weak').length
-  const secondaryWeakCount = [insuranceField, valueField].filter(
-    (field) => field.status === 'weak'
-  ).length
-  const criticalEstimatedCount = [rentField, hoaField, propertyTaxField].filter(
-    (field) => field.status === 'estimated'
-  ).length
-
-  const status: FirstPageTrustAssessment['status'] =
-    listingPriceField.status === 'weak' ||
-    factsField.status === 'weak' ||
-    criticalWeakCount >= 2
-      ? 'unsupported'
-      : listingPriceField.status !== 'verified' ||
-        criticalWeakCount >= 1 ||
-        secondaryWeakCount >= 1 ||
-        criticalEstimatedCount >= 2
-      ? 'caution'
-      : 'trusted'
+  const status: FirstPageTrustAssessment['status'] = weakUnsupportedFields.length > 0
+    ? 'unsupported'
+    : trustedThresholdMisses.length > 0 ||
+      estimatedCautionFields.length > 0 ||
+      secondaryWeakFields.length > 0
+    ? 'caution'
+    : 'trusted'
 
   const scorePenalty = calculatePenalty(fields)
   const adjustedScore = Math.max(0, Math.round(input.rawScore - scorePenalty))
@@ -405,27 +433,20 @@ export const evaluateFirstPageTrust = (
     .filter((field) => field.status === 'weak')
     .map((field) => field.label.toLowerCase())
 
-  const breakevenVerificationFields = [
-    listingPriceField,
-    factsField,
-    rentField,
-    hoaField,
-    propertyTaxField,
-    insuranceField,
-  ]
-  const projectionVerificationFields = [
-    factsField,
-    rentField,
-    hoaField,
-    propertyTaxField,
-  ]
+  const getFieldsForMetric = (metricKey: 'breakevenSignal' | 'forwardProjection') => {
+    return getLaunchTrustMetricContract(metricKey).dependencyFieldKeys.map(
+      (fieldKey: LaunchTrustFieldKey) => fields[fieldKey]
+    )
+  }
 
-  const suppressBreakevenSignal =
-    status === 'unsupported' ||
-    breakevenVerificationFields.some((field) => field.status === 'weak')
+  const breakevenVerificationFields = getFieldsForMetric('breakevenSignal')
+  const projectionVerificationFields = getFieldsForMetric('forwardProjection')
+
+  const suppressBreakevenSignal = status === 'unsupported' || breakevenVerificationFields.some(
+    (field) => field.status === 'weak'
+  )
   const suppressForwardProjection =
-    status === 'unsupported' ||
-    projectionVerificationFields.some((field) => field.status === 'weak')
+    status === 'unsupported' || projectionVerificationFields.some((field) => field.status === 'weak')
 
   const breakevenMessage = suppressBreakevenSignal
     ? buildVerificationMessage('Breakeven signal', breakevenVerificationFields)

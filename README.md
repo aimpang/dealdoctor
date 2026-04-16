@@ -46,6 +46,11 @@ The system especially protects:
 - HOA and tax reliability
 - first-page score / recommendation confidence
 
+The explicit launch contract is documented in:
+
+- `docs/launch-trust-contract.md`
+- `docs/launch-gold-set.md`
+
 ## User Flow
 
 ### 1. Landing
@@ -422,6 +427,8 @@ Read `tests/pressure/README.md` before expanding the scenario set.
 ### Important Regression Files
 
 - `lib/first-page-trust.test.ts`
+- `lib/launch-trust-contract.test.ts`
+- `lib/launch-gold-set.test.ts`
 - `lib/listing-price-resolution.test.ts`
 - `lib/property-insurance.test.ts`
 - `tests/listing-price-route-flow.test.ts`
@@ -455,6 +462,22 @@ These are the main areas still worth attention:
 - privacy / legal copy should stay aligned with real processor stack and data sharing
 - support/domain consistency should remain unified to `.us`
 - more real-address validation is still useful before broadening coverage
+
+## Launch Blockers vs Roadmap
+
+### Before broad launch
+
+- keep the page-one trust contract aligned with real product behavior
+- keep the gold set green
+- tighten rent / HOA / tax / insurance trust before widening coverage
+- keep customer-facing trust copy narrower than the actual system behavior
+
+### After launch
+
+- broaden coverage beyond the launch trust subset
+- add user-confirmable overrides for more expense anchors
+- add deeper condo diligence workflows
+- keep improving the narrative layer without letting it weaken structured trust rules
 
 ## Review Guide for the Next Model
 

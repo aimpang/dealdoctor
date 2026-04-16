@@ -63,3 +63,9 @@ qa/node_modules
 qa/qa.log
 qa/.vite
 qa/out
+
+# local tooling / runtime state (not for commit)
+.claude/
+.playwright-cli/
+agents/
+output/
