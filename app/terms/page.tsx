@@ -4,7 +4,7 @@ import { ArrowLeftIcon } from 'lucide-react'
 import { absoluteUrl } from '@/lib/seo'
 
 export const metadata: Metadata = {
-  title: 'Terms — DealDoctor',
+  title: 'Terms of Service',
   description:
     'The terms that cover your purchase and use of a DealDoctor investment report.',
   alternates: { canonical: '/terms' },
@@ -12,9 +12,24 @@ export const metadata: Metadata = {
     type: 'website',
     siteName: 'DealDoctor',
     url: absoluteUrl('/terms'),
-    title: 'Terms — DealDoctor',
+    title: 'DealDoctor Terms of Service',
     description:
       'The terms that cover your purchase and use of a DealDoctor investment report.',
+    images: [
+      {
+        url: absoluteUrl('/opengraph-image'),
+        width: 1200,
+        height: 630,
+        alt: 'DealDoctor terms of service',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'DealDoctor Terms of Service',
+    description:
+      'The terms that cover your purchase and use of a DealDoctor investment report.',
+    images: [absoluteUrl('/twitter-image')],
   },
 }
 

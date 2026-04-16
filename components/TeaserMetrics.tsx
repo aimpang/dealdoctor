@@ -7,6 +7,7 @@ interface TeaserWarning { code: string; message: string }
 interface TeaserMetricsProps {
   teaser: {
     estimatedValue: number
+    listingPrice?: number
     estimatedRent: number
     breakevenPrice: number
     listingVsBreakeven: number
@@ -69,7 +70,7 @@ export function TeaserMetrics({ teaser, property }: TeaserMetricsProps) {
               key={w.code}
               className="flex items-start gap-2 border border-amber-500/40 bg-amber-500/5 px-4 py-3"
             >
-              <AlertTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+              <AlertTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
               <p className="text-xs leading-relaxed text-foreground/80">{w.message}</p>
             </div>
           ))}

@@ -35,7 +35,7 @@ export function LiveCounter() {
         <span className="font-semibold text-foreground">
           {stats.totalReports.toLocaleString()}
         </span>{' '}
-        reports generated
+        analyses created
       </span>
       {stats.reportsThisWeek > 0 && (
         <span className="flex items-center gap-1.5">

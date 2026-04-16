@@ -4,7 +4,7 @@ import { ArrowLeftIcon } from 'lucide-react'
 import { absoluteUrl } from '@/lib/seo'
 
 export const metadata: Metadata = {
-  title: 'Privacy — DealDoctor',
+  title: 'Privacy Policy',
   description:
     'What DealDoctor collects, stores, and shares when you generate a property report.',
   alternates: { canonical: '/privacy' },
@@ -12,9 +12,24 @@ export const metadata: Metadata = {
     type: 'website',
     siteName: 'DealDoctor',
     url: absoluteUrl('/privacy'),
-    title: 'Privacy — DealDoctor',
+    title: 'DealDoctor Privacy Policy',
     description:
       'What DealDoctor collects, stores, and shares when you generate a property report.',
+    images: [
+      {
+        url: absoluteUrl('/opengraph-image'),
+        width: 1200,
+        height: 630,
+        alt: 'DealDoctor privacy policy',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'DealDoctor Privacy Policy',
+    description:
+      'What DealDoctor collects, stores, and shares when you generate a property report.',
+    images: [absoluteUrl('/twitter-image')],
   },
 }
 

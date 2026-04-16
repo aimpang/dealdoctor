@@ -5,21 +5,31 @@ import { prisma } from '@/lib/db'
 import { BASE_URL, absoluteUrl } from '@/lib/seo'
 
 export const metadata: Metadata = {
-  title: 'How DealDoctor Calculates Your Investment Report',
+  title: 'Real Estate Underwriting Methodology & Data Sources',
   description:
-    'Transparent underwriting methodology behind every DealDoctor report: breakeven offer math, DSCR, value triangulation, climate risk, jurisdictional tax overlays, and the invariant gate.',
+    'See how DealDoctor calculates breakeven offer price, DSCR, 5-year IRR, value triangulation, climate risk, and tax overlays for rental property analysis.',
   alternates: { canonical: '/methodology' },
   openGraph: {
-    title: 'How DealDoctor Calculates Your Investment Report',
+    siteName: 'DealDoctor',
+    title: 'Real Estate Underwriting Methodology & Data Sources',
     description:
-      'The full underwriting methodology — calculation by calculation, data source by data source.',
+      'The full DealDoctor underwriting methodology, calculation by calculation and data source by data source.',
     url: absoluteUrl('/methodology'),
     type: 'article',
+    images: [
+      {
+        url: absoluteUrl('/opengraph-image'),
+        width: 1200,
+        height: 630,
+        alt: 'DealDoctor methodology and data sources',
+      },
+    ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'DealDoctor Methodology',
-    description: 'Every calculation and data source used in a DealDoctor report, documented.',
+    title: 'DealDoctor Methodology & Data Sources',
+    description: 'Every calculation and data source behind a DealDoctor report, documented.',
+    images: [absoluteUrl('/twitter-image')],
   },
 }
 

@@ -18,11 +18,11 @@ export const FAQ: readonly FaqItem[] = [
   },
   {
     q: "What's your refund policy?",
-    a: "Full refund within 7 days for any reason. Reply to your receipt email. Cancel Unlimited anytime from LemonSqueezy's portal — you keep access through the period you've already paid for.",
+    a: "Reply to your receipt email within 7 days if a report failed to generate or the underlying property data was materially wrong. Unlimited can be cancelled anytime from LemonSqueezy's portal — cancellation stops future renewals, and access continues through the period you've already paid for.",
   },
   {
     q: 'Can I export to Excel or PDF?',
-    a: 'Yes. Every paid report has an Excel export (8-sheet workbook: Summary, Year-1, 5-Year Projection, Sensitivity, Financing, Recommended Offers, Comps, Assumptions) and a Print/Save-as-PDF with an investor-ready print stylesheet.',
+    a: 'Yes. Every paid report has a multi-sheet Excel export covering summary, year-1 metrics, 5-year projection, sensitivity, financing, recommended offers, comps, assumptions, and quality audit, plus a Print/Save-as-PDF with an investor-ready print stylesheet.',
   },
   {
     q: 'How is this different from BiggerPockets or DealCheck?',

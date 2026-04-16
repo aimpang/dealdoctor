@@ -81,21 +81,13 @@ export function HeroSection() {
                         "fade-in slide-in-from-bottom-5 animate-in fill-mode-backwards delay-100 duration-1000 ease-out"
                     )}
                 >
-                    <div className="relative inset-shadow-2xs inset-shadow-foreground/10 mx-auto max-w-5xl overflow-hidden rounded-lg border bg-background p-2 shadow-xl ring-1 ring-card dark:inset-shadow-foreground/20 dark:inset-shadow-xs">
+                    <div className="relative inset-shadow-2xs inset-shadow-foreground/10 mx-auto max-w-5xl overflow-hidden rounded-lg border bg-background p-2 shadow-xl ring-1 ring-card">
                         <img
                             alt="DealDoctor investment report preview"
-                            className="z-2 aspect-video rounded-lg border dark:hidden"
+                            className="z-2 aspect-video rounded-lg border"
                             height="1080"
                             loading="lazy"
                             src="https://storage.efferd.com/screen/dashboard-light.webp"
-                            width="1920"
-                        />
-                        <img
-                            alt="DealDoctor investment report preview (dark mode)"
-                            className="hidden aspect-video rounded-lg bg-background dark:block"
-                            height="1080"
-                            loading="lazy"
-                            src="https://storage.efferd.com/screen/dashboard-dark.webp"
                             width="1920"
                         />
                     </div>

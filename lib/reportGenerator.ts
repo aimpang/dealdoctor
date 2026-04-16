@@ -18,6 +18,11 @@ import {
   type MarketSnapshot,
 } from './propertyApi'
 import {
+  hasResolvedListingPrice,
+  parseListingPriceResolution,
+} from './listing-price-resolution'
+import { resolveListingPrice } from './property-value-signals'
+import {
   getCurrentRates,
   applyInvestorPremium,
   INVESTOR_PREMIUM,
@@ -44,6 +49,7 @@ import {
 import { generateDealDoctor, estimateSTRRevenue, type DealDoctorOutput } from './dealDoctor'
 import { getClimateAndInsurance, type ClimateAndInsurance } from './climateRisk'
 import { getLocationSignals, type LocationSignals } from './locationSignals'
+import { resolveMonthlyInsuranceEstimate } from './property-insurance'
 import {
   applyStudentHousingHeuristic,
   matchesKnownStudentComplex,
@@ -59,6 +65,7 @@ import {
   createPendingMarketAudit,
   QualityAuditError,
 } from './qualityAudit'
+import { evaluateFirstPageTrust } from './first-page-trust'
 
 /**
  * The inputs composeFullReport needs. All external-service calls happen in
@@ -109,6 +116,7 @@ export interface ReportWarning {
     | 'thin-comp-set'
     | 'condo-weak-same-building-support'
     | 'condo-misclassified'
+    | 'listing-price-unavailable'
     | 'florida-condo-structural-diligence'
     | 'florida-condo-insurance-diligence'
     | 'sqft-bedroom-mismatch'
@@ -832,6 +840,29 @@ export function resolveCanonicalBreakeven(
   return recommendedOffersBreakeven
 }
 
+export function applyStoredListingPriceResolution(
+  property: PropertyData,
+  teaserData: unknown
+): PropertyData {
+  const storedListingPriceResolution = parseListingPriceResolution(teaserData)
+  if (!hasResolvedListingPrice(storedListingPriceResolution)) {
+    return property
+  }
+
+  return {
+    ...property,
+    primary_listing_price:
+      storedListingPriceResolution.primaryListingPrice ?? property.primary_listing_price,
+    fallback_listing_price:
+      storedListingPriceResolution.fallbackListingPrice ?? property.fallback_listing_price,
+    listing_price: storedListingPriceResolution.listingPrice,
+    listing_price_source: storedListingPriceResolution.listingPriceSource,
+    listing_price_status: storedListingPriceResolution.listingPriceStatus,
+    listing_price_checked_at: storedListingPriceResolution.listingPriceCheckedAt,
+    listing_price_user_supplied: storedListingPriceResolution.listingPriceUserSupplied,
+  }
+}
+
 /**
  * Flag rent-comp sets that are entirely in the subject building. Returns a
  * user-facing warning string when >= 3 comps share the subject's building
@@ -1162,7 +1193,12 @@ export async function composeFullReport(
   const locationSignals =
     results.locationSignals.status === 'fulfilled' ? results.locationSignals.value : null
 
-  const askPrice = property.estimated_value
+  const askPrice =
+    typeof property.listing_price === 'number' && property.listing_price > 0
+      ? property.listing_price
+      : resolveListingPrice(property)
+  const hasListingPrice =
+    typeof property.listing_price === 'number' && property.listing_price > 0
   const offerPrice = report.offerPrice ?? askPrice
   const downPaymentPct = report.downPaymentPct ?? 0.2
   const rehabBudget = report.rehabBudget ?? 0
@@ -1171,7 +1207,7 @@ export async function composeFullReport(
   // real DSCR / non-owner-occupied pricing runs higher. See rates.ts for rationale.
   const strategy = (report.strategy as Strategy) ?? 'LTR'
   const investorRate = applyInvestorPremium(rates.mortgage30yr, strategy)
-  const rawRentAvm = rentEstimate?.estimated_rent || askPrice * 0.005
+  const rawRentAvm = rentEstimate?.estimated_rent || property.estimated_value * 0.005
 
   // Student-housing heuristic: when the AVM is clearly a per-bedroom rate
   // (subdivision match or implausibly low yield), multiply by bedroom count
@@ -1216,10 +1252,6 @@ export async function composeFullReport(
   // If climate is entirely unavailable (rare — it has its own null-safe paths),
   // fall back to $1,800/yr national-average homeowners insurance. Report still
   // generates; the climate section just won't render.
-  const monthlyInsurance = climate
-    ? Math.round(climate.estimatedAnnualInsurance / 12)
-    : Math.round(1800 / 12)
-
   // Property tax: prefer actual county record from Rentcast, fall back to
   // the jurisdictional rate × price. When we have a CITY_RULES override
   // (e.g. Houston's 2.03% Harris County effective rate vs TX's 1.80%
@@ -1319,6 +1351,13 @@ export async function composeFullReport(
       : inferredCondoHOA
   const hoaInferred = capturedHOA === 0 && !buildingHoaRecordUsed && inferredCondoHOA > 0
   const hoaFromBuildingDb = !!buildingHoaRecordUsed
+  const insuranceEstimate = resolveMonthlyInsuranceEstimate({
+    annualInsuranceEstimate: climate?.estimatedAnnualInsurance,
+    floodInsuranceRequired: climate?.floodInsuranceRequired,
+    monthlyHoa: monthlyHOA,
+    propertyType: property.property_type,
+  })
+  const monthlyInsurance = insuranceEstimate.monthlyInsurance
   // Maintenance scales with square footage — a 5,693 sqft luxury estate
   // costs more to maintain than a 1,100 sqft starter home. $150 flat was
   // absurd on anything above ~3,000 sqft. Using $0.04/sqft/mo (~$480/yr per
@@ -1550,6 +1589,9 @@ export async function composeFullReport(
   }
 
   const rentWarnings: string[] = []
+  const sameBuildingRentCompCount = (rentComps || []).filter((comp: any) => {
+    return buildingKey(comp?.address || '') === buildingKey(report.address)
+  }).length
   if (rentMultiplierRevertedDueToComps) {
     rentWarnings.push(
       `The student-housing rent multiplier pushed rent above 2× the highest nearby comparable, so we reverted to the raw AVM ($${Math.round(rawRentAvm).toLocaleString()}/mo). The AVM was likely already a whole-unit figure, not per-bedroom. If this is a student rental, verify whole-unit rent with a local property manager.`
@@ -1636,6 +1678,13 @@ export async function composeFullReport(
       ? 'inferred-condo-default'
       : 'not-captured',
   })
+
+  if (!hasListingPrice) {
+    warnings.push({
+      code: 'listing-price-unavailable',
+      message: `Our data provider did not return a live listing price for this address. The ask/breakeven comparison below is using Deal Doctor's estimated value (${askPrice.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}) as a fallback, not the current MLS ask. Verify the active listing price before relying on the negotiation guidance or offer tiers.`,
+    })
+  }
 
   // AVM confidence band — mirror the preview warning so paying users also see
   // it. Same two-tier logic: ≥40% → extremely wide (do not rely on midpoint),
@@ -1905,8 +1954,42 @@ export async function composeFullReport(
     offerPrice,
     breakevenPrice: canonicalBreakEven,
   })
-  cappedLtrMetrics.dealScore = compositeScore
-  ltrMetrics.dealScore = compositeScore
+  const firstPageTrust = evaluateFirstPageTrust({
+    climateFloodInsuranceRequired: climate?.floodInsuranceRequired,
+    dataCompleteness: property.data_completeness,
+    hoaSource: hoaFromBuildingDb
+      ? 'building-avg'
+      : capturedHOA > 0
+      ? 'listing'
+      : hoaInferred
+      ? 'inferred-condo-default'
+      : 'not-captured',
+    listingPriceSource: property.listing_price_source ?? null,
+    listingPriceStatus: property.listing_price_status ?? null,
+    listingPriceCheckedAt: property.listing_price_checked_at ?? null,
+    listingPriceUserSupplied: property.listing_price_user_supplied ?? false,
+    primaryListingPrice: property.primary_listing_price ?? null,
+    fallbackListingPrice: property.fallback_listing_price ?? null,
+    monthlyNetCashFlow: cappedLtrMetrics.monthlyNetCashFlow,
+    propertyTaxSource,
+    propertyType: property.property_type,
+    rawScore: compositeScore,
+    rentWarnings,
+    reportWarnings: warnings,
+    insuranceSource: insuranceEstimate.insuranceSource,
+    sameBuildingRentCompCount,
+    taxLikelyExempted,
+    totalRentCompCount: rentComps?.length ?? 0,
+    valueConfidence,
+  })
+  Object.assign(cappedLtrMetrics, {
+    dealScore: firstPageTrust.adjustedScore,
+    rawDealScore: compositeScore,
+  })
+  Object.assign(ltrMetrics, {
+    dealScore: firstPageTrust.adjustedScore,
+    rawDealScore: compositeScore,
+  })
 
   // Invariant gate runs AFTER the composite score so the dealScore-vs-wealth
   // contradiction rule sees the final score users will actually see.
@@ -1950,6 +2033,10 @@ export async function composeFullReport(
   const auditCheckedAt = new Date().toISOString()
   const propertyProfileAudit = buildPropertyProfileAudit({
     propertyType: property.property_type,
+    estimatedValue: property.estimated_value,
+    squareFeet: property.square_feet,
+    monthlyRent,
+    valueSource: property.value_source,
     checkedAt: auditCheckedAt,
   })
   const authorityAudit = buildAuthorityAudit({
@@ -2079,6 +2166,11 @@ export async function composeFullReport(
       city: report.city,
       state: report.state,
       askPrice,
+      listingPrice: property.listing_price,
+      listingPriceSource: property.listing_price_source,
+      listingPriceStatus: property.listing_price_status,
+      listingPriceCheckedAt: property.listing_price_checked_at,
+      listingPriceUserSupplied: property.listing_price_user_supplied,
       offerPrice,
       downPaymentPct,
       rehabBudget,
@@ -2157,6 +2249,7 @@ export async function composeFullReport(
     expenses: {
       monthlyPropertyTax,
       monthlyInsurance,
+      insuranceSource: insuranceEstimate.insuranceSource,
       monthlyMaintenance,
       monthlyHOA,
       monthlyTotal: monthlyExpenses,
@@ -2198,6 +2291,7 @@ export async function composeFullReport(
       amortYears: 30,
     },
     cashToClose,
+    firstPageTrust,
     wealthProjection: {
       years: projections,
       hero: {
@@ -2422,9 +2516,10 @@ export async function generateFullReport(uuid: string): Promise<void> {
   // ~1-2s off the critical path before the first Rentcast fan-out.
   const [rates, property] = await Promise.all([
     getCurrentRates(),
-    searchProperty(report.address),
+    searchProperty(report.address, { includeListingPriceFallback: false }),
   ])
   if (!property) return
+  const hydratedProperty = applyStoredListingPriceResolution(property, report.teaserData)
 
   // Normalize "Apartment" → "Condo" for buildings we know are condominiums.
   // Rentcast inconsistently labels unit records inside condo towers as
@@ -2434,17 +2529,18 @@ export async function generateFullReport(uuid: string): Promise<void> {
   // downstream comp narrowing + narrative tone.
   if (
     isKnownCondoBuilding(report.address) &&
-    /apartment/i.test(property.property_type || '')
+    /apartment/i.test(hydratedProperty.property_type || '')
   ) {
-    property.property_type = 'Condo'
+    hydratedProperty.property_type = 'Condo'
   }
 
   const coords =
-    typeof property.latitude === 'number' && typeof property.longitude === 'number'
-      ? { lat: property.latitude, lng: property.longitude }
+    typeof hydratedProperty.latitude === 'number' &&
+    typeof hydratedProperty.longitude === 'number'
+      ? { lat: hydratedProperty.latitude, lng: hydratedProperty.longitude }
       : null
 
-  const offerPriceForTax = report.offerPrice ?? property.estimated_value
+  const offerPriceForTax = report.offerPrice ?? resolveListingPrice(hydratedProperty)
 
   // All six external fetches run in parallel. Climate/location only need the
   // coords + offerPriceForTax we already have from `property`, so there's no
@@ -2452,20 +2548,32 @@ export async function generateFullReport(uuid: string): Promise<void> {
   // Promise.allSettled blocks shaves the climate/location round-trip (~3-5s)
   // off the critical path.
   const [rentRes, salesRes, rentCompsRes, marketRes, climateRes, locationRes] = await Promise.allSettled([
-    getRentEstimate(report.address, property.bedrooms),
-    getComparableSales(report.city, report.state, property.bedrooms, coords, 1.0, {
-      sqft: property.square_feet,
-      value: property.estimated_value,
-      propertyType: property.property_type,
+    getRentEstimate(report.address, hydratedProperty.bedrooms),
+    getComparableSales(report.city, report.state, hydratedProperty.bedrooms, coords, 1.0, {
+      sqft: hydratedProperty.square_feet,
+      value: hydratedProperty.estimated_value,
+      propertyType: hydratedProperty.property_type,
       address: report.address,
     }),
-    getRentComps(report.address, property.bedrooms, property.property_type, property.bathrooms),
+    getRentComps(
+      report.address,
+      hydratedProperty.bedrooms,
+      hydratedProperty.property_type,
+      hydratedProperty.bathrooms
+    ),
     getMarketSnapshot(report.zipCode),
     // Pass the already-known property coords so climate doesn't re-geocode
     // the same address (saves a Mapbox call AND keeps property/climate/
     // locationSignals aligned on identical lat/lng — prior behavior produced
     // ~15m drift between property and climate coordinates).
-    getClimateAndInsurance(report.address, report.state, report.zipCode, offerPriceForTax, coords, property.year_built),
+    getClimateAndInsurance(
+      report.address,
+      report.state,
+      report.zipCode,
+      offerPriceForTax,
+      coords,
+      hydratedProperty.year_built
+    ),
     coords ? getLocationSignals(coords.lat, coords.lng) : Promise.resolve(null),
   ])
 
@@ -2485,7 +2593,7 @@ export async function generateFullReport(uuid: string): Promise<void> {
   let fullReportData
   try {
     fullReportData = await composeFullReport(report, {
-      property,
+      property: hydratedProperty,
       rates,
       rentEstimate: rentRes,
       saleComps: salesRes,

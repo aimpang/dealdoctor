@@ -3,6 +3,11 @@
 // Default: stub data for MVP. Swap to Rentcast, ATTOM, or RealtyMole for production.
 
 import { logger } from './logger'
+import {
+  fetchFallbackListingPrice,
+  resolveListingPriceResolution,
+} from './listing-price-resolution'
+import { resolvePropertyValueSignals } from './property-value-signals'
 
 const API_KEY = process.env.PROPERTY_API_KEY || ''
 
@@ -16,6 +21,13 @@ export interface PropertyData {
   bathrooms: number
   property_type: string
   estimated_value: number
+  primary_listing_price?: number
+  fallback_listing_price?: number
+  listing_price?: number
+  listing_price_source?: 'primary' | 'fallback' | 'user-confirmed'
+  listing_price_status?: 'resolved' | 'missing' | 'conflicted'
+  listing_price_checked_at?: string
+  listing_price_user_supplied?: boolean
   year_built: number
   square_feet: number
   lot_size?: number
@@ -47,6 +59,10 @@ export interface PropertyData {
   avm_comparables_count?: number
 }
 
+export interface SearchPropertyOptions {
+  includeListingPriceFallback?: boolean
+}
+
 export interface RentEstimate {
   estimated_rent: number
   rent_low: number
@@ -71,9 +87,12 @@ export interface RentComp {
 // Quota / rate-limit errors from Rentcast bubble up as RentcastQuotaError so
 // the preview route can show a specific "data service over quota — try later"
 // message instead of the misleading "property not found."
-export async function searchProperty(address: string): Promise<PropertyData | null> {
+export async function searchProperty(
+  address: string,
+  options: SearchPropertyOptions = {}
+): Promise<PropertyData | null> {
   if (API_KEY && API_KEY !== 'your_key_here') {
-    return await searchPropertyRentcast(address)
+    return await searchPropertyRentcast(address, options)
   }
   return generateStubProperty(address)
 }
@@ -431,18 +450,23 @@ export function buildPropertyDataFromAvm(
 }
 
 // Rentcast API integration
-async function searchPropertyRentcast(address: string): Promise<PropertyData | null> {
+async function searchPropertyRentcast(
+  address: string,
+  options: SearchPropertyOptions = {}
+): Promise<PropertyData | null> {
   try {
     const url = new URL('https://api.rentcast.io/v1/properties')
     url.searchParams.set('address', address)
+    const shouldIncludeListingPriceFallback = options.includeListingPriceFallback !== false
 
     // Fire the AVM call in parallel so we don't serialize two Rentcast round-trips
-    const [propRes, avm] = await Promise.all([
+    const [propRes, avm, fallbackListingPriceResult] = await Promise.all([
       fetch(url.toString(), {
         headers: { 'X-Api-Key': API_KEY },
         next: { revalidate: 86_400 }, // 24h cache — property data barely changes day-to-day; dramatically reduces API burn on repeat addresses
       }),
       fetchValueAvm(address),
+      shouldIncludeListingPriceFallback ? fetchFallbackListingPrice(address) : Promise.resolve(null),
     ])
     const diag = diagnoseRentcastResponse(propRes)
     if (diag === 'quota' || diag === 'rate-limit') {
@@ -455,7 +479,25 @@ async function searchPropertyRentcast(address: string): Promise<PropertyData | n
     // response + comparables rather than giving up with "property not found."
     if (!propRes.ok) {
       if (propRes.status === 404 && avm) {
-        return buildPropertyDataFromAvm(address, avm)
+        const avmOnlyProperty = buildPropertyDataFromAvm(address, avm)
+        if (!avmOnlyProperty) {
+          return null
+        }
+
+        const listingPriceResolution = resolveListingPriceResolution({
+          fallbackListingPrice: fallbackListingPriceResult?.listingPrice,
+          listingPriceCheckedAt: fallbackListingPriceResult?.checkedAt,
+        })
+
+        return {
+          ...avmOnlyProperty,
+          fallback_listing_price: listingPriceResolution.fallbackListingPrice,
+          listing_price: listingPriceResolution.listingPrice,
+          listing_price_source: listingPriceResolution.listingPriceSource,
+          listing_price_status: listingPriceResolution.listingPriceStatus,
+          listing_price_checked_at: listingPriceResolution.listingPriceCheckedAt,
+          listing_price_user_supplied: listingPriceResolution.listingPriceUserSupplied,
+        }
       }
       return null
     }
@@ -463,7 +505,27 @@ async function searchPropertyRentcast(address: string): Promise<PropertyData | n
     const data = await propRes.json()
     if (!data || (Array.isArray(data) && data.length === 0)) {
       // /properties returned 200 but empty → same AVM fallback path
-      if (avm) return buildPropertyDataFromAvm(address, avm)
+      if (avm) {
+        const avmOnlyProperty = buildPropertyDataFromAvm(address, avm)
+        if (!avmOnlyProperty) {
+          return null
+        }
+
+        const listingPriceResolution = resolveListingPriceResolution({
+          fallbackListingPrice: fallbackListingPriceResult?.listingPrice,
+          listingPriceCheckedAt: fallbackListingPriceResult?.checkedAt,
+        })
+
+        return {
+          ...avmOnlyProperty,
+          fallback_listing_price: listingPriceResolution.fallbackListingPrice,
+          listing_price: listingPriceResolution.listingPrice,
+          listing_price_source: listingPriceResolution.listingPriceSource,
+          listing_price_status: listingPriceResolution.listingPriceStatus,
+          listing_price_checked_at: listingPriceResolution.listingPriceCheckedAt,
+          listing_price_user_supplied: listingPriceResolution.listingPriceUserSupplied,
+        }
+      }
       return null
     }
 
@@ -493,48 +555,33 @@ async function searchPropertyRentcast(address: string): Promise<PropertyData | n
       }
     }
 
-    // Value cascade — use the best signal we have, tagged with its source so
-    // the UI can show buyers where the number came from + confidence band.
-    // NEVER silently fall back to a magic $350k placeholder (previous bug).
-    let estimatedValue = 0
-    let valueSource: PropertyData['value_source'] = 'unknown'
-    let valueRangeLow: number | undefined
-    let valueRangeHigh: number | undefined
-
-    // Priority 1: active listing price if present
-    if (prop.price && Number(prop.price) > 0) {
-      estimatedValue = Number(prop.price)
-      valueSource = 'listing'
-    }
-    // Priority 2: Rentcast value AVM (with confidence range)
-    else if (avm) {
-      estimatedValue = avm.price
-      valueSource = 'avm'
-      valueRangeLow = avm.low
-      valueRangeHigh = avm.high
-    }
-    // Priority 3: most-recent tax assessment × 1.15 (assessments typically
-    // lag market by ~15% in fair-market areas; varies by state but better
-    // than nothing)
-    else if (prop.taxAssessments) {
-      const years = Object.keys(prop.taxAssessments).sort().reverse()
-      for (const y of years) {
-        const v = Number(prop.taxAssessments[y]?.value)
-        if (Number.isFinite(v) && v > 0) {
-          estimatedValue = Math.round(v * 1.15)
-          valueSource = 'tax-assessment'
-          break
-        }
-      }
-    }
-    // Priority 4: last sale price grown at 3%/yr since sale date
-    if (!estimatedValue && prop.lastSalePrice && prop.lastSaleDate) {
-      const saleYear = new Date(prop.lastSaleDate).getFullYear()
-      const currentYear = new Date().getFullYear()
-      const years = Math.max(0, currentYear - saleYear)
-      estimatedValue = Math.round(Number(prop.lastSalePrice) * Math.pow(1.03, years))
-      valueSource = 'last-sale-grown'
-    }
+    const taxAssessmentValues = prop.taxAssessments
+      ? Object.keys(prop.taxAssessments)
+          .sort()
+          .reverse()
+          .map((year) => prop.taxAssessments[year]?.value)
+      : []
+    const primaryListingPrice =
+      typeof prop.price === 'number'
+        ? prop.price
+        : Number.isFinite(Number(prop.price))
+          ? Number(prop.price)
+          : undefined
+    const propertyValueSignals = resolvePropertyValueSignals({
+      listingPrice: primaryListingPrice,
+      avmPrice: avm?.price,
+      avmLow: avm?.low,
+      avmHigh: avm?.high,
+      taxAssessmentValues,
+      lastSalePrice: prop.lastSalePrice,
+      lastSaleDate: prop.lastSaleDate,
+    })
+    const listingPriceResolution = resolveListingPriceResolution({
+      primaryListingPrice,
+      fallbackListingPrice: fallbackListingPriceResult?.listingPrice,
+      listingPriceCheckedAt: fallbackListingPriceResult?.checkedAt,
+    })
+    const estimatedValue = propertyValueSignals.estimatedValue
 
     // If we genuinely have no value signal, return null — caller surfaces
     // a real "property not found" error rather than a fabricated report.
@@ -563,6 +610,13 @@ async function searchPropertyRentcast(address: string): Promise<PropertyData | n
       bathrooms: typeof prop.bathrooms === 'number' ? prop.bathrooms : 2,
       property_type: prop.propertyType || 'Single Family',
       estimated_value: estimatedValue,
+      primary_listing_price: propertyValueSignals.listingPrice,
+      fallback_listing_price: listingPriceResolution.fallbackListingPrice,
+      listing_price: listingPriceResolution.listingPrice,
+      listing_price_source: listingPriceResolution.listingPriceSource,
+      listing_price_status: listingPriceResolution.listingPriceStatus,
+      listing_price_checked_at: listingPriceResolution.listingPriceCheckedAt,
+      listing_price_user_supplied: listingPriceResolution.listingPriceUserSupplied,
       year_built: prop.yearBuilt || 2000,
       square_feet: prop.squareFootage || 1800,
       lot_size: prop.lotSize,
@@ -570,9 +624,9 @@ async function searchPropertyRentcast(address: string): Promise<PropertyData | n
       longitude: typeof prop.longitude === 'number' ? prop.longitude : undefined,
       annual_property_tax: annualPropertyTax,
       hoa_fee_monthly: hoaMonthly,
-      value_source: valueSource,
-      value_range_low: valueRangeLow,
-      value_range_high: valueRangeHigh,
+      value_source: propertyValueSignals.valueSource,
+      value_range_low: propertyValueSignals.valueRangeLow,
+      value_range_high: propertyValueSignals.valueRangeHigh,
       last_sale_price: prop.lastSalePrice ? Number(prop.lastSalePrice) : undefined,
       last_sale_date: prop.lastSaleDate || null,
       latest_tax_assessment: latestTaxAssessment,
@@ -1053,6 +1107,7 @@ function generateStubProperty(address: string): PropertyData {
   // Generate plausible values based on simple hash of address
   const hash = address.split('').reduce((a, c) => a + c.charCodeAt(0), 0)
   const basePrice = 280000 + (hash % 400) * 1000
+  const listingPriceCheckedAt = new Date().toISOString()
 
   return {
     property_id: `stub-${hash}`,
@@ -1064,6 +1119,12 @@ function generateStubProperty(address: string): PropertyData {
     bathrooms: 2 + (hash % 2),
     property_type: 'Single Family',
     estimated_value: basePrice,
+    primary_listing_price: basePrice,
+    listing_price: basePrice,
+    listing_price_source: 'primary',
+    listing_price_status: 'resolved',
+    listing_price_checked_at: listingPriceCheckedAt,
+    listing_price_user_supplied: false,
     year_built: 1990 + (hash % 30),
     square_feet: 1400 + (hash % 10) * 100,
   }

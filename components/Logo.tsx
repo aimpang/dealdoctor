@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils'
  *   - seal       Circular emblem with arc'd text — certificates, PDF footers
  *
  * Colors flow through currentColor + hsl(var(--primary)) so the identity
- * adapts to light / dark mode without hard-coded hex values.
+ * stays theme-driven without hard-coded hex values.
  */
 
 type Variant = 'mark' | 'wordmark' | 'stacked' | 'seal'

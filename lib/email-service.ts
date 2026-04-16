@@ -1,7 +1,3 @@
-// Transactional email via Resend REST API. Uses native fetch — no SDK dep.
-// Gracefully no-ops when RESEND_API_KEY isn't configured so the product works
-// without email for dev/early launch; users just miss the recovery convenience.
-
 interface SendEmailParams {
   to: string
   subject: string
@@ -9,16 +5,15 @@ interface SendEmailParams {
   text?: string
 }
 
-// Default to Resend's onboarding address which works on any account without
-// domain verification. For production, set EMAIL_FROM to a verified domain
-// on Resend — otherwise emails may go to spam or fail to render cleanly.
 const FROM_DEFAULT = process.env.EMAIL_FROM || 'DealDoctor <onboarding@resend.dev>'
 const REPLY_TO = process.env.EMAIL_REPLY_TO
 
-export async function sendEmail(params: SendEmailParams): Promise<{ sent: boolean; id?: string; error?: string }> {
+export async function sendEmail(
+  params: SendEmailParams
+): Promise<{ sent: boolean; id?: string; error?: string }> {
   const key = process.env.RESEND_API_KEY
   if (!key) {
-    console.warn('[email] RESEND_API_KEY not set — skipping email:', params.subject)
+    console.warn('[email] RESEND_API_KEY not set - skipping email:', params.subject)
     return { sent: false, error: 'RESEND_API_KEY not configured' }
   }
 
@@ -62,14 +57,14 @@ export function buildMagicLinkEmail(params: {
 <html><body style="font-family:system-ui,-apple-system,sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;color:#18181b;">
   <div style="font-size:20px;font-weight:700;margin-bottom:24px;">Deal<span style="color:#f97316;">Doctor</span></div>
   <h1 style="font-size:22px;margin:0 0 12px;">Restore your DealDoctor access</h1>
-  <p style="font-size:14px;line-height:1.6;color:#52525b;">Click the button below to restore your purchase on this device. This link is unique to you — don't forward it.</p>
+  <p style="font-size:14px;line-height:1.6;color:#52525b;">Click the button below to restore your purchase on this device. This link is unique to you, expires in ${linkExpiryLabel}, and should not be forwarded.</p>
   <p style="margin:24px 0;"><a href="${magicLinkUrl}" style="display:inline-block;background:#f97316;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">Restore access</a></p>
   <p style="font-size:13px;color:#71717a;">${entitlementDescription}</p>
   ${originalReportUrl ? `<p style="font-size:13px;color:#71717a;margin-top:16px;">Your original report is at <a href="${originalReportUrl}" style="color:#f97316;">${originalReportUrl}</a></p>` : ''}
   <hr style="border:none;border-top:1px solid #e4e4e7;margin:32px 0 16px;">
-  <p style="font-size:11px;color:#a1a1aa;">If you didn't request this, just ignore this email. Your current access is unchanged.</p>
+  <p style="font-size:11px;color:#a1a1aa;">If you did not request this, just ignore this email. Your current access is unchanged.</p>
 </body></html>`
-  const text = `Restore your DealDoctor access\n\n${magicLinkUrl}\n\n${entitlementDescription}\n\n${originalReportUrl ? `Original report: ${originalReportUrl}` : ''}`
+  const text = `Restore your DealDoctor access\n\nThis link expires in ${linkExpiryLabel}.\n\n${magicLinkUrl}\n\n${entitlementDescription}\n\n${originalReportUrl ? `Original report: ${originalReportUrl}` : ''}`
   return { html, text }
 }
 
@@ -83,12 +78,13 @@ export function buildPurchaseReceiptEmail(params: {
 }) {
   const { plan, claimLinkExpiryLabel, reportUrl, magicLinkUrl, address, recoveryCode } = params
   const planLabel =
-    plan === 'single' ? 'Single Report' :
-    plan === '5pack' ? '5-Pack Bundle' : 'Pro Unlimited'
+    plan === 'single' ? 'Single Report' : plan === '5pack' ? '5-Pack Bundle' : 'Pro Unlimited'
   const entitlement =
-    plan === 'single' ? 'You have access to this one report.' :
-    plan === '5pack' ? 'You have 4 more reports available whenever you are ready — they never expire.' :
-    'Unlimited reports for the next 30 days. Renews automatically.'
+    plan === 'single'
+      ? 'You have access to this one report.'
+      : plan === '5pack'
+      ? 'You have 4 more reports available whenever you are ready - they never expire.'
+      : 'Unlimited reports for the next 30 days. Renews automatically.'
 
   const html = `<!DOCTYPE html>
 <html><body style="font-family:system-ui,-apple-system,sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;color:#18181b;">
@@ -102,13 +98,13 @@ export function buildPurchaseReceiptEmail(params: {
   <p style="font-size:13px;color:#71717a;">${entitlement}</p>
 
   <hr style="border:none;border-top:1px solid #e4e4e7;margin:32px 0 16px;">
-  <p style="font-size:12px;color:#52525b;line-height:1.6;"><b>Need to open on another device?</b><br>Use this restore link to re-establish your session: <a href="${magicLinkUrl}" style="color:#f97316;">Restore access</a></p>
+  <p style="font-size:12px;color:#52525b;line-height:1.6;"><b>Need to open on another device?</b><br>Use this restore link to re-establish your session. It expires in ${claimLinkExpiryLabel}: <a href="${magicLinkUrl}" style="color:#f97316;">Restore access</a></p>
   ${recoveryCode ? `
-  <p style="font-size:12px;color:#52525b;line-height:1.6;margin-top:16px;"><b>Lost this email?</b><br>Save this recovery code in a password manager — paste it at <a href="${reportUrl.split('/report/')[0]}/retrieve" style="color:#f97316;">dealdoctor.app/retrieve</a> on any device to get back in:</p>
+  <p style="font-size:12px;color:#52525b;line-height:1.6;margin-top:16px;"><b>Lost this email?</b><br>Save this recovery code in a password manager - paste it at <a href="${reportUrl.split('/report/')[0]}/retrieve" style="color:#f97316;">dealdoctor.app/retrieve</a> on any device to get back in:</p>
   <p style="margin:8px 0 0;padding:12px 16px;background:#fef3c7;border:1px solid #fde68a;border-radius:6px;font-family:ui-monospace,monospace;font-size:15px;font-weight:700;letter-spacing:1px;color:#713f12;text-align:center;">${recoveryCode}</p>
   ` : ''}
   <p style="font-size:11px;color:#a1a1aa;margin-top:24px;">Questions or refunds within 7 days? Just reply to this email.</p>
 </body></html>`
-  const text = `Your DealDoctor report is ready\n\n${planLabel} — ${address}\n\nOpen: ${reportUrl}\n\n${entitlement}\n\nRestore access on another device: ${magicLinkUrl}${recoveryCode ? `\n\nLost this email? Recovery code: ${recoveryCode}\n(Paste at /retrieve on any device)` : ''}`
+  const text = `Your DealDoctor report is ready\n\n${planLabel} - ${address}\n\nOpen: ${reportUrl}\n\n${entitlement}\n\nRestore access on another device (expires in ${claimLinkExpiryLabel}): ${magicLinkUrl}${recoveryCode ? `\n\nLost this email? Recovery code: ${recoveryCode}\n(Paste at /retrieve on any device)` : ''}`
   return { html, text }
 }

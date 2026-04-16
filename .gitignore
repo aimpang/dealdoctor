@@ -10,7 +10,7 @@
 /coverage
 /test-results
 /playwright-report
-/.dev.log
+dev.log
 
 # next.js
 /.next/

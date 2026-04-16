@@ -915,20 +915,29 @@ export function getStatePropertyTaxGrowth(state: string): number {
 }
 
 // --- STATE RULES ---
+// hotelOccupancyTaxRate / strAnnualRegistrationFee / transferTaxRate are
+// optional state-level defaults. Cities with sharper data override per-field
+// via CITY_RULES; if neither carries the field, getJurisdictionRules falls
+// back to 0. Add a state default whenever the state imposes a statutory
+// floor that applies to *all* cities (e.g. FL 6% sales tax + 5% min TDT).
 export const STATE_RULES: Record<string, {
   name: string
   propertyTaxRate: number       // approximate effective rate
   rentControl: boolean
   landlordFriendly: boolean
   strNotes: string
+  hotelOccupancyTaxRate?: number
+  strAnnualRegistrationFee?: number
+  transferTaxRate?: number
 }> = {
   TX: { name: 'Texas', propertyTaxRate: 0.018, rentControl: false, landlordFriendly: true, strNotes: 'No statewide STR restrictions. Check municipal rules.' },
   // FL: 0.9% is the homesteaded (Save Our Homes) rate — investors get NO SOH cap,
   // so non-homesteaded effective rates run 1.1–1.8% depending on county. Use 1.1%
   // as the non-homesteaded statewide fallback; high-tax counties (Broward, Miami-Dade)
   // are overridden per-city in CITY_RULES. All FL STR revenue is subject to FL 6%
-  // sales tax + county Tourist Development Tax (TDT, typically 5–6%).
-  FL: { name: 'Florida', propertyTaxRate: 0.011, rentControl: false, landlordFriendly: true, strNotes: 'Investment properties are NOT eligible for Florida\'s Save Our Homes 3% assessment cap (homesteaded primary residences only) — effective non-homesteaded rates vary from ~1.1% (rural) to ~1.7% (Miami-Dade/Broward). All STR gross revenue is subject to three layers: FL 6% state sales tax + FL county discretionary sales surtax (0.5–1.5% depending on county) + county Tourist Development Tax (TDT, 5–7%). Combined all-in STR tax typically runs 12.5–14% by county. SB 714 (2024) limits some local STR bans but does not fully preempt county/city rules. Major markets require STR registration.' },
+  // sales tax + county Tourist Development Tax (TDT, typically 5–6%); 11% is the
+  // statutory floor that applies to every FL county per FSS §212.03 + §125.0104.
+  FL: { name: 'Florida', propertyTaxRate: 0.011, rentControl: false, landlordFriendly: true, hotelOccupancyTaxRate: 0.11, strNotes: 'Investment properties are NOT eligible for Florida\'s Save Our Homes 3% assessment cap (homesteaded primary residences only) — effective non-homesteaded rates vary from ~1.1% (rural) to ~1.7% (Miami-Dade/Broward). All STR gross revenue is subject to three layers: FL 6% state sales tax + FL county discretionary sales surtax (0.5–1.5% depending on county) + county Tourist Development Tax (TDT, 5–7%). Combined all-in STR tax typically runs 12.5–14% by county. SB 714 (2024) limits some local STR bans but does not fully preempt county/city rules. Major markets require STR registration.' },
   // CA: 0.73% reflects the statewide portfolio average suppressed by Prop 13 lock-in
   // across long-held properties. For a NEW purchase the effective rate is ~1.1%.
   // AB 1482 (Tenant Protection Act): SFRs are NOT automatically exempt when held in
@@ -1281,10 +1290,15 @@ export function getJurisdictionRules(
   transferTaxRate: number
 } {
   const stateBase = STATE_RULES[state] || STATE_RULES['TX']
-  // STATE_RULES doesn't carry HOT, STR registration, or transfer tax yet;
-  // default each to 0 so callers get a safe baseline (STR opex stack /
-  // closing costs). Cities with data flow through CITY_RULES overrides.
-  const base = { ...stateBase, hotelOccupancyTaxRate: 0, strAnnualRegistrationFee: 0, transferTaxRate: 0 }
+  // Inherit state-level defaults if present (e.g. FL 11% HOT floor); fall
+  // back to 0 only when neither STATE_RULES nor CITY_RULES carry a value.
+  // CITY_RULES overrides win via the spread below.
+  const base = {
+    ...stateBase,
+    hotelOccupancyTaxRate: stateBase.hotelOccupancyTaxRate ?? 0,
+    strAnnualRegistrationFee: stateBase.strAnnualRegistrationFee ?? 0,
+    transferTaxRate: stateBase.transferTaxRate ?? 0,
+  }
   if (!city) return base
   const key = `${city.trim().toUpperCase()}, ${state.trim().toUpperCase()}`
   const override = CITY_RULES[key]

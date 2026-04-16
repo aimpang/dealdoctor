@@ -219,8 +219,8 @@ export default function ReportPage() {
       {showSuccess && (
         <div className="no-print border-b bg-emerald-500/10">
           <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 py-3">
-            <CheckCircle2Icon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-            <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
+            <CheckCircle2Icon className="h-4 w-4 text-emerald-600" />
+            <p className="text-sm font-medium text-emerald-700">
               Payment successful! Your full report is ready.
             </p>
           </div>
@@ -231,10 +231,10 @@ export default function ReportPage() {
       {report?.debug && (
         <div className="no-print border-b border-amber-500/30 bg-amber-500/10">
           <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 py-2">
-            <span className="font-mono text-xs font-bold text-amber-700 dark:text-amber-400">
+            <span className="font-mono text-xs font-bold text-amber-700">
               🔧 DEBUG MODE
             </span>
-            <p className="text-xs text-amber-700 dark:text-amber-400">
+            <p className="text-xs text-amber-700">
               Paywall bypassed. Report is rendering as if paid. This URL only works in local dev.
             </p>
           </div>

@@ -34,9 +34,9 @@ interface DealDoctorProps {
 }
 
 const difficultyConfig = {
-  easy: { label: 'Easy', bg: 'bg-emerald-500/10', text: 'text-emerald-700 dark:text-emerald-400', dot: 'bg-emerald-500' },
-  medium: { label: 'Medium', bg: 'bg-amber-500/10', text: 'text-amber-700 dark:text-amber-400', dot: 'bg-amber-500' },
-  hard: { label: 'Hard', bg: 'bg-red-500/10', text: 'text-red-700 dark:text-red-400', dot: 'bg-red-500' },
+  easy: { label: 'Easy', bg: 'bg-emerald-500/10', text: 'text-emerald-700', dot: 'bg-emerald-500' },
+  medium: { label: 'Medium', bg: 'bg-amber-500/10', text: 'text-amber-700', dot: 'bg-amber-500' },
+  hard: { label: 'Hard', bg: 'bg-red-500/10', text: 'text-red-700', dot: 'bg-red-500' },
 }
 
 export function DealDoctorSection({ dealDoctor, verdict }: DealDoctorProps) {
@@ -80,8 +80,8 @@ export function DealDoctorSection({ dealDoctor, verdict }: DealDoctorProps) {
           {hasPros && (
             <div className="px-5 py-4">
               <div className="mb-2 flex items-center gap-1.5">
-                <ThumbsUpIcon className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+                <ThumbsUpIcon className="h-3.5 w-3.5 text-emerald-600" />
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700">
                   Pros
                 </p>
               </div>
@@ -98,8 +98,8 @@ export function DealDoctorSection({ dealDoctor, verdict }: DealDoctorProps) {
           {hasCons && (
             <div className="px-5 py-4">
               <div className="mb-2 flex items-center gap-1.5">
-                <ThumbsDownIcon className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-red-700 dark:text-red-400">
+                <ThumbsDownIcon className="h-3.5 w-3.5 text-red-600" />
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-red-700">
                   Cons
                 </p>
               </div>
@@ -224,15 +224,15 @@ export function DealDoctorSection({ dealDoctor, verdict }: DealDoctorProps) {
       {hasInspection && (
         <div className="border-t bg-amber-500/[0.05] px-5 py-4">
           <div className="mb-3 flex items-center gap-1.5">
-            <EyeIcon className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-400">
+            <EyeIcon className="h-3.5 w-3.5 text-amber-600" />
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-700">
               Tell your inspector to look closely at
             </p>
           </div>
           <ul className="space-y-2">
             {dealDoctor.inspectionRedFlags!.map((r, i) => (
               <li key={i} className="flex gap-3">
-                <span className="shrink-0 text-sm font-bold text-amber-700 dark:text-amber-400">
+                <span className="shrink-0 text-sm font-bold text-amber-700">
                   {r.area}
                 </span>
                 <span className="text-[12px] leading-snug text-foreground">— {r.why}</span>

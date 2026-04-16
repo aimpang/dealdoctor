@@ -83,43 +83,52 @@ describe('runInvariantCheck', () => {
     expect(res.failures.map((f) => f.code)).toContain('equity-paydown-negative-y5')
   })
 
-  it('WARNs on implausible DSCR (outside 0.4–3.0 band)', () => {
+  // The invariant gate exists to catch *math/units bugs*, not bad deals.
+  // A genuinely terrible underwrite (high HOA, low rent) can produce a
+  // DSCR of 0.05–0.20 with arithmetically perfect math — that's signal,
+  // not noise. The only DSCR values that reliably indicate a bug are
+  // wildly high ones (e.g. annual NOI accidentally divided by monthly
+  // debt service inflates DSCR ~12×). Band: warn only when DSCR > 10.
+  it('WARNs on impossibly-high DSCR (likely a units-mismatch bug)', () => {
     const input = passing()
-    input.dscr = 5.5
+    input.dscr = 12 // monthly NOI / monthly debt accidentally annualized
     const res = runInvariantCheck(input)
     expect(res.ok).toBe(true) // WARN does not block
     expect(res.warnings.map((w) => w.code)).toContain('dscr-implausible')
   })
 
   describe('DSCR warning band', () => {
-    it('does not warn at the lower boundary (0.40)', () => {
+    it('does NOT warn on a low-but-consistent DSCR (genuinely bad deal)', () => {
+      // Real Fort Myers FL condo case: NOI=$1,536/yr, debt=$19,068/yr →
+      // DSCR=0.08. Math is exact; the deal is just bad. Should not warn.
       const input = passing()
-      input.dscr = 0.4
+      input.dscr = 0.08
       const res = runInvariantCheck(input)
       expect(res.warnings.map((w) => w.code)).not.toContain('dscr-implausible')
     })
 
-    it('warns just below the lower boundary (0.39)', () => {
+    it('does NOT warn at the upper boundary (10.0)', () => {
       const input = passing()
-      input.dscr = 0.39
+      input.dscr = 10
+      const res = runInvariantCheck(input)
+      expect(res.warnings.map((w) => w.code)).not.toContain('dscr-implausible')
+    })
+
+    it('warns just above the upper boundary (10.01)', () => {
+      const input = passing()
+      input.dscr = 10.01
       const res = runInvariantCheck(input)
       expect(res.ok).toBe(true)
       expect(res.warnings.map((w) => w.code)).toContain('dscr-implausible')
     })
 
-    it('does not warn at the upper boundary (3.00)', () => {
+    it('does NOT warn on negative DSCR (negative NOI is a real outcome)', () => {
+      // Effective rent < expenses → NOI < 0 → DSCR < 0. Real bad deal,
+      // not a math bug. Caller already shows it via FAIL verdict + CF sign.
       const input = passing()
-      input.dscr = 3
+      input.dscr = -0.5
       const res = runInvariantCheck(input)
       expect(res.warnings.map((w) => w.code)).not.toContain('dscr-implausible')
-    })
-
-    it('warns just above the upper boundary (3.01)', () => {
-      const input = passing()
-      input.dscr = 3.01
-      const res = runInvariantCheck(input)
-      expect(res.ok).toBe(true)
-      expect(res.warnings.map((w) => w.code)).toContain('dscr-implausible')
     })
   })
 

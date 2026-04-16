@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'node:crypto'
+import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { generateFullReport } from '@/lib/reportGenerator'
 import { creditPurchase, revokeEntitlement } from '@/lib/entitlements'
-import { sendEmail, buildPurchaseReceiptEmail } from '@/lib/email'
+import { sendEmail, buildPurchaseReceiptEmail } from '@/lib/email-service'
 import { BASE_URL } from '@/lib/seo'
 import { logger } from '@/lib/logger'
+import {
+  RECEIPT_CLAIM_TOKEN_TTL_DAYS,
+  RECEIPT_CLAIM_TOKEN_TTL_MS,
+  createClaimToken,
+} from '@/lib/claim-token'
 
 // LemonSqueezy webhook handler.
 // Events we handle:
@@ -108,7 +114,12 @@ export async function POST(req: NextRequest) {
     }
   } catch (err: any) {
     logger.error('webhook.processing_error', { error: err })
-    // Return 200 so LS doesn't spam retries on our bugs; we log and move on.
+    await prisma.webhookEvent
+      .deleteMany({ where: { providerEventId } })
+      .catch((cleanupError) =>
+        logger.error('webhook.dedup_release_failed', { providerEventId, error: cleanupError })
+      )
+    return NextResponse.json({ error: 'Webhook processing failed' }, { status: 500 })
   }
 
   return NextResponse.json({ received: true })
@@ -117,32 +128,52 @@ export async function POST(req: NextRequest) {
 async function handleOrderCreated(payload: any, customData: any, email: string | undefined) {
   const uuid = customData?.uuid as string | undefined
   const plan = (customData?.plan as 'single' | '5pack' | 'unlimited') || 'single'
+  const paymentOrderId = String(payload.data?.id ?? '')
 
   if (!email) {
     // Can't associate without email — just mark the one report as paid
-    if (uuid) await markReportPaid(uuid, payload.data?.id, null, email)
+    if (uuid) {
+      await updateReportPaid(uuid, paymentOrderId, null, email)
+      queueFullReportGeneration(uuid)
+    }
     return
   }
 
-  // Credit entitlement (or upsert customer)
-  const customer = await creditPurchase({
-    email,
-    plan,
-    lsCustomerId: String(payload.data?.attributes?.customer_id ?? ''),
+  const customer = await prisma.$transaction(async (transactionClient) => {
+    const nextCustomer = await creditPurchase(
+      {
+        email,
+        plan,
+        lsCustomerId: String(payload.data?.attributes?.customer_id ?? ''),
+      },
+      transactionClient
+    )
+
+    if (uuid) {
+      await updateReportPaid(uuid, paymentOrderId, nextCustomer.id, email, transactionClient)
+    }
+
+    return nextCustomer
   })
 
   if (uuid) {
-    await markReportPaid(uuid, payload.data?.id, customer.id, email)
+    queueFullReportGeneration(uuid)
   }
 
   // Purchase receipt email with report link + magic link
   try {
     const baseUrl = BASE_URL
+    const claimToken = createClaimToken({
+      accessToken: customer.accessToken,
+      customerId: customer.id,
+      expiresInMs: RECEIPT_CLAIM_TOKEN_TTL_MS,
+    })
     const report = uuid ? await prisma.report.findUnique({ where: { id: uuid } }) : null
     const { html, text } = buildPurchaseReceiptEmail({
       plan,
+      claimLinkExpiryLabel: `${RECEIPT_CLAIM_TOKEN_TTL_DAYS} days`,
       reportUrl: uuid ? `${baseUrl}/report/${uuid}` : baseUrl,
-      magicLinkUrl: `${baseUrl}/api/auth/claim?token=${customer.accessToken}`,
+      magicLinkUrl: `${baseUrl}/api/auth/claim?token=${claimToken}`,
       address: report?.address || 'your property',
       recoveryCode: (customer as any).recoveryCode,
     })
@@ -163,31 +194,41 @@ async function handleSubscriptionEvent(
   const renewsAtStr = payload.data?.attributes?.renews_at as string | undefined
   const renewsAt = renewsAtStr ? new Date(renewsAtStr) : undefined
   const subscriptionId = String(payload.data?.id ?? '')
+  const uuid = customData?.uuid as string | undefined
 
-  const customer = await creditPurchase({
-    email,
-    plan: 'unlimited',
-    lsCustomerId: String(payload.data?.attributes?.customer_id ?? ''),
-    lsSubscriptionId: subscriptionId,
-    subscriptionStatus: status,
-    renewsAt,
+  await prisma.$transaction(async (transactionClient) => {
+    const nextCustomer = await creditPurchase(
+      {
+        email,
+        plan: 'unlimited',
+        lsCustomerId: String(payload.data?.attributes?.customer_id ?? ''),
+        lsSubscriptionId: subscriptionId,
+        subscriptionStatus: status,
+        renewsAt,
+      },
+      transactionClient
+    )
+
+    if (uuid) {
+      await updateReportPaid(uuid, payload.data?.id, nextCustomer.id, email, transactionClient)
+    }
+
+    return nextCustomer
   })
 
-  // If this event arrived with a custom_data uuid (first-time subscription
-  // initiated from a paywall), mark that specific report paid too.
-  const uuid = customData?.uuid as string | undefined
   if (uuid) {
-    await markReportPaid(uuid, payload.data?.id, customer.id, email)
+    queueFullReportGeneration(uuid)
   }
 }
 
-async function markReportPaid(
+async function updateReportPaid(
   uuid: string,
   paymentOrderId: any,
   customerId: string | null,
-  email: string | undefined
+  email: string | undefined,
+  databaseClient: Prisma.TransactionClient | typeof prisma = prisma
 ) {
-  await prisma.report.update({
+  await databaseClient.report.update({
     where: { id: uuid },
     data: {
       paid: true,
@@ -198,6 +239,9 @@ async function markReportPaid(
     },
   })
   // Fire and forget — don't block webhook response on report generation
+}
+
+function queueFullReportGeneration(uuid: string) {
   generateFullReport(uuid).catch((err) =>
     logger.error('webhook.report_generation_failed', { uuid, error: err })
   )

@@ -1,11 +1,38 @@
-# Codex Rules
+## Agent Development Rules
 
-- Double-check your output before presenting it. Verify that your changes actually address what the user asked for.
-- Re-read the user's last message before responding. Follow through on every instruction completely.
-- When the user corrects you, stop and re-read their message. Quote back what they asked for and confirm before proceeding.
-- Read the full file before editing. Plan all changes, then make ONE complete edit. If you've edited a file 3+ times, stop and re-read the user's requirements.
-- When stuck, summarize what you've tried and ask the user for guidance instead of retrying the same approach.
-- After 2 consecutive tool failures, stop and change your approach entirely. Explain what failed and try a different strategy.
-- Every few turns, re-read the original request to make sure you haven't drifted from the goal.
-- Complete the FULL task before stopping. If the user asked for multiple things, implement all of them before presenting results.
-- Work more autonomously. Make reasonable decisions without asking for confirmation on every step.
+### Tooling & Workflow (MUST)
+- Always use `@antfu/ni`: `ni` to install, `nr <script>` to run scripts, `nun` to uninstall.
+- This is a **pnpm monorepo** with libraries in the `packages/` directory.
+- After any change to source files, **always run `pnpm build`** before testing or committing.
+- Before every commit, run `pnpm check` (which runs lint + format).
+- Use **kebab-case** for all filenames.
+
+### TypeScript Rules (MUST)
+- Prefer `interface` over `type` aliases.
+- Keep **all types and interfaces in the global scope** (avoid inline types).
+- Never use type assertions (`as`) unless absolutely necessary.
+- Use **arrow functions** exclusively. Never use `function` declarations.
+
+### Code Style & Quality (MUST)
+- Use **highly descriptive variable names**. Avoid shorthands and 1-2 character names.
+  - Good: `didPositionChange`, `targetElement`, `innerItem`
+  - Bad: `moved`, `x`, `el`
+- Frequently re-evaluate and refactor variable names for maximum clarity.
+- **Default to zero comments**. Only add a comment when the "why" is truly non-obvious (browser quirk, performance tradeoff, fragile hack, or counter-intuitive design).
+- Remove all unused code. Strictly follow DRY.
+- Put all **magic numbers** in `constants.ts` using `SCREAMING_SNAKE_CASE` with unit suffixes (`TIMEOUT_MS`, `DEFAULT_WIDTH_PX`, etc.).
+- Extract small, focused utilities into the `utils/` folder (one utility per file).
+
+### Architecture & Decision Making (MUST)
+- Always search the existing codebase thoroughly before adding new code.
+- Consider multiple possible solutions, then implement the **most elegant** one (cleanest, most maintainable, least surprising).
+
+### What to Avoid
+- Using `!!` for boolean conversion — use `Boolean()` instead.
+- Type casting unless truly unavoidable.
+- Comments that merely restate what the code or variable names already make obvious.
+- Repeating logic across files.
+
+### Testing & Checks
+- Run `pnpm check` (lint + format) before every commit.
+- `pnpm build` must complete successfully before running the CLI or tests.

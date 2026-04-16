@@ -1,5 +1,6 @@
 import { ImageResponse } from 'next/og'
 import { prisma } from '@/lib/db'
+import { DISPLAY_SITE_HOSTNAME } from '@/lib/seo'
 
 // Dynamic OG card for a specific report. Renders at /report/[uuid]/opengraph-image
 // and is auto-injected into <meta og:image> by Next.js 14's convention-based metadata.
@@ -16,7 +17,7 @@ const fmt = (n: number) =>
     maximumFractionDigits: 0,
   }).format(n)
 
-export default async function OGImage({ params }: { params: { uuid: string } }) {
+const OGImage = async ({ params }: { params: { uuid: string } }) => {
   const report = await prisma.report.findUnique({ where: { id: params.uuid } })
   const isPaid = report?.paid && report?.fullReportData
   const full: any = isPaid ? JSON.parse(report!.fullReportData!) : null
@@ -231,10 +232,12 @@ export default async function OGImage({ params }: { params: { uuid: string } }) 
           }}
         >
           <span style={{ display: 'flex' }}>Real mortgage math · DSCR · AI-powered analysis</span>
-          <span style={{ display: 'flex' }}>dealdoctor.app</span>
+          <span style={{ display: 'flex' }}>{DISPLAY_SITE_HOSTNAME}</span>
         </div>
       </div>
     ),
     size
   )
 }
+
+export default OGImage

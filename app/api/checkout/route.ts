@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { lemonSqueezySetup, createCheckout } from '@lemonsqueezy/lemonsqueezy.js'
 import { prisma } from '@/lib/db'
 import { absoluteUrl } from '@/lib/seo'
+import {
+  hasResolvedListingPrice,
+  isManualListingPriceConfirmationStale,
+  parseListingPriceResolution,
+} from '@/lib/listing-price-resolution'
 
 lemonSqueezySetup({
   apiKey: process.env.LEMONSQUEEZY_API_KEY!,
@@ -30,6 +35,33 @@ export async function POST(req: NextRequest) {
       alreadyPaid: true,
       url: absoluteUrl(`/report/${uuid}`)
     })
+  }
+
+  const listingPriceResolution = parseListingPriceResolution(report.teaserData)
+  if (!hasResolvedListingPrice(listingPriceResolution)) {
+    return NextResponse.json(
+      {
+        error:
+          "We couldn't verify the current listing price for this property, so checkout is blocked until the ask price is resolved.",
+        code: 'listing-price-unresolved',
+        retryable: true,
+        supportContact: 'support@dealdoctor.app',
+      },
+      { status: 409 }
+    )
+  }
+
+  if (isManualListingPriceConfirmationStale(listingPriceResolution)) {
+    return NextResponse.json(
+      {
+        error:
+          'The confirmed ask price is stale. Refresh the address and reconfirm the current listing price before checkout.',
+        code: 'listing-price-stale',
+        retryable: true,
+        supportContact: 'support@dealdoctor.app',
+      },
+      { status: 409 }
+    )
   }
 
   // Wrap the LemonSqueezy SDK call. A network blip or LS 5xx used to surface

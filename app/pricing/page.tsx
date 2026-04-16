@@ -6,16 +6,32 @@ import { Logo } from '@/components/Logo'
 import { absoluteUrl } from '@/lib/seo'
 
 export const metadata: Metadata = {
-  title: 'Pricing — DealDoctor Reports from $24.99',
+  title: 'Real Estate Deal Analysis Pricing - Reports from $24.99',
   description:
-    'DealDoctor pricing: $24.99 single report, $69.99 for 5 reports, $119.99/mo unlimited. Full 20-section real estate investment analysis with 7-day refund.',
+    'DealDoctor pricing for rental property analysis: $24.99 single report, $69.99 for 5 reports, and $119.99 per month for unlimited reports.',
   alternates: { canonical: '/pricing' },
   openGraph: {
-    title: 'Pricing — DealDoctor Reports from $24.99',
+    siteName: 'DealDoctor',
+    title: 'Real Estate Deal Analysis Pricing - Reports from $24.99',
     description:
-      'Single reports, 5-pack bundles, and unlimited monthly plans for real estate investment analysis.',
+      'Single reports, 5-pack bundles, and unlimited monthly plans for rental property analysis.',
     url: absoluteUrl('/pricing'),
     type: 'website',
+    images: [
+      {
+        url: absoluteUrl('/opengraph-image'),
+        width: 1200,
+        height: 630,
+        alt: 'DealDoctor pricing for real estate deal analysis',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'DealDoctor Pricing - Reports from $24.99',
+    description:
+      'Single reports, 5-pack bundles, and unlimited monthly plans for rental property analysis.',
+    images: [absoluteUrl('/twitter-image')],
   },
 }
 
@@ -26,7 +42,7 @@ const TIERS = [
     per: 'per report',
     tagline: 'Best when you\'re weighing one specific deal.',
     features: [
-      'Full 20-section underwriting report',
+      'Full underwriting report',
       'Exact breakeven offer price + offer tiers',
       '5-year wealth projection & IRR',
       'AI Deal Doctor diagnosis',
@@ -42,7 +58,7 @@ const TIERS = [
       '5 reports that stack across searches',
       'Works cross-device via email recovery',
       'Everything in Single',
-      'Save to portfolio for side-by-side',
+      'Save to portfolio in this browser',
       'Best per-report value',
     ],
     popular: true,
@@ -57,7 +73,7 @@ const TIERS = [
       'Auto-renews monthly · cancel anytime',
       'Access through the paid period',
       'Everything in 5-Pack',
-      'Priority AI generation',
+      'Auto-unlocks future searches while active',
     ],
   },
 ]
@@ -85,7 +101,7 @@ export default function PricingPage() {
             Priced for the volume you underwrite.
           </h1>
           <p className="mx-auto mt-5 max-w-2xl font-[family-name:var(--font-instrument)] text-[17px] leading-[1.6] text-foreground/75">
-            One-time reports, a 5-pack bundle, or unlimited for a month. Every tier gets the complete 20-section investment property analysis — no feature gates, no upsells inside the report.
+            One-time reports, a 5-pack bundle, or unlimited for a month. Every tier gets the same full investment property analysis — no feature gates, no upsells inside the report.
           </p>
         </div>
 
@@ -144,7 +160,7 @@ export default function PricingPage() {
         </div>
 
         <p className="mt-8 text-center font-mono text-[10.5px] uppercase tracking-[0.18em] text-foreground/55">
-          Secure payment · LemonSqueezy · No account needed · 7-day refund
+          Secure payment · LemonSqueezy · No account needed · 7-day support & refund review
         </p>
       </section>
     </div>

@@ -12,8 +12,6 @@ import { ShareButton } from './ShareButton'
 import {
   CheckCircle2Icon,
   XCircleIcon,
-  MinusCircleIcon,
-  TrendingUpIcon,
   AlertTriangleIcon,
   PrinterIcon,
   TargetIcon,
@@ -46,29 +44,38 @@ const fmt = (n: number) =>
 const pct = (n: number, d = 2) => `${(n * 100).toFixed(d)}%`
 
 /* ───── Verdict config ───── */
-const VERDICT = {
-  DEAL: {
-    label: 'Strong Deal',
-    color: 'text-emerald-700 dark:text-emerald-400',
+const INVESTOR_SIGNAL = {
+  invest: {
+    label: 'Invest',
+    color: 'text-emerald-700',
     bg: 'bg-emerald-500/10',
     border: 'border-emerald-500/30',
     Icon: CheckCircle2Icon,
   },
-  MARGINAL: {
-    label: 'Marginal',
-    color: 'text-amber-700 dark:text-amber-400',
+  think: {
+    label: 'Think',
+    color: 'text-amber-700',
     bg: 'bg-amber-500/10',
     border: 'border-amber-500/30',
-    Icon: MinusCircleIcon,
+    Icon: AlertTriangleIcon,
   },
-  PASS: {
-    label: 'Pass',
-    color: 'text-red-700 dark:text-red-400',
+  run: {
+    label: 'Run',
+    color: 'text-red-700',
     bg: 'bg-red-500/10',
     border: 'border-red-500/30',
     Icon: XCircleIcon,
   },
 } as const
+
+const hasInvestorSignalKey = (
+  investorSignalCandidate: unknown
+): investorSignalCandidate is keyof typeof INVESTOR_SIGNAL => {
+  return (
+    typeof investorSignalCandidate === 'string' &&
+    investorSignalCandidate in INVESTOR_SIGNAL
+  )
+}
 
 export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
   const searchParams = useSearchParams()
@@ -115,9 +122,31 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
     qualityAudit,
     marketAudit,
     crossCheckLinks,
+    firstPageTrust,
   } = data
 
-  const v = VERDICT[ltr.verdict as keyof typeof VERDICT] || VERDICT.PASS
+  const defaultInvestorSignalKey: keyof typeof INVESTOR_SIGNAL =
+    ltr.verdict === 'DEAL'
+      ? 'invest'
+      : ltr.verdict === 'MARGINAL'
+      ? 'think'
+      : 'run'
+  const investorSignalKey: keyof typeof INVESTOR_SIGNAL = hasInvestorSignalKey(
+    firstPageTrust?.investorSignal
+  )
+    ? firstPageTrust.investorSignal
+    : defaultInvestorSignalKey
+  const investorSignal = INVESTOR_SIGNAL[investorSignalKey]
+  const hasListingPrice =
+    typeof property?.listingPrice === 'number' && property.listingPrice > 0
+  const priceAnchorLabel = hasListingPrice ? 'ask' : 'estimated value'
+  const priceAnchorDescription = hasListingPrice ? 'listing price' : 'estimated value'
+  const shouldSuppressBreakevenSignal = Boolean(firstPageTrust?.suppressBreakevenSignal)
+  const shouldSuppressForwardProjection = Boolean(firstPageTrust?.suppressForwardProjection)
+  const adjustedScore =
+    typeof firstPageTrust?.adjustedScore === 'number'
+      ? firstPageTrust.adjustedScore
+      : ltr.dealScore
 
   // Sync document.title client-side so the browser's "Save as PDF" dialog
   // picks up the property address — e.g. "Deal Doctor - 412 N Main St,
@@ -243,7 +272,7 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
         (addressFlags.value_off >= 2 || addressFlags.rent_off >= 2) && (
           <div className="mb-4 rounded-md border-2 border-red-500/40 bg-red-500/5 px-4 py-3">
             <div className="flex items-start gap-2">
-              <AlertTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-red-600 dark:text-red-400" />
+              <AlertTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
               <div>
                 <p className="text-sm font-semibold text-foreground">
                   Previous buyers flagged this property
@@ -321,20 +350,52 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
           <div
             className={cn(
               'flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2',
-              v.bg,
-              v.border
+              investorSignal.bg,
+              investorSignal.border
             )}
           >
-            <v.Icon className={cn('h-5 w-5', v.color)} />
+            <investorSignal.Icon className={cn('h-5 w-5', investorSignal.color)} />
             <div className="leading-tight">
-              <p className={cn('text-sm font-bold uppercase tracking-wide', v.color)}>
-                {v.label}
+              <p className={cn('text-sm font-bold uppercase tracking-wide', investorSignal.color)}>
+                {investorSignal.label}
               </p>
-              <p className="text-[10px] text-muted-foreground">Score {ltr.dealScore}/100</p>
+              <p className="text-[10px] text-muted-foreground">
+                Score {adjustedScore}/100
+                {typeof ltr?.rawDealScore === 'number' && ltr.rawDealScore !== adjustedScore
+                  ? ` · raw ${ltr.rawDealScore}/100`
+                  : ''}
+              </p>
             </div>
           </div>
         </div>
       </header>
+
+      {firstPageTrust && firstPageTrust.status !== 'trusted' && (
+        <section
+          className={cn(
+            'mb-5 rounded-lg border p-4',
+            firstPageTrust.status === 'unsupported'
+              ? 'border-red-500/40 bg-red-500/5'
+              : 'border-amber-500/40 bg-amber-500/5'
+          )}
+        >
+          <div className="mb-2 flex items-center gap-2">
+            <AlertTriangleIcon
+              className={cn(
+                'h-4 w-4',
+                firstPageTrust.status === 'unsupported' ? 'text-red-700' : 'text-amber-700'
+              )}
+            />
+            <Eyebrow>First-page trust</Eyebrow>
+          </div>
+          <p className="text-sm text-foreground">{firstPageTrust.summary}</p>
+          {Array.isArray(firstPageTrust.prominentIssues) && firstPageTrust.prominentIssues.length > 0 && (
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Verify {firstPageTrust.prominentIssues.join(', ')} before acting on the page-one decision signal.
+            </p>
+          )}
+        </section>
+      )}
 
       {/* Property visual context — aerial + street maps. We can't pull MLS
           listing photos without a broker license; aerial/street context is
@@ -357,21 +418,27 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
           <HeroCell
             label="Offer vs Breakeven"
             value={
-              breakeven.nearBreakeven ? (
-                <span className="text-muted-foreground text-lg">Neutral at ask</span>
+              shouldSuppressBreakevenSignal ? (
+                <span className="text-muted-foreground text-lg">Verify inputs first</span>
+              ) : breakeven.nearBreakeven ? (
+                <span className="text-muted-foreground text-lg">
+                  Neutral at {priceAnchorLabel}
+                </span>
               ) : breakeven.delta < 0 ? (
-                <span className="text-red-700 dark:text-red-400">
+                <span className="text-red-700">
                   +{fmt(-breakeven.delta)}
                 </span>
               ) : (
-                <span className="text-emerald-700 dark:text-emerald-400">
+                <span className="text-emerald-700">
                   −{fmt(breakeven.delta)}
                 </span>
               )
             }
             sub={
-              breakeven.nearBreakeven
-                ? `Cash-flow neutral at market price (${fmt(breakeven.yourOffer)})`
+              shouldSuppressBreakevenSignal
+                ? firstPageTrust?.breakevenMessage ?? 'Breakeven signal needs verified inputs.'
+                : breakeven.nearBreakeven
+                ? `Cash-flow neutral at ${priceAnchorDescription} (${fmt(breakeven.yourOffer)})`
                 : `Offer ${fmt(breakeven.yourOffer)}  ·  BE ${fmt(breakeven.price)}`
             }
           />
@@ -379,27 +446,45 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
         {wealthProjection && (
           <HeroCell
             label="5-Year Wealth Built"
-            value={<span className="text-primary">{fmt(wealthProjection.hero.totalWealthBuilt5yr)}</span>}
-            sub="Cash flow + paydown + appreciation + tax shield"
+            value={
+              shouldSuppressForwardProjection ? (
+                <span className="text-muted-foreground text-lg">Verify inputs first</span>
+              ) : (
+                <span className="text-primary">{fmt(wealthProjection.hero.totalWealthBuilt5yr)}</span>
+              )
+            }
+            sub={
+              shouldSuppressForwardProjection
+                ? firstPageTrust?.projectionMessage ?? '5-year projection needs verified inputs.'
+                : 'Cash flow + paydown + appreciation + tax shield'
+            }
           />
         )}
         {wealthProjection && (
           <HeroCell
             label="5-Year Hold IRR"
             value={
-              <span>
-                {Number.isFinite(wealthProjection.hero.irr5yr)
-                  ? `${(wealthProjection.hero.irr5yr * 100).toFixed(1)}%`
-                  : 'N/A'}
-              </span>
+              shouldSuppressForwardProjection ? (
+                <span className="text-muted-foreground text-lg">Verify inputs first</span>
+              ) : (
+                <span>
+                  {Number.isFinite(wealthProjection.hero.irr5yr)
+                    ? `${(wealthProjection.hero.irr5yr * 100).toFixed(1)}%`
+                    : 'N/A'}
+                </span>
+              )
             }
-            sub="Incl. sale at Y5 (6% selling costs)"
+            sub={
+              shouldSuppressForwardProjection
+                ? firstPageTrust?.projectionMessage ?? '5-year projection needs verified inputs.'
+                : 'Incl. sale at Y5 (6% selling costs)'
+            }
           />
         )}
       </section>
 
       {/* Near-breakeven sensitivity strip. When the deal cash-flows right at
-          market price, the hero "BE vs Offer" number is tautological — show
+          the current price anchor, the hero "BE vs Offer" number is tautological — show
           the user what they'd actually take home at various offer discounts
           so they have something actionable to negotiate against. */}
       {breakeven?.nearBreakeven && Array.isArray(breakeven.sensitivity) && (
@@ -408,8 +493,9 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
             <Eyebrow>Offer sensitivity</Eyebrow>
           </div>
           <p className="mb-3 text-xs text-muted-foreground">
-            Cash flow if you negotiate below ask. At market price the deal is cash-flow neutral
-            — these are what moving the price down buys you.
+            Cash flow if you negotiate below the {priceAnchorDescription}. At the current{' '}
+            {priceAnchorDescription} the deal is cash-flow neutral — these are what moving the
+            price down buys you.
           </p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             {breakeven.sensitivity.map(
@@ -419,14 +505,14 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
                   className="rounded-md border border-border/50 bg-muted/10 px-3 py-2"
                 >
                   <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                    {Math.round(s.offsetPct * 100)}% from ask ({fmt(s.price)})
+                    {Math.round(s.offsetPct * 100)}% from {priceAnchorLabel} ({fmt(s.price)})
                   </p>
                   <p
                     className={cn(
                       'mt-1 text-sm font-bold tabular-nums',
                       s.monthlyCashFlow >= 0
-                        ? 'text-emerald-700 dark:text-emerald-400'
-                        : 'text-red-700 dark:text-red-400'
+                        ? 'text-emerald-700'
+                        : 'text-red-700'
                     )}
                   >
                     {s.monthlyCashFlow >= 0 ? '+' : ''}
@@ -460,11 +546,11 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
               className={cn(
                 'rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider',
                 valueTriangulation.confidence === 'high' &&
-                  'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400',
+                  'bg-emerald-500/15 text-emerald-700',
                 valueTriangulation.confidence === 'medium' &&
-                  'bg-amber-500/15 text-amber-700 dark:text-amber-400',
+                  'bg-amber-500/15 text-amber-700',
                 valueTriangulation.confidence === 'low' &&
-                  'bg-red-500/15 text-red-700 dark:text-red-400'
+                  'bg-red-500/15 text-red-700'
               )}
             >
               {valueTriangulation.confidence} confidence · {valueTriangulation.spreadPct}% spread
@@ -505,7 +591,7 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
               key={i}
               className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 px-4 py-3"
             >
-              <AlertTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+              <AlertTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
               <p className="text-xs leading-relaxed text-foreground">{w}</p>
             </div>
           ))}
@@ -538,13 +624,13 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
                   className={cn(
                     'mt-0.5 h-4 w-4 shrink-0',
                     critical
-                      ? 'text-red-600 dark:text-red-400'
-                      : 'text-amber-600 dark:text-amber-400'
+                      ? 'text-red-600'
+                      : 'text-amber-600'
                   )}
                 />
                 <div className="flex flex-col gap-0.5">
                   {critical && (
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-red-700 dark:text-red-400">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-red-700">
                       {w.code === 'condo-misclassified'
                         ? 'Likely misclassified — verify property type'
                         : 'Based on inferred property data'}
@@ -698,8 +784,8 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
                           className={cn(
                             'py-2.5 text-right font-medium',
                             f.monthlyCashFlow >= 0
-                              ? 'text-emerald-700 dark:text-emerald-400'
-                              : 'text-red-700 dark:text-red-400'
+                              ? 'text-emerald-700'
+                              : 'text-red-700'
                           )}
                         >
                           {f.monthlyCashFlow >= 0 ? '+' : ''}
@@ -708,8 +794,8 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
                         <td
                           className={cn(
                             'py-2.5 text-right',
-                            f.dscr >= 1.25 ? 'text-emerald-700 dark:text-emerald-400 font-medium' : '',
-                            f.dscr < 0 ? 'text-red-700 dark:text-red-400 font-medium' : ''
+                            f.dscr >= 1.25 ? 'text-emerald-700 font-medium' : '',
+                            f.dscr < 0 ? 'text-red-700 font-medium' : ''
                           )}
                           title={f.dscr < 0 ? 'NOI is negative — operating expenses exceed rent before debt service' : undefined}
                         >
@@ -763,8 +849,8 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
                             className={cn(
                               'py-2 text-right font-medium',
                               s.monthlyCashFlow >= 0
-                                ? 'text-emerald-700 dark:text-emerald-400'
-                                : 'text-red-700 dark:text-red-400'
+                                ? 'text-emerald-700'
+                                : 'text-red-700'
                             )}
                           >
                             {s.monthlyCashFlow >= 0 ? '+' : ''}
@@ -773,8 +859,8 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
                           <td
                             className={cn(
                               'py-2 text-right',
-                              s.dscr >= 1.25 ? 'text-emerald-700 dark:text-emerald-400' : '',
-                              s.dscr < 0 ? 'text-red-700 dark:text-red-400' : ''
+                              s.dscr >= 1.25 ? 'text-emerald-700' : '',
+                              s.dscr < 0 ? 'text-red-700' : ''
                             )}
                             title={s.dscr < 0 ? 'NOI is negative — operating expenses exceed rent before debt service' : undefined}
                           >
@@ -828,14 +914,14 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
                             className={cn(
                               'py-2 text-right',
                               y.cumulativeCashFlow >= 0
-                                ? 'text-emerald-700 dark:text-emerald-400'
-                                : 'text-red-700 dark:text-red-400'
+                                ? 'text-emerald-700'
+                                : 'text-red-700'
                             )}
                           >
                             {y.cumulativeCashFlow >= 0 ? '+' : ''}
                             {fmt(y.cumulativeCashFlow)}
                           </td>
-                          <td className="py-2 text-right text-emerald-700 dark:text-emerald-400">
+                          <td className="py-2 text-right text-emerald-700">
                             +{fmt(y.cumulativeTaxShield)}
                           </td>
                           <td
@@ -843,7 +929,7 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
                               'py-2 text-right',
                               equityTotal >= 0
                                 ? 'text-foreground'
-                                : 'text-red-700 dark:text-red-400'
+                                : 'text-red-700'
                             )}
                           >
                             {equityTotal >= 0 ? '' : '−'}
@@ -864,20 +950,20 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
                 <p className="mt-3 text-[10px] text-muted-foreground">
                   {pct(wealthProjection.assumptions.rentGrowthRate, 1)} rent growth
                   {wealthProjection.assumptions.rentGrowthSource === 'zip-12mo' && (
-                    <span className="ml-1 rounded bg-emerald-500/10 px-1 text-[8px] font-semibold text-emerald-700 dark:text-emerald-400">
+                    <span className="ml-1 rounded bg-emerald-500/10 px-1 text-[8px] font-semibold text-emerald-700">
                       zip
                     </span>
                   )}
                   ,{' '}{pct(wealthProjection.assumptions.appreciationRate, 1)} appreciation
                   {wealthProjection.assumptions.appreciationSource === 'zip-12mo' && (
-                    <span className="ml-1 rounded bg-emerald-500/10 px-1 text-[8px] font-semibold text-emerald-700 dark:text-emerald-400">
+                    <span className="ml-1 rounded bg-emerald-500/10 px-1 text-[8px] font-semibold text-emerald-700">
                       zip
                     </span>
                   )}
                   ,{' '}{pct(wealthProjection.assumptions.expenseGrowthRate, 1)} expense growth
                   {wealthProjection.assumptions.stateTaxGrowth != null &&
                     wealthProjection.assumptions.stateTaxGrowth !== 0.03 && (
-                      <span className="ml-1 rounded bg-emerald-500/10 px-1 text-[8px] font-semibold text-emerald-700 dark:text-emerald-400">
+                      <span className="ml-1 rounded bg-emerald-500/10 px-1 text-[8px] font-semibold text-emerald-700">
                         {property.state} tax modeled
                       </span>
                     )}
@@ -912,8 +998,8 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
                       className={cn(
                         'font-semibold',
                         ltr.monthlyNetCashFlow >= 0
-                          ? 'text-emerald-700 dark:text-emerald-400'
-                          : 'text-red-700 dark:text-red-400'
+                          ? 'text-emerald-700'
+                          : 'text-red-700'
                       )}
                     >
                       {ltr.monthlyNetCashFlow >= 0 ? '+' : ''}
@@ -923,7 +1009,7 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
                   <p className="mt-0.5 text-sm text-muted-foreground tabular-nums">
                     DSCR: <span className="font-semibold text-foreground">{ltr.dscr < 0 ? 'NOI-neg' : `${ltr.dscr}x`}</span>
                     {ltr.dscr < 0 && (
-                      <span className="ml-2 text-[11px] text-red-700 dark:text-red-400">(operating expenses exceed rent)</span>
+                      <span className="ml-2 text-[11px] text-red-700">(operating expenses exceed rent)</span>
                     )}
                   </p>
                 </div>
@@ -949,8 +1035,8 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
                       className={cn(
                         'font-semibold',
                         strProjection.monthlyNetCashFlow >= 0
-                          ? 'text-emerald-700 dark:text-emerald-400'
-                          : 'text-red-700 dark:text-red-400'
+                          ? 'text-emerald-700'
+                          : 'text-red-700'
                       )}
                     >
                       {strProjection.monthlyNetCashFlow >= 0 ? '+' : ''}
@@ -962,11 +1048,11 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
                   </p>
                   <p className="mt-2 text-[11px] font-semibold text-foreground">
                     {strProjection.vsLTRMonthlyDelta > 0 ? (
-                      <span className="text-emerald-700 dark:text-emerald-400">
+                      <span className="text-emerald-700">
                         STR wins by {fmt(strProjection.vsLTRMonthlyDelta)}/mo
                       </span>
                     ) : (
-                      <span className="text-amber-700 dark:text-amber-400">
+                      <span className="text-amber-700">
                         LTR wins by {fmt(-strProjection.vsLTRMonthlyDelta)}/mo
                       </span>
                     )}
@@ -1132,13 +1218,13 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
                       : 'Walkability data unavailable'}
                   </p>
                   {locationSignals.dataConfidence !== 'high' && (
-                    <p className="mt-0.5 text-[10px] text-amber-600 dark:text-amber-400">
+                    <p className="mt-0.5 text-[10px] text-amber-600">
                       Our amenity map has gaps in this area — verify on{' '}
                       <a
                         href="https://www.walkscore.com/"
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="underline hover:text-amber-700 dark:hover:text-amber-300"
+                        className="underline hover:text-amber-700"
                       >
                         walkscore.com
                       </a>{' '}
@@ -1303,14 +1389,14 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
                     <span className="flex items-center gap-1.5">
                       Property tax
                       {expenses.propertyTaxSource === 'county-record' && (
-                        <span className="rounded bg-emerald-500/10 px-1 text-[9px] font-semibold text-emerald-700 dark:text-emerald-400">
+                        <span className="rounded bg-emerald-500/10 px-1 text-[9px] font-semibold text-emerald-700">
                           county
                         </span>
                       )}
                       {expenses.propertyTaxSource === 'city-override' && (
                         <span
                           title="Jurisdictional effective rate applied — we have a city/county-specific rate for this market but no parcel-level tax record. Verify against the actual tax bill before relying on the carrying cost."
-                          className="rounded bg-amber-500/10 px-1 text-[9px] font-semibold text-amber-700 dark:text-amber-400"
+                          className="rounded bg-amber-500/10 px-1 text-[9px] font-semibold text-amber-700"
                         >
                           county est
                         </span>
@@ -1318,7 +1404,7 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
                       {expenses.propertyTaxSource === 'state-average' && (
                         <span
                           title="State average applied — no county record for this parcel. Pull the actual tax bill before making an offer."
-                          className="rounded bg-amber-500/10 px-1 text-[9px] font-semibold text-amber-700 dark:text-amber-400"
+                          className="rounded bg-amber-500/10 px-1 text-[9px] font-semibold text-amber-700"
                         >
                           state avg
                         </span>
@@ -1337,7 +1423,7 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
                         {(expenses as { hoaSource?: string }).hoaSource === 'inferred-condo-default' && (
                           <span
                             title="HOA is a market default for a condo/apartment of this size, not a captured disclosure. The real number could be lower (older walk-up without elevator) or materially higher (building with a reserve-funded special assessment). Pull the listing's monthly dues before trusting the cash-flow number."
-                            className="rounded bg-amber-500/10 px-1 text-[9px] font-semibold text-amber-700 dark:text-amber-400"
+                            className="rounded bg-amber-500/10 px-1 text-[9px] font-semibold text-amber-700"
                           >
                             assumed
                           </span>
@@ -1349,20 +1435,20 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
                 )}
               </div>
               {(expenses as { hoaSource?: string }).hoaSource === 'inferred-condo-default' && (
-                <p className="mt-2 text-[10px] text-amber-600 dark:text-amber-400">
+                <p className="mt-2 text-[10px] text-amber-600">
                   HOA above is an estimated market default, not a captured disclosure. Confirm the listing&apos;s actual monthly dues — it&apos;s the single biggest driver of the cash-flow number.
                 </p>
               )}
               {expenses.propertyTaxSource === 'state-average' &&
                 property.state === 'NY' &&
                 /new york|brooklyn|queens|bronx|staten/i.test(property.city || '') && (
-                  <p className="mt-2 text-[10px] text-amber-600 dark:text-amber-400">
+                  <p className="mt-2 text-[10px] text-amber-600">
                     NYC assesses condos well below market value under the 421-a / assessment-cap system. Actual taxes are typically lower than this state-average projection — verify on the ACRIS record or the listing&apos;s tax history before relying on cash-flow math.
                   </p>
                 )}
               {expenses.monthlyHOA === 0 &&
                 (property.propertyType || '').toLowerCase().includes('condo') && (
-                  <p className="mt-2 text-[10px] text-amber-600 dark:text-amber-400">
+                  <p className="mt-2 text-[10px] text-amber-600">
                     HOA not captured — condos often have $150–$500/mo dues. Verify.
                   </p>
                 )}
@@ -1408,7 +1494,7 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
                   <p
                     className={cn(
                       'text-base font-bold',
-                      climate.floodInsuranceRequired && 'text-red-700 dark:text-red-400'
+                      climate.floodInsuranceRequired && 'text-red-700'
                     )}
                   >
                     {climate.floodZone || '—'}
@@ -1462,8 +1548,8 @@ export function FullReport({ data, uuid, addressFlags }: FullReportProps) {
                           className={cn(
                             'py-1.5 text-right font-medium',
                             s.monthlyCashFlow >= 0
-                              ? 'text-emerald-700 dark:text-emerald-400'
-                              : 'text-red-700 dark:text-red-400'
+                              ? 'text-emerald-700'
+                              : 'text-red-700'
                           )}
                         >
                           {s.monthlyCashFlow >= 0 ? '+' : ''}
@@ -1589,7 +1675,7 @@ function AiDiagnosisUnavailableCard({ uuid, error }: { uuid?: string; error: str
   return (
     <Card>
       <div className="flex items-start gap-2">
-        <AlertTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+        <AlertTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
         <div className="flex-1">
           <p className="text-sm font-semibold text-foreground">AI diagnosis unavailable</p>
           <p className="mt-0.5 text-xs text-muted-foreground">{error}</p>
@@ -1697,8 +1783,8 @@ function MiniStat({
       <p
         className={cn(
           'mt-0.5 text-base font-bold tabular-nums',
-          tone === 'pos' && 'text-emerald-700 dark:text-emerald-400',
-          tone === 'neg' && 'text-red-700 dark:text-red-400'
+          tone === 'pos' && 'text-emerald-700',
+          tone === 'neg' && 'text-red-700'
         )}
       >
         {value}
@@ -1736,8 +1822,8 @@ function Line({
           'tabular-nums font-medium text-foreground',
           strong && 'font-bold',
           muted && 'line-through opacity-60',
-          tone === 'pos' && 'text-emerald-700 dark:text-emerald-400',
-          tone === 'neg' && 'text-red-700 dark:text-red-400'
+          tone === 'pos' && 'text-emerald-700',
+          tone === 'neg' && 'text-red-700'
         )}
       >
         {value}
@@ -1780,7 +1866,7 @@ function OfferTile({
     : 'border-border/70 bg-background/40'
   const priceTone =
     tone === 'great' ? 'text-primary'
-    : tone === 'good' ? 'text-emerald-700 dark:text-emerald-400'
+    : tone === 'good' ? 'text-emerald-700'
     : 'text-foreground'
   return (
     <div className={cn('rounded-lg border px-4 py-3', borderTone)}>

@@ -182,15 +182,22 @@ export function runInvariantCheck(input: InvariantGateInput): InvariantGateResul
     }
   }
 
-  // ── WARN: DSCR outside plausible band ──
+  // ── WARN: DSCR impossibly high (likely units-mismatch bug) ──
+  // The gate catches *math/units bugs*, not bad deals. Genuinely terrible
+  // underwrites (low rent + high HOA) can produce DSCR < 0.20 with exact
+  // math — that's signal, not noise. Negative DSCR is a real outcome too
+  // (NOI < 0 when expenses exceed effective rent). Only DSCR > 10 reliably
+  // flags a bug — e.g. annual NOI accidentally divided by monthly debt
+  // service inflates DSCR ~12×. Below that, downstream verdict + CF sign
+  // already communicate "bad deal" to the reader.
   if (finite(input.dscr)) {
-    if (input.dscr < 0.4 || input.dscr > 3.0) {
+    if (input.dscr > 10) {
       warnings.push({
         code: 'dscr-implausible',
         severity: 'WARN',
-        message: `DSCR is outside the plausible 0.4–3.0 band — likely a math-units mismatch or wrong loan input`,
+        message: `DSCR > 10 — likely a math-units mismatch (e.g. annual NOI divided by monthly debt service)`,
         actual: input.dscr.toFixed(2),
-        expected: '0.4 ≤ DSCR ≤ 3.0',
+        expected: 'DSCR ≤ 10',
       })
     }
   }

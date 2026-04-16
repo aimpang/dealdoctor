@@ -123,7 +123,7 @@ export default function RetrievePage() {
 
       {status === 'restored' && restored ? (
         <div className="mt-6 rounded-lg border border-emerald-500/40 bg-emerald-500/5 p-5 text-center">
-          <CheckCircle2Icon className="mx-auto h-8 w-8 text-emerald-600 dark:text-emerald-400" />
+          <CheckCircle2Icon className="mx-auto h-8 w-8 text-emerald-600" />
           <p className="mt-3 text-sm font-semibold text-foreground">Access restored</p>
           <p className="mt-1 text-xs text-muted-foreground">
             Signed in as <span className="font-medium text-foreground">{restored.email}</span>.
@@ -136,7 +136,7 @@ export default function RetrievePage() {
         </div>
       ) : status === 'sent' ? (
         <div className="mt-8 rounded-lg border border-emerald-500/40 bg-emerald-500/5 p-5 text-center">
-          <CheckCircle2Icon className="mx-auto h-8 w-8 text-emerald-600 dark:text-emerald-400" />
+          <CheckCircle2Icon className="mx-auto h-8 w-8 text-emerald-600" />
           <p className="mt-3 text-sm font-semibold text-foreground">Check your email</p>
           <p className="mt-1 text-xs text-muted-foreground">
             If <span className="font-medium text-foreground">{email}</span> is in our system,

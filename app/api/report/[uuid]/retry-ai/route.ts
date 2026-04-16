@@ -7,6 +7,7 @@ import { verifyShareToken } from '@/lib/shareToken'
 import { rateLimit } from '@/lib/rateLimit'
 import { runReviewLoop, type ReviewConcern } from '@/lib/reviewReport'
 import { logger } from '@/lib/logger'
+import { resolveReportAccess } from '@/lib/report-access'
 
 /**
  * Re-run the Claude "Deal Doctor" narration for a report that was generated
@@ -42,13 +43,26 @@ export async function POST(
     : null
 
   const report = await prisma.report.findUnique({ where: { id: uuid } })
-  const r = report as any
-  const isOwner = !!(cookieCustomer && r?.customerId && cookieCustomer.id === r.customerId)
+  if (!report) {
+    if (!cookieCustomer && !tokenValid) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+    return NextResponse.json({ error: 'Report not ready' }, { status: 404 })
+  }
 
-  if (!isOwner && !tokenValid) {
+  const access = await resolveReportAccess({
+    cookieAccessToken: cookieToken,
+    reportCustomerId: (report as any).customerId,
+    reportId: uuid,
+    resolvedCookieCustomerId: cookieCustomer?.id ?? null,
+    resolvedTokenValid: tokenValid,
+    tokenCandidate: tokenParam,
+  })
+
+  if (!access.isOwner && !access.effectiveTokenValid) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
-  if (!report || !report.fullReportData) {
+  if (!report.fullReportData) {
     return NextResponse.json({ error: 'Report not ready' }, { status: 404 })
   }
 

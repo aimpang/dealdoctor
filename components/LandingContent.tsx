@@ -160,10 +160,10 @@ const INCLUDED_IN_EVERY_REPORT = [
   'Refi stress test (5-year hold, rates 5%–8%)',
   'State-specific property-tax growth modeling',
   'Photo red-flag AI review',
-  'Excel export (8-sheet workbook) + print-to-PDF',
+  'Multi-sheet Excel export + print-to-PDF',
   'Lender-ready view toggle',
-  'Save to portfolio for side-by-side comparison',
-  'Shareable URL — access forever, recover via email magic-link',
+  'Save to portfolio in this browser for side-by-side comparison',
+  'Secure share link + email recovery for your own purchases',
 ]
 
 const VOLUME_STAMP = (() => {
@@ -215,7 +215,7 @@ export default function LandingContent() {
               {process.env.NODE_ENV === 'development' && (
                 <a
                   href="/api/auth/reset"
-                  className="inline-flex items-center gap-1 border border-dashed border-amber-700/60 bg-amber-500/10 px-2 py-1 font-mono text-[10px] normal-case tracking-normal text-amber-800 hover:bg-amber-500/20 dark:text-amber-400"
+                  className="inline-flex items-center gap-1 border border-dashed border-amber-700/60 bg-amber-500/10 px-2 py-1 font-mono text-[10px] normal-case tracking-normal text-amber-800 hover:bg-amber-500/20"
                   title="Dev: clear entitlement cookie so the paywall + debug link reappear after a test purchase"
                 >
                   🔧 Reset entitlement
@@ -348,7 +348,7 @@ export default function LandingContent() {
           <ol className="mt-10 grid grid-cols-1 gap-x-10 gap-y-8 md:grid-cols-3">
             {[
               { step: '01', title: 'Paste the investment property address', body: 'An instant free teaser returns the breakeven offer price and where the listing sits relative to it.' },
-              { step: '02', title: 'Unlock the full report', body: 'Twenty sections of underwriting math, AI diagnosis, address-adjacent comps, climate risk, and an interactive rehab estimator.' },
+              { step: '02', title: 'Unlock the full report', body: 'A full underwriting package: the math, AI diagnosis, address-adjacent comps, climate risk, and an interactive rehab estimator.' },
               { step: '03', title: 'Keep analyzing', body: 'Your 5-Pack or Unlimited entitlement applies automatically to every future address — no second paywall.' },
             ].map((s) => (
               <li key={s.step} className="relative border-t border-foreground/30 pt-5">
@@ -460,26 +460,26 @@ export default function LandingContent() {
               price: '$24.99',
               per: 'one report',
               tagline: 'Best when you\'re analyzing a specific address.',
-              features: [
-                'Full 20-section report',
-                'Breakeven + all underwriting math',
-                'AI deal diagnosis',
-                'Excel + PDF export',
-                'Shareable URL — access forever',
-              ],
-            },
+                features: [
+                  'Full underwriting report',
+                  'Breakeven + all underwriting math',
+                  'AI deal diagnosis',
+                  'Excel + PDF export',
+                  'Secure share link + email recovery',
+                ],
+              },
             {
               name: 'Bundle · 5-Pack',
               price: '$69.99',
               per: '$14.00 per report',
               tagline: 'Best when you\'re shopping a market.',
-              features: [
-                '5 reports that stack across searches',
-                'Works cross-device via email recovery',
-                'Everything in Single',
-                'Save to portfolio for side-by-side',
-                'Best per-report value',
-              ],
+                features: [
+                  '5 reports that stack across searches',
+                  'Works cross-device via email recovery',
+                  'Everything in Single',
+                  'Save to portfolio in this browser',
+                  'Best per-report value',
+                ],
               popular: true,
             },
             {
@@ -487,14 +487,14 @@ export default function LandingContent() {
               price: '$119.99',
               per: 'per month',
               tagline: 'Best for active investors and agents.',
-              features: [
-                'Unlimited reports for 30 days',
-                'Auto-renews monthly · cancel anytime',
-                'Access through the paid period',
-                'Everything in 5-Pack',
-                'Priority AI generation',
-              ],
-            },
+                features: [
+                  'Unlimited reports for 30 days',
+                  'Auto-renews monthly · cancel anytime',
+                  'Access through the paid period',
+                  'Everything in 5-Pack',
+                  'Auto-unlocks future searches while active',
+                ],
+              },
           ].map((tier, i) => (
             <div
               key={tier.name}
@@ -551,7 +551,7 @@ export default function LandingContent() {
         </div>
 
         <p className="mt-8 text-center font-mono text-[10.5px] uppercase tracking-[0.18em] text-foreground/55">
-          Secure payment · LemonSqueezy · No account needed · 7-day refund
+          Secure payment · LemonSqueezy · No account needed · 7-day support & refund review
         </p>
       </section>
 

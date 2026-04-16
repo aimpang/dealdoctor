@@ -1,7 +1,6 @@
 import type { Metadata } from 'next'
 import { Fraunces, Instrument_Sans, JetBrains_Mono } from 'next/font/google'
 import './globals.css'
-import { ThemeProvider } from '@/components/ThemeProvider'
 import { BASE_URL, absoluteUrl } from '@/lib/seo'
 
 const fraunces = Fraunces({
@@ -30,17 +29,28 @@ const fontAliases = `
   }
 `
 
+const googleSiteVerification = process.env.GOOGLE_SITE_VERIFICATION
+const bingSiteVerification = process.env.BING_SITE_VERIFICATION
+
 export const metadata: Metadata = {
   metadataBase: new URL(BASE_URL),
+  applicationName: 'DealDoctor',
   title: {
-    default: 'DealDoctor — Real Estate Deal Analyzer for Investors',
+    default: 'DealDoctor - Rental Property Calculator for Real Estate Investors',
     template: '%s | DealDoctor',
   },
   description:
-    'Paste a US property address. Get the exact breakeven offer price, 5-year wealth projection, DSCR stress test, and AI-powered investment property diagnosis. First look free.',
+    'Analyze any US rental property with exact breakeven offer price, DSCR, 5-year IRR, cash-to-close, and AI-powered deal diagnostics.',
+  authors: [{ name: 'DealDoctor', url: BASE_URL }],
+  creator: 'DealDoctor',
+  publisher: 'DealDoctor',
+  category: 'Finance',
   keywords: [
     'real estate investment analysis',
+    'real estate investment calculator',
     'rental property calculator',
+    'rental property analysis',
+    'investment property calculator',
     'breakeven price calculator',
     'DSCR calculator',
     'investment property report',
@@ -52,19 +62,35 @@ export const metadata: Metadata = {
   alternates: { canonical: '/' },
   openGraph: {
     type: 'website',
+    locale: 'en_US',
     siteName: 'DealDoctor',
     url: absoluteUrl('/'),
-    title: 'DealDoctor — Real Estate Deal Analyzer for Investors',
+    title: 'DealDoctor - Rental Property Calculator for Real Estate Investors',
     description:
-      'Exact breakeven price, 5-year wealth projection, DSCR stress test, and AI-powered deal diagnosis for any US rental property. First look free.',
-    images: [{ url: absoluteUrl('/opengraph-image'), width: 1200, height: 630 }],
+      'Analyze any US rental property with exact breakeven offer price, DSCR, 5-year IRR, cash-to-close, and AI-powered deal diagnostics.',
+    images: [
+      {
+        url: absoluteUrl('/opengraph-image'),
+        width: 1200,
+        height: 630,
+        alt: 'DealDoctor - Rental Property Calculator for Real Estate Investors',
+      },
+    ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'DealDoctor — Real Estate Deal Analyzer',
+    title: 'DealDoctor - Rental Property Calculator',
     description:
-      'Exact breakeven price, 5-year IRR, DSCR stress test, and AI-powered negotiation scripts. First look free.',
+      'Exact breakeven offer price, DSCR, 5-year IRR, cash-to-close, and AI-powered deal diagnostics for US rental properties.',
     images: [absoluteUrl('/twitter-image')],
+  },
+  verification: {
+    google: googleSiteVerification || undefined,
+    other: bingSiteVerification
+      ? {
+          'msvalidate.01': bingSiteVerification,
+        }
+      : undefined,
   },
   icons: {
     icon: '/logo.svg',
@@ -72,7 +98,13 @@ export const metadata: Metadata = {
   robots: {
     index: true,
     follow: true,
-    googleBot: { index: true, follow: true, 'max-image-preview': 'large' },
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+      'max-video-preview': -1,
+    },
   },
 }
 
@@ -106,14 +138,10 @@ const websiteJsonLd = {
   '@type': 'WebSite',
   name: 'DealDoctor',
   url: BASE_URL,
-  potentialAction: {
-    '@type': 'SearchAction',
-    target: `${BASE_URL}/?address={search_term_string}`,
-    'query-input': 'required name=search_term_string',
-  },
+  inLanguage: 'en-US',
 }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+const RootLayout = ({ children }: { children: React.ReactNode }) => {
   return (
     <html lang="en">
       <body
@@ -146,8 +174,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <p>JavaScript is required to run an instant analysis.</p>
           </div>
         </noscript>
-        <ThemeProvider>{children}</ThemeProvider>
+        {children}
       </body>
     </html>
   )
 }
+
+export default RootLayout

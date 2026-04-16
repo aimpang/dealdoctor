@@ -3,9 +3,8 @@ import { prisma } from '@/lib/db'
 import { generateFullReport } from '@/lib/reportGenerator'
 import { CUSTOMER_COOKIE, setCustomerCookie } from '@/lib/entitlements'
 import { addressKey } from '@/lib/addressKey'
-import { verifyShareToken } from '@/lib/shareToken'
-import { isDebugAccessAuthorized } from '@/lib/debugAccess'
 import { logger } from '@/lib/logger'
+import { resolveReportAccess } from '@/lib/report-access'
 
 // Single-process in-flight tracker. Keys are report UUIDs; values are the
 // promise of the in-flight generateFullReport. Concurrent requests for the
@@ -30,15 +29,11 @@ export async function GET(
 ) {
   const { uuid } = params
   try {
-    const { searchParams } = new URL(req.url)
+    const searchParams = req.nextUrl.searchParams
 
     // Debug bypass — dev-only, AND requires a secondary secret match. Both
     // the NODE_ENV gate and the secret gate must pass, so a leaked NODE_ENV
     // toggle alone can't expose paid content (see lib/debugAccess.ts).
-    const isDebug =
-      searchParams.get('debug') === '1' &&
-      isDebugAccessAuthorized(searchParams.get('debugKey'))
-
     let report = await prisma.report.findUnique({ where: { id: uuid } })
     if (!report) {
       return NextResponse.json({ error: 'Report not found' }, { status: 404 })
@@ -79,6 +74,17 @@ export async function GET(
         // Non-JSON fullReportData falls through to the normal response path.
       }
     }
+
+    const access = await resolveReportAccess({
+      allowDebug: true,
+      cookieAccessToken: req.cookies.get(CUSTOMER_COOKIE)?.value,
+      debugKey: searchParams.get('debugKey'),
+      debugRequested: searchParams.get('debug') === '1',
+      reportCustomerId: (report as any).customerId,
+      reportId: uuid,
+      tokenCandidate: searchParams.get('t'),
+    })
+    const isDebug = access.isDebug
 
     // In debug mode, synthesize the full report if it hasn't been generated yet.
     // Hard 3-minute timeout so a stuck Rentcast fetch can't freeze the route
@@ -161,35 +167,15 @@ export async function GET(
     //   (c) Debug bypass (dev only + secret)
     // Anyone else gets teaser-only. This closes the "UUID-in-a-forwarded-
     // email = permanent paid access" leak without breaking owners' bookmarks.
-    const tokenParam = searchParams.get('t')
-    const tokenValid = verifyShareToken(uuid, tokenParam)
-    const cookieToken = req.cookies.get(CUSTOMER_COOKIE)?.value
-    let isOwner = false
+    const hasFullAccess = access.hasAccess
+    const tokenRevokedByRefund = access.tokenRevokedByRefund
     // Refunded customers retain access to their OWN past reports (standard
     // SaaS behavior — they paid for a moment-in-time analysis and keep it)
     // but their shared links (?t=) are invalidated below.
-    if (cookieToken && r.customerId) {
-      const cookieCustomer = await prisma.customer.findUnique({
-        where: { accessToken: cookieToken },
-        select: { id: true },
-      })
-      isOwner = cookieCustomer?.id === r.customerId
-    }
 
     // When the report's owning customer has been refunded, shared links
     // (?t=) no longer grant full access. Owner access via cookie is
     // preserved — we're revoking distribution, not the buyer's own view.
-    let tokenRevokedByRefund = false
-    if (tokenValid && r.customerId) {
-      const owner = await prisma.customer.findUnique({
-        where: { id: r.customerId },
-        select: { subscriptionStatus: true },
-      })
-      if (owner?.subscriptionStatus === 'refunded') tokenRevokedByRefund = true
-    }
-    const effectiveTokenValid = tokenValid && !tokenRevokedByRefund
-
-    const hasFullAccess = isDebug || isOwner || effectiveTokenValid
 
     // Aggregate feedback across ALL reports for this same address. If enough
     // past buyers flagged the value/rent, we surface a warning banner.
@@ -219,13 +205,7 @@ export async function GET(
       // Tell the client WHY they're seeing (or not seeing) full data so the
       // UI can render a "ask the owner for a share link" CTA on the teaser
       // path instead of the generic paywall.
-      accessGrantedVia: isDebug
-        ? 'debug'
-        : isOwner
-        ? 'owner'
-        : effectiveTokenValid
-        ? 'share-token'
-        : 'none',
+      accessGrantedVia: access.accessGrantedVia,
       restricted: !hasFullAccess && report.paid,
       tokenRevokedByRefund,
       teaserData: report.teaserData,

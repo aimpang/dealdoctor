@@ -39,13 +39,13 @@ interface Props {
 const severityStyle: Record<Severity, { text: string; bg: string; border: string; Icon: any }> = {
   low: { text: 'text-muted-foreground', bg: 'bg-muted/40', border: 'border-border', Icon: InfoIcon },
   medium: {
-    text: 'text-amber-600 dark:text-amber-400',
+    text: 'text-amber-600',
     bg: 'bg-amber-500/10',
     border: 'border-amber-500/30',
     Icon: AlertTriangleIcon,
   },
   high: {
-    text: 'text-red-600 dark:text-red-400',
+    text: 'text-red-600',
     bg: 'bg-red-500/10',
     border: 'border-red-500/30',
     Icon: ShieldAlertIcon,
@@ -251,7 +251,7 @@ export function PhotoAnalysis({ uuid, initialFindings }: Props) {
               {totalFindings === 1 ? 'concern' : 'concerns'} across {findings.photos.length}{' '}
               photo{findings.photos.length === 1 ? '' : 's'}
               {highCount > 0 && (
-                <span className="ml-2 text-red-600 dark:text-red-400">
+                <span className="ml-2 text-red-600">
                   · {highCount} high severity
                 </span>
               )}

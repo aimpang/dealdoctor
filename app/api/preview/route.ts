@@ -28,6 +28,17 @@ import {
 } from '@/lib/entitlements'
 import { generateFullReport } from '@/lib/reportGenerator'
 import { buildPropertyProfileAudit, isUnsupportedPropertyType } from '@/lib/qualityAudit'
+import {
+  buildListingPriceResolutionMessage,
+  hasResolvedListingPrice,
+  resolveListingPriceResolution,
+} from '@/lib/listing-price-resolution'
+
+interface PreviewRequestBody {
+  address?: string
+  confirmedResolvedAddress?: string
+  confirmedListingPrice?: number
+}
 
 export async function POST(req: NextRequest) {
   // Rate limit: 3 previews per IP per day. IP resolution uses
@@ -40,7 +51,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Too many requests. Try again tomorrow.' }, { status: 429 })
   }
 
-  const { address, confirmedResolvedAddress } = await req.json()
+  const requestBody = (await req.json()) as PreviewRequestBody
+  const address = requestBody.address
+  const confirmedResolvedAddress = requestBody.confirmedResolvedAddress
+  const confirmedListingPrice =
+    typeof requestBody.confirmedListingPrice === 'number'
+      ? requestBody.confirmedListingPrice
+      : Number.isFinite(Number(requestBody.confirmedListingPrice))
+        ? Number(requestBody.confirmedListingPrice)
+        : undefined
   if (!address || address.length < 10) {
     return NextResponse.json({ error: 'Please enter a full address' }, { status: 400 })
   }
@@ -139,6 +158,35 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    const listingPriceResolution = resolveListingPriceResolution({
+      primaryListingPrice: property.primary_listing_price ?? property.listing_price,
+      fallbackListingPrice: property.fallback_listing_price,
+      confirmedListingPrice,
+      listingPriceCheckedAt: property.listing_price_checked_at,
+    })
+
+    if (!hasResolvedListingPrice(listingPriceResolution)) {
+      return NextResponse.json(
+        {
+          error: 'Listing price resolution required',
+          listingPriceResolutionRequired: true,
+          listingPriceStatus: listingPriceResolution.listingPriceStatus,
+          message: buildListingPriceResolutionMessage(listingPriceResolution),
+          resolvedAddress: property.address,
+          primaryListingPrice: listingPriceResolution.primaryListingPrice,
+          fallbackListingPrice: listingPriceResolution.fallbackListingPrice,
+          estimatedValue: property.estimated_value,
+        },
+        { status: 409 }
+      )
+    }
+
+    property.listing_price = listingPriceResolution.listingPrice
+    property.listing_price_source = listingPriceResolution.listingPriceSource
+    property.listing_price_status = listingPriceResolution.listingPriceStatus
+    property.listing_price_checked_at = listingPriceResolution.listingPriceCheckedAt
+    property.listing_price_user_supplied = listingPriceResolution.listingPriceUserSupplied
+
     const rentEstimate = await getRentEstimate(address, property.bedrooms)
     const state = property.state || getStateFromZipCode(property.zip_code)
     const rawRentAvm = rentEstimate?.estimated_rent || Math.round(property.estimated_value * 0.005)
@@ -199,6 +247,7 @@ export async function POST(req: NextRequest) {
     }
 
     const estimatedRent = rentAdjustment.effectiveRent
+    const listingPrice = Number(listingPriceResolution.listingPrice)
 
     // Data-quality warnings — shown in the teaser so buyers don't pay for a
     // report based on bad data. The two common failure modes:
@@ -210,6 +259,18 @@ export async function POST(req: NextRequest) {
     //       distressed market. Either way, verify before trusting.
     const annualYield = (estimatedRent * 12) / property.estimated_value
     const warnings: Array<{ code: string; message: string }> = []
+    if (listingPriceResolution.listingPriceSource === 'fallback') {
+      warnings.push({
+        code: 'listing-price-fallback',
+        message: `The primary property feed did not include a live listing price for this address. We recovered the current ask from a secondary licensed source and are underwriting against ${listingPrice.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}.`,
+      })
+    }
+    if (listingPriceResolution.listingPriceUserSupplied) {
+      warnings.push({
+        code: 'listing-price-user-confirmed',
+        message: `The current ask price in this analysis was manually confirmed as ${listingPrice.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}. Re-run the address if the listing price changes.`,
+      })
+    }
 
     // If the user bypassed a mismatch prompt AND Rentcast's actual resolved
     // address still differs from what they confirmed, surface it prominently
@@ -403,14 +464,21 @@ export async function POST(req: NextRequest) {
       propertyTaxRate: stateRulesForBE.propertyTaxRate,
       monthlyHOA: previewMonthlyHOA,
       monthlyMaintenance: previewMonthlyMaintenance,
-      offerPrice: property.estimated_value,
+      offerPrice: listingPrice,
     })
-    const listingVsBreakeven = breakevenPrice - property.estimated_value
+    const listingVsBreakeven = breakevenPrice - listingPrice
 
     // Generate UUID and store in DB
     const uuid = randomUUID()
     const teaserData = {
       estimatedValue: property.estimated_value,
+      listingPrice,
+      listingPriceSource: listingPriceResolution.listingPriceSource,
+      listingPriceStatus: listingPriceResolution.listingPriceStatus,
+      listingPriceCheckedAt: listingPriceResolution.listingPriceCheckedAt,
+      listingPriceUserSupplied: listingPriceResolution.listingPriceUserSupplied,
+      primaryListingPrice: listingPriceResolution.primaryListingPrice,
+      fallbackListingPrice: listingPriceResolution.fallbackListingPrice,
       estimatedRent,
       breakevenPrice,
       listingVsBreakeven, // positive = listing below breakeven (good); negative = above (bad)

@@ -4,16 +4,32 @@ import { FAQ } from '@/lib/faq'
 import { BASE_URL, absoluteUrl } from '@/lib/seo'
 
 export const metadata: Metadata = {
-  title: 'Real Estate Deal Analyzer — Breakeven Price in 30 Seconds',
+  title: 'Rental Property Calculator & Real Estate Deal Analyzer',
   description:
-    'Paste a US property address. Get the exact breakeven offer price, 5-year IRR, DSCR stress test, and AI-powered investment property diagnosis. Reports from $24.99.',
+    'Analyze any US rental property in seconds. Get breakeven offer price, DSCR, 5-year IRR, cash-to-close, and AI-powered deal diagnosis. Reports from $24.99.',
   alternates: { canonical: '/' },
   openGraph: {
-    title: 'Real Estate Deal Analyzer — DealDoctor',
+    siteName: 'DealDoctor',
+    title: 'Rental Property Calculator & Real Estate Deal Analyzer',
     description:
-      'Exact breakeven price, 5-year wealth projection, DSCR stress test, and AI-powered deal analysis for any US rental property.',
+      'Analyze any US rental property in seconds with breakeven offer price, DSCR, 5-year IRR, cash-to-close, and AI-powered deal diagnostics.',
     url: absoluteUrl('/'),
     type: 'website',
+    images: [
+      {
+        url: absoluteUrl('/opengraph-image'),
+        width: 1200,
+        height: 630,
+        alt: 'DealDoctor - Rental Property Calculator & Real Estate Deal Analyzer',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Rental Property Calculator & Real Estate Deal Analyzer',
+    description:
+      'Analyze any US rental property in seconds with breakeven offer price, DSCR, 5-year IRR, cash-to-close, and AI-powered deal diagnosis.',
+    images: [absoluteUrl('/twitter-image')],
   },
 }
 

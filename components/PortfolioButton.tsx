@@ -33,7 +33,7 @@ export function PortfolioButton({ deal }: Props) {
       className={cn(
         'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors',
         saved
-          ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+          ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700'
           : 'border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground'
       )}
       aria-pressed={saved}

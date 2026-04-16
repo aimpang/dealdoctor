@@ -1,8 +1,9 @@
 /**
  * Narrative reviewer. Sonnet 4.6 reads the structured report data + the
  * Haiku-generated narrative and returns a critique. The caller rewrites the
- * narrative if the reviewer flags issues with confidence < 0.9, up to a hard
- * cap of 3 review rounds per report.
+ * narrative if the reviewer flags issues with confidence >= the caller's
+ * confidenceFloor (default 0.9; in-tree callers currently use 0.80), up to
+ * the caller's maxRounds cap (default 3; in-tree callers currently use 2).
  *
  * Division of responsibility:
  *   - Deterministic math (IRR, breakeven, wealth, DSCR, sensitivity) is the
@@ -78,7 +79,7 @@ Your job: catch places where the narrative contradicts the structured data, inve
 - Everything else above (narrative-fixable issues). Include a concrete \`correction\` for each concern so the rewriter has an anchor.
 
 ## Confidence score
-Rate your own confidence 0.0-1.0 in this review. Use high (≥0.9) when you're certain every concern listed is a real issue; use medium (0.6-0.89) when some concerns are judgment calls; use low (<0.6) when the narrative is borderline and you're pattern-matching rather than catching a hard rule violation. The caller uses confidence ≥0.9 as an early-exit signal — don't inflate confidence to force a ship.
+Rate your own confidence 0.0-1.0 in this review. Use high (≥0.9) when you're certain every concern listed is a real issue; use medium (0.6-0.89) when some concerns are judgment calls; use low (<0.6) when the narrative is borderline and you're pattern-matching rather than catching a hard rule violation. The caller uses this as a threshold: a rewrite proceeds only when your confidence meets or exceeds the configured floor (today 0.80), and ships the current narrative otherwise. Don't inflate confidence to force a rewrite, and don't deflate it to avoid one.
 
 ## Output
 Return ONLY a single JSON object, no prose, no markdown fences:

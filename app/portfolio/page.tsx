@@ -25,9 +25,9 @@ const fmt = (n: number) =>
   }).format(n)
 
 const verdictConfig = {
-  DEAL: { label: 'Deal', color: 'text-emerald-700 dark:text-emerald-400', bg: 'bg-emerald-500/10', Icon: CheckCircle2Icon },
-  MARGINAL: { label: 'Marginal', color: 'text-amber-700 dark:text-amber-400', bg: 'bg-amber-500/10', Icon: MinusCircleIcon },
-  PASS: { label: 'Pass', color: 'text-red-700 dark:text-red-400', bg: 'bg-red-500/10', Icon: XCircleIcon },
+  DEAL: { label: 'Deal', color: 'text-emerald-700', bg: 'bg-emerald-500/10', Icon: CheckCircle2Icon },
+  MARGINAL: { label: 'Marginal', color: 'text-amber-700', bg: 'bg-amber-500/10', Icon: MinusCircleIcon },
+  PASS: { label: 'Pass', color: 'text-red-700', bg: 'bg-red-500/10', Icon: XCircleIcon },
 }
 
 export default function PortfolioPage() {
@@ -151,8 +151,8 @@ export default function PortfolioPage() {
                           className={cn(
                             'text-sm font-bold',
                             above
-                              ? 'text-red-700 dark:text-red-400'
-                              : 'text-emerald-700 dark:text-emerald-400'
+                              ? 'text-red-700'
+                              : 'text-emerald-700'
                           )}
                         >
                           {above ? '+' : '−'}

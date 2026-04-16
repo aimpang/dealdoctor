@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { rotateAccessTokenByEmail } from '@/lib/entitlements'
-import { sendEmail, buildMagicLinkEmail } from '@/lib/email'
+import { sendEmail, buildMagicLinkEmail } from '@/lib/email-service'
 import { prisma } from '@/lib/db'
 import { rateLimit } from '@/lib/rateLimit'
 import { getClientIp } from '@/lib/clientIp'
 import { logger } from '@/lib/logger'
 import { BASE_URL } from '@/lib/seo'
+import {
+  CLAIM_TOKEN_TTL_MINUTES,
+  CLAIM_TOKEN_TTL_MS,
+  createClaimToken,
+} from '@/lib/claim-token'
 
 // Retrieve-my-access flow. User enters email; if we know them, rotate their
 // access token and email the magic link. We don't leak whether the email is
@@ -28,7 +33,12 @@ export async function POST(req: NextRequest) {
 
   if (customer) {
     const baseUrl = BASE_URL
-    const magicLinkUrl = `${baseUrl}/api/auth/claim?token=${customer.accessToken}`
+    const claimToken = createClaimToken({
+      accessToken: customer.accessToken,
+      customerId: customer.id,
+      expiresInMs: CLAIM_TOKEN_TTL_MS,
+    })
+    const magicLinkUrl = `${baseUrl}/api/auth/claim?token=${claimToken}`
 
     // Build a friendly description of what they'll restore
     let entitlement = 'Your previous purchase.'
@@ -50,6 +60,7 @@ export async function POST(req: NextRequest) {
 
     const { html, text } = buildMagicLinkEmail({
       magicLinkUrl,
+      linkExpiryLabel: `${CLAIM_TOKEN_TTL_MINUTES} minutes`,
       entitlementDescription: entitlement,
       originalReportUrl,
     })

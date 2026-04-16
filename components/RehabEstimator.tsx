@@ -249,8 +249,8 @@ function CompareRow({
     Math.abs(delta) < Math.pow(10, -precision) / 2
       ? 'text-muted-foreground'
       : isBetter
-        ? 'text-emerald-700 dark:text-emerald-400'
-        : 'text-red-700 dark:text-red-400'
+        ? 'text-emerald-700'
+        : 'text-red-700'
   return (
     <tr className="border-b border-border/30 last:border-b-0">
       <td className="py-2 font-medium text-foreground">{label}</td>
@@ -290,9 +290,9 @@ function Verdict({ deltaWealth, rehabCost }: { deltaWealth: number; rehabCost: n
     <div
       className={cn(
         'mt-4 rounded-md border p-3 text-xs leading-relaxed',
-        tone === 'good' && 'border-emerald-500/40 bg-emerald-500/5 text-emerald-900 dark:text-emerald-200',
-        tone === 'ok' && 'border-amber-500/40 bg-amber-500/5 text-amber-900 dark:text-amber-200',
-        tone === 'bad' && 'border-red-500/40 bg-red-500/5 text-red-900 dark:text-red-200'
+        tone === 'good' && 'border-emerald-500/40 bg-emerald-500/5 text-emerald-900',
+        tone === 'ok' && 'border-amber-500/40 bg-amber-500/5 text-amber-900',
+        tone === 'bad' && 'border-red-500/40 bg-red-500/5 text-red-900'
       )}
     >
       {message}

@@ -1,13 +1,7 @@
 import { ImageResponse } from 'next/og'
-import { BASE_URL } from '@/lib/seo'
+import { DISPLAY_SITE_HOSTNAME } from '@/lib/seo'
 
-const DISPLAY_DOMAIN = (() => {
-  try {
-    return new URL(BASE_URL).hostname.replace(/^www\./, '')
-  } catch {
-    return 'dealdoctor.com'
-  }
-})()
+const DISPLAY_DOMAIN = DISPLAY_SITE_HOSTNAME
 
 // Shared implementation for the root-level OpenGraph + Twitter share cards.
 // Both `app/opengraph-image.tsx` and `app/twitter-image.tsx` render the same
@@ -19,7 +13,11 @@ const DISPLAY_DOMAIN = (() => {
 
 export const OG_SIZE = { width: 1200, height: 630 } as const
 
-async function loadGoogleFont(family: string, weight: number, text: string): Promise<ArrayBuffer | null> {
+const loadGoogleFont = async (
+  family: string,
+  weight: number,
+  text: string
+): Promise<ArrayBuffer | null> => {
   try {
     const url = new URL('https://fonts.googleapis.com/css2')
     url.searchParams.set('family', `${family}:wght@${weight}`)
@@ -33,7 +31,7 @@ async function loadGoogleFont(family: string, weight: number, text: string): Pro
   }
 }
 
-export async function renderOgCard() {
+export const renderOgCard = async () => {
   const playfair = await loadGoogleFont('Playfair Display', 900, 'DealDoctor')
   const fonts = playfair
     ? [{ name: 'Playfair', data: playfair, style: 'normal' as const, weight: 900 as const }]

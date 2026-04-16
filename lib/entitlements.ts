@@ -5,6 +5,7 @@
 
 import { randomBytes } from 'node:crypto'
 import { cookies } from 'next/headers'
+import type { Prisma } from '@prisma/client'
 import type { NextResponse } from 'next/server'
 import { prisma } from './db'
 
@@ -117,9 +118,11 @@ export async function creditPurchase(params: {
   lsSubscriptionId?: string
   subscriptionStatus?: string
   renewsAt?: Date // for unlimited subscription events
-}): Promise<CustomerRecord> {
+},
+databaseClient: Prisma.TransactionClient | typeof prisma = prisma
+): Promise<CustomerRecord> {
   const { email, plan, lsCustomerId, lsSubscriptionId, subscriptionStatus, renewsAt } = params
-  const existing = await prisma.customer.findUnique({ where: { email } })
+  const existing = await databaseClient.customer.findUnique({ where: { email } })
 
   // Credit math — the webhook fires AFTER the buyer views their current report,
   // and the current report is marked paid=true directly in the webhook handler
@@ -134,7 +137,7 @@ export async function creditPurchase(params: {
       : null
 
   if (existing) {
-    return prisma.customer.update({
+    return databaseClient.customer.update({
       where: { id: existing.id },
       data: {
         entitlementType: plan,
@@ -155,7 +158,7 @@ export async function creditPurchase(params: {
     })
   }
 
-  return prisma.customer.create({
+  return databaseClient.customer.create({
     data: {
       email,
       accessToken: generateAccessToken(),

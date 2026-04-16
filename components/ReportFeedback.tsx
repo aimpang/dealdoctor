@@ -57,7 +57,7 @@ export function ReportFeedback({ uuid }: Props) {
   if (submitted) {
     return (
       <div className="no-print flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm">
-        <CheckCircle2Icon className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+        <CheckCircle2Icon className="h-4 w-4 shrink-0 text-emerald-600" />
         <p className="text-foreground">
           Thanks — your feedback helps us flag inaccurate data for future buyers.
         </p>
@@ -140,8 +140,8 @@ function FeedbackButton({
       className={cn(
         'inline-flex items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-sm font-medium transition-colors',
         tone === 'positive'
-          ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10'
-          : 'border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-400 hover:bg-amber-500/10',
+          ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-700 hover:bg-emerald-500/10'
+          : 'border-amber-500/30 bg-amber-500/5 text-amber-700 hover:bg-amber-500/10',
         'disabled:opacity-50'
       )}
     >

@@ -135,7 +135,7 @@ export function ShareButton({ uuid, address }: Props) {
             className="flex w-full items-start gap-2 px-3 py-2.5 text-left text-xs hover:bg-muted"
           >
             {copied === 'full' ? (
-              <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+              <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
             ) : (
               <LinkIcon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
             )}
@@ -155,7 +155,7 @@ export function ShareButton({ uuid, address }: Props) {
             className="flex w-full items-start gap-2 border-t px-3 py-2.5 text-left text-xs hover:bg-muted"
           >
             {copied === 'lender' ? (
-              <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+              <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
             ) : (
               <EyeOffIcon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
             )}

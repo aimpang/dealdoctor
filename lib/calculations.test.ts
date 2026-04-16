@@ -1019,4 +1019,20 @@ describe('getJurisdictionRules', () => {
     expect(rules.hotelOccupancyTaxRate).toBeCloseTo(0.1257, 4)
     expect(rules.strNotes).toMatch(/transient|lodging|tax/i)
   })
+
+  // Regression: a FL city without a CITY_RULES override (e.g. Fort Myers,
+  // Naples, Tampa, Jacksonville) was getting hotelOccupancyTaxRate = 0,
+  // silently dropping the entire STR transient-tax deduction (~11–14% of
+  // gross). The state-level statutory floor is 6% FL sales tax + 5% min
+  // county TDT = 11% (FL Stat §212.03 + §125.0104).
+  it('inherits FL state-level HOT floor for cities without a city override', () => {
+    const rules = getJurisdictionRules('FL', 'Fort Myers')
+    expect(rules.hotelOccupancyTaxRate).toBeGreaterThanOrEqual(0.11)
+  })
+
+  it('keeps higher city-level HOT override over the FL state floor', () => {
+    // Fort Lauderdale (Broward) is 13% — higher than the FL state floor.
+    const rules = getJurisdictionRules('FL', 'Fort Lauderdale')
+    expect(rules.hotelOccupancyTaxRate).toBeCloseTo(0.13, 4)
+  })
 })

@@ -205,7 +205,7 @@ export function WealthCompositionPie({
           the pie chart above. */}
       {negatives.length > 0 && (
         <div className="rounded-md border border-red-500/25 bg-red-500/5 px-4 py-3">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-red-700 dark:text-red-400">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-red-700">
             Wealth drags
           </div>
           <div className="flex flex-col gap-1 text-sm">
@@ -218,7 +218,7 @@ export function WealthCompositionPie({
                   />
                   <span className="text-muted-foreground">{d.name}</span>
                 </div>
-                <span className="tabular-nums font-semibold text-red-700 dark:text-red-400">
+                <span className="tabular-nums font-semibold text-red-700">
                   {fmtShort(d.value)}
                 </span>
               </div>

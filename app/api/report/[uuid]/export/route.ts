@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import * as XLSX from 'xlsx'
-import { isDebugAccessAuthorized } from '@/lib/debugAccess'
-import { verifyShareToken } from '@/lib/shareToken'
 import { CUSTOMER_COOKIE } from '@/lib/entitlements'
 import { logger } from '@/lib/logger'
+import { resolveReportAccess } from '@/lib/report-access'
 
 // Multi-sheet Excel export of the full report. Everything comes from
 // fullReportData — no new computations — so this is a pure transformation job.
@@ -23,24 +22,21 @@ export async function GET(
       return NextResponse.json({ error: 'Report not found' }, { status: 404 })
     }
 
-    const { searchParams } = new URL(req.url)
-    const isDebug =
-      searchParams.get('debug') === '1' &&
-      isDebugAccessAuthorized(searchParams.get('debugKey'))
+    const searchParams = req.nextUrl.searchParams
+    const access = await resolveReportAccess({
+      allowDebug: true,
+      cookieAccessToken: req.cookies.get(CUSTOMER_COOKIE)?.value,
+      debugKey: searchParams.get('debugKey'),
+      debugRequested: searchParams.get('debug') === '1',
+      reportCustomerId: (report as any).customerId,
+      reportId: uuid,
+      tokenCandidate: searchParams.get('t'),
+    })
+    const isDebug = access.isDebug
 
     // Non-owner Excel access requires a signed share token — same policy as
     // the main report endpoint. Paid-but-unauthed requests get 403.
-    const tokenValid = verifyShareToken(uuid, searchParams.get('t'))
-    const cookieToken = req.cookies.get(CUSTOMER_COOKIE)?.value
-    let isOwner = false
-    if (cookieToken && (report as any).customerId) {
-      const cookieCustomer = await prisma.customer.findUnique({
-        where: { accessToken: cookieToken },
-        select: { id: true },
-      })
-      isOwner = cookieCustomer?.id === (report as any).customerId
-    }
-    const hasAccess = isDebug || isOwner || tokenValid
+    const hasAccess = access.hasAccess
 
     if (!report.paid && !isDebug) {
       return NextResponse.json(

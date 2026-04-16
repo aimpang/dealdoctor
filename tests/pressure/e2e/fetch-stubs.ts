@@ -46,6 +46,11 @@ export async function installStubs(page: Page, opts: StubOptions = {}) {
         uuid: stubUuid,
         teaser: {
           estimatedValue: fullReportData.property.offerPrice,
+          listingPrice: fullReportData.property.askPrice,
+          listingPriceSource: 'primary',
+          listingPriceStatus: 'resolved',
+          listingPriceCheckedAt: new Date().toISOString(),
+          listingPriceUserSupplied: false,
           estimatedRent: fullReportData.inputs.monthlyRent,
           breakevenPrice: fullReportData.breakeven.price,
           listingVsBreakeven: fullReportData.breakeven.delta,

@@ -19,6 +19,7 @@ type Strategy = 'LTR' | 'STR' | 'FLIP'
 
 interface Teaser {
   estimatedValue: number
+  listingPrice?: number
   estimatedRent: number
   currentRate: number
 }
@@ -56,7 +57,8 @@ const fmt = (n: number) =>
   }).format(n)
 
 export function DealInputs({ uuid, teaser, onPreview }: Props) {
-  const [offer, setOffer] = useState<number>(teaser.estimatedValue)
+  const offerAnchorLabel = teaser.listingPrice ? 'Listing' : 'Estimated value'
+  const [offer, setOffer] = useState<number>(teaser.listingPrice ?? teaser.estimatedValue)
   const [downPct, setDownPct] = useState<number>(20)
   const [rehab, setRehab] = useState<number>(0)
   const [strategy, setStrategy] = useState<Strategy>('LTR')
@@ -95,9 +97,9 @@ export function DealInputs({ uuid, teaser, onPreview }: Props) {
   }
 
   const verdictConfig = {
-    DEAL: { label: 'Strong Deal', color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', Icon: CheckCircle2Icon },
-    MARGINAL: { label: 'Marginal', color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/30', Icon: MinusCircleIcon },
-    PASS: { label: 'Pass', color: 'text-red-600 dark:text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/30', Icon: XCircleIcon },
+    DEAL: { label: 'Strong Deal', color: 'text-emerald-600', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', Icon: CheckCircle2Icon },
+    MARGINAL: { label: 'Marginal', color: 'text-amber-600', bg: 'bg-amber-500/10', border: 'border-amber-500/30', Icon: MinusCircleIcon },
+    PASS: { label: 'Pass', color: 'text-red-600', bg: 'bg-red-500/10', border: 'border-red-500/30', Icon: XCircleIcon },
   }
 
   return (
@@ -125,7 +127,7 @@ export function DealInputs({ uuid, teaser, onPreview }: Props) {
             min={30_000}
             step={1000}
             prefix="$"
-            hint={`Listing: ${fmt(teaser.estimatedValue)}`}
+            hint={`${offerAnchorLabel}: ${fmt(teaser.listingPrice ?? teaser.estimatedValue)}`}
           />
           <Field
             label="Down payment"
@@ -214,9 +216,9 @@ export function DealInputs({ uuid, teaser, onPreview }: Props) {
                     </div>
                     <p className="text-2xl font-bold text-foreground sm:text-3xl">
                       {above ? (
-                        <>Offer <span className="text-red-600 dark:text-red-400">{fmt(-preview.deltaVsBreakeven)}</span> above breakeven</>
+                        <>Offer <span className="text-red-600">{fmt(-preview.deltaVsBreakeven)}</span> above breakeven</>
                       ) : (
-                        <>Offer <span className="text-emerald-600 dark:text-emerald-400">{fmt(preview.deltaVsBreakeven)}</span> below breakeven</>
+                        <>Offer <span className="text-emerald-600">{fmt(preview.deltaVsBreakeven)}</span> below breakeven</>
                       )}
                     </p>
                     <p className="mt-1 text-sm text-muted-foreground">
@@ -307,8 +309,8 @@ function Stat({ label, value, positive }: { label: string; value: string; positi
       <p
         className={cn(
           'mt-1 text-lg font-bold',
-          positive === true && 'text-emerald-600 dark:text-emerald-400',
-          positive === false && 'text-red-600 dark:text-red-400',
+          positive === true && 'text-emerald-600',
+          positive === false && 'text-red-600',
           positive === undefined && 'text-foreground'
         )}
       >

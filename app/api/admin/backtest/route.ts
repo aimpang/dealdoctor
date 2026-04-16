@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import crypto from 'node:crypto'
 import { prisma } from '@/lib/db'
 import { searchProperty } from '@/lib/propertyApi'
 
@@ -23,7 +24,10 @@ const SAMPLE_SIZE = 30
 function requireAdmin(req: NextRequest): NextResponse | null {
   const adminKey = process.env.ADMIN_KEY
   const provided = req.headers.get('X-Admin-Key')
-  if (!adminKey || provided !== adminKey) {
+  if (!adminKey || !provided || provided.length !== adminKey.length) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  if (!crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(adminKey))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   return null

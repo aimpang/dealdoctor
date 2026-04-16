@@ -252,12 +252,12 @@ export function BlurredReport({ uuid, address }: BlurredReportProps) {
               </p>
               <p>
                 <span className="font-semibold text-foreground">Not useful?</span>{' '}
-                Email within 7 days for a full refund — no questions asked.
+                Email within 7 days if the report failed to generate or the property data was materially wrong.
               </p>
               {process.env.NODE_ENV !== 'production' && (
                 <a
                   href={`/report/${uuid}?debug=1`}
-                  className="mt-2 border border-dashed border-amber-500/50 bg-amber-500/5 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.15em] text-amber-700 dark:text-amber-400 hover:bg-amber-500/10"
+                  className="mt-2 border border-dashed border-amber-500/50 bg-amber-500/5 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.15em] text-amber-700 hover:bg-amber-500/10"
                 >
                   DEV: view full report (bypass paywall) →
                 </a>

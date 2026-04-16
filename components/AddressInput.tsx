@@ -18,6 +18,23 @@ interface Suggestion {
   zip: string
 }
 
+interface PendingAddressMismatch {
+  userAddress: string
+  resolvedAddress: string
+  message: string
+}
+
+interface PendingListingPriceResolution {
+  submitAddress: string
+  confirmedResolvedAddress?: string
+  listingPriceStatus: 'missing' | 'conflicted'
+  resolvedAddress: string
+  message: string
+  primaryListingPrice?: number
+  fallbackListingPrice?: number
+  estimatedValue?: number
+}
+
 export function AddressInput({ onResult, onError }: AddressInputProps) {
   const [address, setAddress] = useState('')
   const [loading, setLoading] = useState(false)
@@ -29,11 +46,10 @@ export function AddressInput({ onResult, onError }: AddressInputProps) {
   // When Rentcast returns a different address than the user typed, we pause
   // and ask the user to confirm rather than silently underwrite the wrong
   // property. The prompt stores what we'd resubmit on "yes".
-  const [pendingMismatch, setPendingMismatch] = useState<{
-    userAddress: string
-    resolvedAddress: string
-    message: string
-  } | null>(null)
+  const [pendingMismatch, setPendingMismatch] = useState<PendingAddressMismatch | null>(null)
+  const [pendingListingPriceResolution, setPendingListingPriceResolution] =
+    useState<PendingListingPriceResolution | null>(null)
+  const [confirmedListingPriceInput, setConfirmedListingPriceInput] = useState('')
 
   // Close suggestions on click outside
   useEffect(() => {
@@ -119,11 +135,16 @@ export function AddressInput({ onResult, onError }: AddressInputProps) {
     }
   }
 
-  const submitPreview = async (submitAddr: string, confirmedResolvedAddress?: string) => {
+  const submitPreview = async (
+    submitAddr: string,
+    confirmedResolvedAddress?: string,
+    confirmedListingPrice?: number
+  ) => {
     setShowSuggestions(false)
     setLoading(true)
     onError('')
     setPendingMismatch(null)
+    setPendingListingPriceResolution(null)
 
     try {
       const res = await fetch('/api/preview', {
@@ -132,6 +153,9 @@ export function AddressInput({ onResult, onError }: AddressInputProps) {
         body: JSON.stringify({
           address: submitAddr,
           ...(confirmedResolvedAddress ? { confirmedResolvedAddress } : {}),
+          ...(typeof confirmedListingPrice === 'number'
+            ? { confirmedListingPrice }
+            : {}),
         }),
       })
 
@@ -147,6 +171,20 @@ export function AddressInput({ onResult, onError }: AddressInputProps) {
       }
       if (res.status === 409 && data.needsUnitNumber) {
         onError(data.message || 'Unit number required')
+        return
+      }
+      if (res.status === 409 && data.listingPriceResolutionRequired) {
+        setPendingListingPriceResolution({
+          submitAddress: submitAddr,
+          confirmedResolvedAddress,
+          listingPriceStatus: data.listingPriceStatus,
+          resolvedAddress: data.resolvedAddress ?? submitAddr,
+          message: data.message,
+          primaryListingPrice: data.primaryListingPrice ?? undefined,
+          fallbackListingPrice: data.fallbackListingPrice ?? undefined,
+          estimatedValue: data.estimatedValue ?? undefined,
+        })
+        setConfirmedListingPriceInput('')
         return
       }
       if (!res.ok) {
@@ -177,6 +215,41 @@ export function AddressInput({ onResult, onError }: AddressInputProps) {
 
   const dismissMismatch = () => {
     setPendingMismatch(null)
+  }
+
+  const submitConfirmedListingPrice = async () => {
+    if (!pendingListingPriceResolution) {
+      return
+    }
+
+    const confirmedListingPrice = Number(confirmedListingPriceInput.replace(/[^0-9.]/g, ''))
+    if (!Number.isFinite(confirmedListingPrice) || confirmedListingPrice <= 0) {
+      onError('Enter the current ask price to continue.')
+      return
+    }
+
+    await submitPreview(
+      pendingListingPriceResolution.submitAddress,
+      pendingListingPriceResolution.confirmedResolvedAddress,
+      confirmedListingPrice
+    )
+  }
+
+  const dismissListingPriceResolution = () => {
+    setPendingListingPriceResolution(null)
+    setConfirmedListingPriceInput('')
+  }
+
+  const formatPrice = (value?: number) => {
+    if (typeof value !== 'number' || value <= 0) {
+      return null
+    }
+
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      maximumFractionDigits: 0,
+    }).format(value)
   }
 
   return (
@@ -300,6 +373,71 @@ export function AddressInput({ onResult, onError }: AddressInputProps) {
             >
               No, let me re-type
             </button>
+          </div>
+        </div>
+      )}
+
+      {pendingListingPriceResolution && (
+        <div
+          role="alert"
+          className="mt-4 rounded-lg border-2 border-amber-500/50 bg-amber-500/5 px-4 py-3 text-left"
+        >
+          <p className="text-sm font-semibold text-foreground">Confirm the current ask price</p>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            {pendingListingPriceResolution.message}
+          </p>
+          <div className="mt-3 flex flex-wrap gap-3 text-xs text-foreground/75">
+            {formatPrice(pendingListingPriceResolution.primaryListingPrice) && (
+              <span className="rounded-md border border-border bg-card px-2 py-1">
+                Primary source: {formatPrice(pendingListingPriceResolution.primaryListingPrice)}
+              </span>
+            )}
+            {formatPrice(pendingListingPriceResolution.fallbackListingPrice) && (
+              <span className="rounded-md border border-border bg-card px-2 py-1">
+                Fallback source: {formatPrice(pendingListingPriceResolution.fallbackListingPrice)}
+              </span>
+            )}
+            {formatPrice(pendingListingPriceResolution.estimatedValue) && (
+              <span className="rounded-md border border-border bg-card px-2 py-1">
+                Estimated value: {formatPrice(pendingListingPriceResolution.estimatedValue)}
+              </span>
+            )}
+          </div>
+          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
+            <label className="flex-1">
+              <span className="mb-1 block text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                Current ask price
+              </span>
+              <input
+                type="number"
+                min={1}
+                step={1000}
+                inputMode="numeric"
+                value={confirmedListingPriceInput}
+                onChange={(event) => setConfirmedListingPriceInput(event.target.value)}
+                disabled={loading}
+                placeholder="275000"
+                className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none transition-colors focus:border-primary"
+              />
+            </label>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={submitConfirmedListingPrice}
+                disabled={loading}
+                className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              >
+                Continue with this ask
+              </button>
+              <button
+                type="button"
+                onClick={dismissListingPriceResolution}
+                disabled={loading}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-2 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}
