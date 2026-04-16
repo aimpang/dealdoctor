@@ -2,16 +2,11 @@ import Anthropic from '@anthropic-ai/sdk'
 import { DealMetrics, calculateBreakEvenPrice, getJurisdictionRules } from './calculations'
 import type { ClimateAndInsurance } from './climateRisk'
 
-// Claude Haiku 4.5 — cheap, fast, high-quality narration. See rationale in
-// memory/project_positioning_and_ai.md. ~$0.005 per report at typical prompt size.
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-// Narrative author. Swapped from claude-haiku-4-5 → claude-sonnet-4-6 after
-// pressure-test showed the Haiku+Sonnet-reviewer loop failed to converge on
-// 9/10 reports (rewrites introduced new bugs faster than they fixed old
-// ones). Sonnet as the direct author writes a one-shot narrative with tighter
-// constraint-following, eliminating the noisy review loop. Same Anthropic
-// provider, same API key — just a different model string.
-const MODEL_ID = 'claude-sonnet-4-6'
+// Stable production snapshot. Anthropic's docs currently list
+// claude-sonnet-4-20250514 as the concrete Claude Sonnet 4 model ID and
+// recommend pinned snapshots over floating aliases in production.
+const MODEL_ID = 'claude-sonnet-4-20250514'
 
 export interface DealDoctorOutput {
   diagnosis: string
@@ -121,10 +116,9 @@ export async function generateDealDoctor(
     ? `\nCLIMATE & INSURANCE (material to this deal — reference specifically if it affects cash flow or risk):\n${climateFacts.join('\n')}`
     : ''
 
-  // Build a reviewer-corrections block when this is a rewrite pass. Sonnet
-  // flagged specific narrative problems in the previous draft — surface them
-  // at the top of the prompt so Haiku's second attempt directly addresses
-  // each one instead of repeating the same mistake.
+  // Build a reviewer-corrections block when this is a rewrite pass. Surface
+  // the flagged problems at the top of the prompt so the regeneration pass
+  // directly addresses them instead of repeating the same mistake.
   const correctionsBlock =
     reviewCorrections && reviewCorrections.length > 0
       ? `\n⚠ REWRITE PASS — prior draft was flagged by the reviewer. Fix ALL of the following in this output. Do NOT repeat the same mistakes.\n${reviewCorrections

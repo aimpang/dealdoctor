@@ -20,7 +20,7 @@ A Canadian real estate deal analyzer. User pastes a property address → gets 3 
 - **Payments:** Stripe Checkout
 - **Property Data:** Houski API (Canadian properties)
 - **Rates:** Bank of Canada API (free, no key needed)
-- **AI:** Anthropic Claude API (claude-sonnet-4-6)
+- **AI:** Anthropic Claude API (claude-sonnet-4-20250514)
 - **3D Map:** Three.js
 - **Deployment:** Vercel-ready
 
@@ -770,7 +770,7 @@ Rules:
 - Keep each fix detail row under 8 words per cell`
 
   const response = await client.messages.create({
-    model: 'claude-sonnet-4-6',
+model: 'claude-sonnet-4-20250514',
     max_tokens: 1000,
     messages: [{ role: 'user', content: prompt }]
   })
