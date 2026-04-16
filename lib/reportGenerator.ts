@@ -2603,6 +2603,19 @@ export async function generateFullReport(uuid: string): Promise<void> {
       locationSignals: locationRes,
     })
   } catch (err: any) {
+    if (err instanceof InvariantGateError) {
+      await prisma.report.update({
+        where: { id: uuid },
+        data: {
+          fullReportData: JSON.stringify({
+            __error: 'invariant-blocked',
+            reason: 'This report failed an internal math sanity check.',
+            at: new Date().toISOString(),
+            failures: err.failures ?? [],
+          }),
+        },
+      })
+    }
     if (err?.name === 'QualityAuditError' && err?.audit) {
       await prisma.report.update({
         where: { id: uuid },
@@ -2612,24 +2625,6 @@ export async function generateFullReport(uuid: string): Promise<void> {
             reason: err.audit.summary,
             at: new Date().toISOString(),
             audit: err.audit,
-          }),
-        },
-      })
-    }
-    // Cache the reviewer's block verdict on the row itself. Without this,
-    // the polling frontend kept re-running the full 30-60s pipeline on every
-    // refresh (audit: 414 Water St, Baltimore — 6× re-runs at 30-60s each).
-    // With the sentinel persisted to fullReportData, the route short-circuits
-    // on subsequent reads and returns the cached reason immediately.
-    const msg = typeof err?.message === 'string' ? err.message : ''
-    if (msg.startsWith('Review blocked:')) {
-      await prisma.report.update({
-        where: { id: uuid },
-        data: {
-          fullReportData: JSON.stringify({
-            __error: 'review-blocked',
-            reason: msg.replace(/^Review blocked:\s*/, ''),
-            at: new Date().toISOString(),
           }),
         },
       })

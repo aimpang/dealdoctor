@@ -58,6 +58,19 @@ export async function GET(
             { status: 502 }
           )
         }
+        if (parsed && parsed.__error === 'invariant-blocked') {
+          return NextResponse.json(
+            {
+              error: 'This report failed an internal math sanity check.',
+              code: 'report-invariant-failed',
+              reason: parsed.reason,
+              blockedAt: parsed.at,
+              failures: Array.isArray(parsed.failures) ? parsed.failures : [],
+              uuid,
+            },
+            { status: 502 }
+          )
+        }
         if (parsed && parsed.__error === 'review-blocked') {
           return NextResponse.json(
             {
