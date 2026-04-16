@@ -18,7 +18,7 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 
-const REVIEWER_MODEL_ID = 'claude-sonnet-4-20250514'
+const REVIEWER_MODEL_ID = 'claude-sonnet-4-6'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 

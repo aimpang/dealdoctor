@@ -26,6 +26,6 @@ export const FAQ: readonly FaqItem[] = [
   },
   {
     q: 'How is this different from BiggerPockets or DealCheck?',
-    a: "DealDoctor is built around refusal discipline, not feature sprawl. If the listing price, rent, comps, or property profile are too weak or contradictory, we downgrade or block the report instead of pretending the answer is clean. When a report does ship, every paid report links back to Zillow, Redfin, and Realtor so you can verify the subject in one click.",
+    a: 'DealDoctor is built around refusal discipline, not feature sprawl. If the listing price, rent, comps, or property profile are weak or contradictory, we downgrade the headline verdict, suppress weak metrics, and flag the specific inputs you need to verify. When a report does ship, every paid report links back to Zillow, Redfin, and Realtor so you can verify the subject in one click.',
   },
 ]

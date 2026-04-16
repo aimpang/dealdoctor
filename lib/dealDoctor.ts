@@ -3,10 +3,7 @@ import { DealMetrics, calculateBreakEvenPrice, getJurisdictionRules } from './ca
 import type { ClimateAndInsurance } from './climateRisk'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-// Stable production snapshot. Anthropic's docs currently list
-// claude-sonnet-4-20250514 as the concrete Claude Sonnet 4 model ID and
-// recommend pinned snapshots over floating aliases in production.
-const MODEL_ID = 'claude-sonnet-4-20250514'
+const MODEL_ID = 'claude-sonnet-4-6'
 
 export interface DealDoctorOutput {
   diagnosis: string
