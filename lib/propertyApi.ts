@@ -12,6 +12,22 @@ import { resolvePropertyValueSignals } from './property-value-signals'
 const API_KEY = process.env.PROPERTY_API_KEY || ''
 const IS_PRODUCTION = process.env.NODE_ENV === 'production'
 const PROPERTY_API_CONFIGURED = Boolean(API_KEY && API_KEY !== 'your_key_here')
+const PROPERTY_DATA_REVALIDATE_SECONDS = 86_400
+
+interface SaleListingResult {
+  price: number
+  checkedAt?: string
+  formattedAddress?: string
+}
+
+interface SaleListingCandidate {
+  price: number
+  checkedAt?: string
+  formattedAddress?: string
+  isCurrent: boolean
+  matchKind: AddressMatchKind
+  sortDateMs: number
+}
 
 export interface PropertyData {
   property_id: string
@@ -310,6 +326,159 @@ function diagnoseRentcastResponse(res: Response): 'ok' | 'quota' | 'rate-limit' 
   return 'error'
 }
 
+const CURRENT_SALE_LISTING_STATUSES = new Set([
+  'active',
+  'coming soon',
+  'contingent',
+  'pending',
+])
+
+const toPositiveRentcastNumber = (value: unknown): number | undefined => {
+  const numericValue = Number(value)
+  return Number.isFinite(numericValue) && numericValue > 0 ? numericValue : undefined
+}
+
+const toNonEmptyString = (value: unknown): string | undefined => {
+  return typeof value === 'string' && value.trim().length > 0 ? value : undefined
+}
+
+const isObjectRecord = (value: unknown): value is Record<string, unknown> => {
+  return typeof value === 'object' && value !== null
+}
+
+const parseDateMs = (value: unknown): number => {
+  const stringValue = toNonEmptyString(value)
+  if (!stringValue) {
+    return 0
+  }
+
+  const parsedDateMs = Date.parse(stringValue)
+  return Number.isFinite(parsedDateMs) ? parsedDateMs : 0
+}
+
+const buildSaleListingAddress = (
+  saleListingRecord: Record<string, unknown>
+): string | undefined => {
+  const formattedAddress = toNonEmptyString(saleListingRecord.formattedAddress)
+  if (formattedAddress) {
+    return formattedAddress
+  }
+
+  const addressParts = [
+    toNonEmptyString(saleListingRecord.addressLine1),
+    toNonEmptyString(saleListingRecord.addressLine2),
+    toNonEmptyString(saleListingRecord.city),
+    toNonEmptyString(saleListingRecord.state),
+    toNonEmptyString(saleListingRecord.zipCode),
+  ].filter((addressPart): addressPart is string => Boolean(addressPart))
+
+  return addressParts.length > 0 ? addressParts.join(', ') : undefined
+}
+
+const isCurrentSaleListing = (
+  saleListingRecord: Record<string, unknown>
+): boolean => {
+  if (toNonEmptyString(saleListingRecord.removedDate)) {
+    return false
+  }
+
+  const saleListingStatus = toNonEmptyString(saleListingRecord.status)?.toLowerCase()
+  if (!saleListingStatus) {
+    return true
+  }
+
+  return CURRENT_SALE_LISTING_STATUSES.has(saleListingStatus)
+}
+
+const getSaleListingSortDateMs = (
+  saleListingRecord: Record<string, unknown>
+): number => {
+  return Math.max(
+    parseDateMs(saleListingRecord.lastSeenDate),
+    parseDateMs(saleListingRecord.listedDate),
+    parseDateMs(saleListingRecord.createdDate)
+  )
+}
+
+const fetchPrimarySaleListing = async (
+  address: string
+): Promise<SaleListingResult | null> => {
+  try {
+    const url = new URL('https://api.rentcast.io/v1/listings/sale')
+    url.searchParams.set('address', address)
+    const response = await fetch(url.toString(), {
+      headers: { 'X-Api-Key': API_KEY },
+      next: { revalidate: PROPERTY_DATA_REVALIDATE_SECONDS },
+    })
+    const diagnostic = diagnoseRentcastResponse(response)
+    if (diagnostic === 'quota' || diagnostic === 'rate-limit') {
+      logger.warn('rentcast.quota_hit', { status: response.status, diagnostic, address })
+      throw new RentcastQuotaError(response.status)
+    }
+    if (!response.ok) {
+      return null
+    }
+
+    const responsePayload = await response.json()
+    const saleListingRecords = Array.isArray(responsePayload)
+      ? responsePayload
+      : responsePayload
+        ? [responsePayload]
+        : []
+
+    const saleListingCandidates: SaleListingCandidate[] = saleListingRecords
+      .filter(isObjectRecord)
+      .map((saleListingObject) => {
+        const formattedAddress = buildSaleListingAddress(saleListingObject)
+        return {
+          price: toPositiveRentcastNumber(saleListingObject.price) ?? 0,
+          checkedAt:
+            toNonEmptyString(saleListingObject.lastSeenDate) ??
+            toNonEmptyString(saleListingObject.listedDate) ??
+            toNonEmptyString(saleListingObject.createdDate),
+          formattedAddress,
+          matchKind: formattedAddress
+            ? classifyAddressMatch(address, formattedAddress).kind
+            : 'soft',
+          isCurrent: isCurrentSaleListing(saleListingObject),
+          sortDateMs: getSaleListingSortDateMs(saleListingObject),
+        }
+      })
+      .filter((saleListingCandidate) => {
+        if (!saleListingCandidate.price) {
+          return false
+        }
+        if (saleListingCandidate.matchKind === 'hard-mismatch') {
+          return false
+        }
+        return saleListingCandidate.isCurrent
+      })
+      .sort((leftSaleListingCandidate, rightSaleListingCandidate) => {
+        if (leftSaleListingCandidate.matchKind !== rightSaleListingCandidate.matchKind) {
+          return leftSaleListingCandidate.matchKind === 'exact' ? -1 : 1
+        }
+
+        return rightSaleListingCandidate.sortDateMs - leftSaleListingCandidate.sortDateMs
+      })
+
+    const primarySaleListing = saleListingCandidates[0]
+    if (!primarySaleListing) {
+      return null
+    }
+
+    return {
+      price: primarySaleListing.price,
+      checkedAt: primarySaleListing.checkedAt,
+      formattedAddress: primarySaleListing.formattedAddress,
+    }
+  } catch (error) {
+    if (error instanceof RentcastQuotaError) {
+      throw error
+    }
+    return null
+  }
+}
+
 // Rentcast's dedicated value AVM endpoint. Returns a real estimate with a
 // confidence band. The property lookup endpoint (/properties) doesn't include
 // a price in most responses — you need /avm/value for that.
@@ -347,7 +516,7 @@ async function fetchValueAvm(address: string): Promise<AvmResult | null> {
     url.searchParams.set('address', address)
     const res = await fetch(url.toString(), {
       headers: { 'X-Api-Key': API_KEY },
-      next: { revalidate: 86_400 }, // 24h cache — property data barely changes day-to-day; dramatically reduces API burn on repeat addresses
+      next: { revalidate: PROPERTY_DATA_REVALIDATE_SECONDS }, // 24h cache — property data barely changes day-to-day; dramatically reduces API burn on repeat addresses
     })
     const diag = diagnoseRentcastResponse(res)
     if (diag === 'quota' || diag === 'rate-limit') {
@@ -466,12 +635,13 @@ async function searchPropertyRentcast(
     const shouldIncludeListingPriceFallback = options.includeListingPriceFallback !== false
 
     // Fire the AVM call in parallel so we don't serialize two Rentcast round-trips
-    const [propRes, avm, fallbackListingPriceResult] = await Promise.all([
+    const [propRes, avm, primarySaleListingResult, fallbackListingPriceResult] = await Promise.all([
       fetch(url.toString(), {
         headers: { 'X-Api-Key': API_KEY },
-        next: { revalidate: 86_400 }, // 24h cache — property data barely changes day-to-day; dramatically reduces API burn on repeat addresses
+        next: { revalidate: PROPERTY_DATA_REVALIDATE_SECONDS }, // 24h cache — property data barely changes day-to-day; dramatically reduces API burn on repeat addresses
       }),
       fetchValueAvm(address),
+      fetchPrimarySaleListing(address),
       shouldIncludeListingPriceFallback ? fetchFallbackListingPrice(address) : Promise.resolve(null),
     ])
     const diag = diagnoseRentcastResponse(propRes)
@@ -491,12 +661,15 @@ async function searchPropertyRentcast(
         }
 
         const listingPriceResolution = resolveListingPriceResolution({
+          primaryListingPrice: primarySaleListingResult?.price,
           fallbackListingPrice: fallbackListingPriceResult?.listingPrice,
-          listingPriceCheckedAt: fallbackListingPriceResult?.checkedAt,
+          listingPriceCheckedAt:
+            primarySaleListingResult?.checkedAt ?? fallbackListingPriceResult?.checkedAt,
         })
 
         return {
           ...avmOnlyProperty,
+          primary_listing_price: primarySaleListingResult?.price,
           fallback_listing_price: listingPriceResolution.fallbackListingPrice,
           listing_price: listingPriceResolution.listingPrice,
           listing_price_source: listingPriceResolution.listingPriceSource,
@@ -518,12 +691,15 @@ async function searchPropertyRentcast(
         }
 
         const listingPriceResolution = resolveListingPriceResolution({
+          primaryListingPrice: primarySaleListingResult?.price,
           fallbackListingPrice: fallbackListingPriceResult?.listingPrice,
-          listingPriceCheckedAt: fallbackListingPriceResult?.checkedAt,
+          listingPriceCheckedAt:
+            primarySaleListingResult?.checkedAt ?? fallbackListingPriceResult?.checkedAt,
         })
 
         return {
           ...avmOnlyProperty,
+          primary_listing_price: primarySaleListingResult?.price,
           fallback_listing_price: listingPriceResolution.fallbackListingPrice,
           listing_price: listingPriceResolution.listingPrice,
           listing_price_source: listingPriceResolution.listingPriceSource,
@@ -568,11 +744,12 @@ async function searchPropertyRentcast(
           .map((year) => prop.taxAssessments[year]?.value)
       : []
     const primaryListingPrice =
-      typeof prop.price === 'number'
+      primarySaleListingResult?.price ??
+      (typeof prop.price === 'number'
         ? prop.price
         : Number.isFinite(Number(prop.price))
           ? Number(prop.price)
-          : undefined
+          : undefined)
     const propertyValueSignals = resolvePropertyValueSignals({
       listingPrice: primaryListingPrice,
       avmPrice: avm?.price,
@@ -585,7 +762,8 @@ async function searchPropertyRentcast(
     const listingPriceResolution = resolveListingPriceResolution({
       primaryListingPrice,
       fallbackListingPrice: fallbackListingPriceResult?.listingPrice,
-      listingPriceCheckedAt: fallbackListingPriceResult?.checkedAt,
+      listingPriceCheckedAt:
+        primarySaleListingResult?.checkedAt ?? fallbackListingPriceResult?.checkedAt,
     })
     const estimatedValue = propertyValueSignals.estimatedValue
 
@@ -616,7 +794,7 @@ async function searchPropertyRentcast(
       bathrooms: typeof prop.bathrooms === 'number' ? prop.bathrooms : 2,
       property_type: prop.propertyType || 'Single Family',
       estimated_value: estimatedValue,
-      primary_listing_price: propertyValueSignals.listingPrice,
+      primary_listing_price: primaryListingPrice,
       fallback_listing_price: listingPriceResolution.fallbackListingPrice,
       listing_price: listingPriceResolution.listingPrice,
       listing_price_source: listingPriceResolution.listingPriceSource,

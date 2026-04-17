@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   buildPropertyDataFromAvm,
   classifyAddressMatch,
@@ -6,6 +6,22 @@ import {
   buildingKey,
   isUnitLikeAddress,
 } from './propertyApi'
+
+const ORIGINAL_NODE_ENV = process.env.NODE_ENV
+const ORIGINAL_PROPERTY_API_KEY = process.env.PROPERTY_API_KEY
+const ORIGINAL_LISTING_PRICE_FALLBACK_URL = process.env.LISTING_PRICE_FALLBACK_URL
+
+const getRequestUrl = (requestInput: RequestInfo | URL): string => {
+  if (typeof requestInput === 'string') {
+    return requestInput
+  }
+
+  if (requestInput instanceof URL) {
+    return requestInput.toString()
+  }
+
+  return requestInput.url
+}
 // NOTE: the commercial-comp and duplicate-comp filters live inside
 // getComparableSales (network) and are covered via the scenario replay
 // suite. These tests focus on the pure helpers.
@@ -118,6 +134,179 @@ describe('buildPropertyDataFromAvm', () => {
     expect(p!.bathrooms).toBe(2)
     expect(p!.square_feet).toBe(1500)
     expect(p!.year_built).toBe(2000)
+  })
+})
+
+describe('searchProperty sale listing price resolution', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.unstubAllGlobals()
+    process.env.NODE_ENV = 'development'
+    process.env.PROPERTY_API_KEY = 'test-property-key'
+    delete process.env.LISTING_PRICE_FALLBACK_URL
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    process.env.NODE_ENV = ORIGINAL_NODE_ENV
+    if (ORIGINAL_PROPERTY_API_KEY === undefined) {
+      delete process.env.PROPERTY_API_KEY
+    } else {
+      process.env.PROPERTY_API_KEY = ORIGINAL_PROPERTY_API_KEY
+    }
+    if (ORIGINAL_LISTING_PRICE_FALLBACK_URL === undefined) {
+      delete process.env.LISTING_PRICE_FALLBACK_URL
+    } else {
+      process.env.LISTING_PRICE_FALLBACK_URL = ORIGINAL_LISTING_PRICE_FALLBACK_URL
+    }
+  })
+
+  it('uses the sale listings endpoint as the primary listing price when properties omit price', async () => {
+    const mockFetch = vi.fn(async (requestInput: RequestInfo | URL) => {
+      const requestUrl = getRequestUrl(requestInput)
+
+      if (requestUrl.includes('/v1/properties')) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: 'prop-1',
+              formattedAddress: '8837 W Virginia Ave, Phoenix, AZ 85037',
+              addressLine1: '8837 W Virginia Ave',
+              city: 'Phoenix',
+              state: 'AZ',
+              zipCode: '85037',
+              propertyType: 'Single Family',
+              bedrooms: 3,
+              bathrooms: 2,
+              squareFootage: 1552,
+              yearBuilt: 1986,
+              propertyTaxes: { '2024': { total: 1333 } },
+              lastSalePrice: 350000,
+              lastSaleDate: '2022-05-08T00:00:00.000Z',
+            },
+          ]),
+          { status: 200 }
+        )
+      }
+
+      if (requestUrl.includes('/v1/avm/value')) {
+        return new Response(
+          JSON.stringify({
+            price: 372000,
+            priceRangeLow: 350000,
+            priceRangeHigh: 390000,
+            subjectProperty: {
+              formattedAddress: '8837 W Virginia Ave, Phoenix, AZ 85037',
+              city: 'Phoenix',
+              state: 'AZ',
+              zipCode: '85037',
+              latitude: 33.47513,
+              longitude: -112.250181,
+            },
+            comparables: [],
+          }),
+          { status: 200 }
+        )
+      }
+
+      if (requestUrl.includes('/v1/listings/sale')) {
+        return new Response(
+          JSON.stringify([
+            {
+              formattedAddress: '8837 W Virginia Ave, Phoenix, AZ 85037',
+              status: 'Active',
+              price: 360000,
+              listedDate: '2026-03-30T00:00:00.000Z',
+              lastSeenDate: '2026-04-16T11:50:42.267Z',
+            },
+          ]),
+          { status: 200 }
+        )
+      }
+
+      return new Response('{}', { status: 500 })
+    })
+
+    vi.stubGlobal('fetch', mockFetch)
+
+    const { searchProperty } = await import('./propertyApi')
+    const property = await searchProperty('8837 W Virginia Ave, Phoenix, AZ 85037')
+
+    expect(property).not.toBeNull()
+    expect(property?.primary_listing_price).toBe(360000)
+    expect(property?.listing_price).toBe(360000)
+    expect(property?.listing_price_source).toBe('primary')
+    expect(property?.listing_price_status).toBe('resolved')
+    expect(property?.listing_price_checked_at).toBe('2026-04-16T11:50:42.267Z')
+    expect(property?.estimated_value).toBe(372000)
+  })
+
+  it('preserves the primary sale listing price when the property record falls back to AVM-only', async () => {
+    const mockFetch = vi.fn(async (requestInput: RequestInfo | URL) => {
+      const requestUrl = getRequestUrl(requestInput)
+
+      if (requestUrl.includes('/v1/properties')) {
+        return new Response('{}', { status: 404 })
+      }
+
+      if (requestUrl.includes('/v1/avm/value')) {
+        return new Response(
+          JSON.stringify({
+            price: 240000,
+            priceRangeLow: 220000,
+            priceRangeHigh: 255000,
+            subjectProperty: {
+              formattedAddress: '13801 N 36th Dr, Phoenix, AZ 85053',
+              city: 'Phoenix',
+              state: 'AZ',
+              zipCode: '85053',
+              latitude: 33.611158,
+              longitude: -112.136999,
+            },
+            comparables: [
+              {
+                bedrooms: 3,
+                bathrooms: 2,
+                squareFootage: 1850,
+                propertyType: 'Single Family',
+                yearBuilt: 1971,
+              },
+            ],
+          }),
+          { status: 200 }
+        )
+      }
+
+      if (requestUrl.includes('/v1/listings/sale')) {
+        return new Response(
+          JSON.stringify([
+            {
+              formattedAddress: '13801 N 36th Dr, Phoenix, AZ 85053',
+              status: 'Active',
+              price: 225000,
+              listedDate: '2026-03-25T00:00:00.000Z',
+              lastSeenDate: '2026-04-16T11:54:09.453Z',
+            },
+          ]),
+          { status: 200 }
+        )
+      }
+
+      return new Response('{}', { status: 500 })
+    })
+
+    vi.stubGlobal('fetch', mockFetch)
+
+    const { searchProperty } = await import('./propertyApi')
+    const property = await searchProperty('13801 N 36th Dr, Phoenix, AZ 85053')
+
+    expect(property).not.toBeNull()
+    expect(property?.data_completeness).toBe('avm-only')
+    expect(property?.primary_listing_price).toBe(225000)
+    expect(property?.listing_price).toBe(225000)
+    expect(property?.listing_price_source).toBe('primary')
+    expect(property?.listing_price_status).toBe('resolved')
+    expect(property?.listing_price_checked_at).toBe('2026-04-16T11:54:09.453Z')
   })
 })
 
